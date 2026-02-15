@@ -132,6 +132,7 @@ const showRequestError = (language: ReturnType<typeof useLanguage>, err: unknown
 }
 
 
+
 export function SessionHeader() {
   const layout = useLayout()
   const command = useCommand()
