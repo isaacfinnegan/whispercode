@@ -1739,6 +1739,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               onRemove={removeAttachment}
               removeLabel={language.t("prompt.attachment.remove")}
             />
+
             <div
               class="relative"
               onMouseDown={(e) => {
