@@ -18,6 +18,23 @@ type OpenAttachmentPickerOptions = {
 type SaveFilePickerOptions = { title?: string; defaultPath?: string }
 export type PlatformName = "web" | "desktop" | "ios"
 type DesktopOS = "macos" | "windows" | "linux"
+type UpdateInfo = { updateAvailable: boolean; version?: string }
+export type VoiceState = "prewarming" | "ready" | "recording" | "processing" | "error"
+export type VoiceStatus = {
+  state: VoiceState
+  ready: boolean
+  message?: string
+}
+export type VoiceStartResult = {
+  ok: boolean
+  code?: string
+  message?: string
+}
+export type VoiceStopResult = {
+  text: string
+  code?: string
+  message?: string
+}
 
 export type FatalRendererErrorLog = {
   error: string
@@ -113,10 +130,13 @@ type PlatformBase = {
   recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
 
   /** Start voice input (iOS only) */
-  startVoiceInput?(): void
+  startVoiceInput?(): Promise<VoiceStartResult> | VoiceStartResult
 
   /** Stop voice input and return transcription (iOS only) */
-  stopVoiceInput?(): Promise<string>
+  stopVoiceInput?(): Promise<VoiceStopResult> | VoiceStopResult
+
+  /** Current voice input status (iOS only) */
+  voiceStatus?: Accessor<VoiceStatus>
 
   /** Haptic feedback (iOS only) */
   haptic?(style: "light" | "medium" | "heavy" | "success" | "warning" | "error"): void
