@@ -1,7 +1,7 @@
 import type { Config, OpencodeClient, Path, Project, ProviderAuthResponse, Todo } from "@opencode-ai/sdk/v2/client"
 import { showToast } from "@/utils/toast"
 import { getFilename } from "@opencode-ai/core/util/path"
-import { type Accessor, batch, createMemo, getOwner, onCleanup, onMount, untrack } from "solid-js"
+import { type Accessor, batch, createEffect, createMemo, getOwner, onCleanup, onMount, untrack } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import type { InitError } from "../pages/error"
@@ -461,6 +461,50 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
       })
     },
   }))
+
+  createEffect(() => {
+    if (typeof window === "undefined") return
+    const RESUME_REFRESH_COOLDOWN_MS = 1000
+    let lastResumeRefresh = 0
+
+    const refreshOnResume = () => {
+      const now = Date.now()
+      if (now - lastResumeRefresh < RESUME_REFRESH_COOLDOWN_MS) return
+      lastResumeRefresh = now
+      queue.refresh()
+      for (const directory of Object.keys(children.children)) {
+        sessionMeta.delete(directory)
+        queue.push(directory)
+      }
+    }
+
+    const onResume = () => {
+      refreshOnResume()
+    }
+    const onVisibility = () => {
+      if (typeof document === "undefined") return
+      if (document.visibilityState !== "visible") return
+      onResume()
+    }
+
+    window.addEventListener("focus", onResume)
+    window.addEventListener("pageshow", onResume)
+    window.addEventListener("online", onResume)
+    window.addEventListener("opencode:resume", onResume)
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibility)
+    }
+
+    onCleanup(() => {
+      window.removeEventListener("focus", onResume)
+      window.removeEventListener("pageshow", onResume)
+      window.removeEventListener("online", onResume)
+      window.removeEventListener("opencode:resume", onResume)
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibility)
+      }
+    })
+  })
 
   return {
     data: globalStore,
