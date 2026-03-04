@@ -42,6 +42,7 @@ import { useServerSDK } from "@/context/server-sdk"
 import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh"
 import { type FollowupDraft, sendFollowupDraft } from "@/components/prompt-input/submit"
 import { createSessionComposerState, SessionComposerRegion } from "@/pages/session/composer"
 import {
@@ -301,6 +302,23 @@ export default function Page() {
     }
     return key
   }, sessionKey())
+
+  const platform = usePlatform()
+  const pullToRefresh = usePullToRefresh({
+    scrollElement: () => scroller,
+    onRefresh: async () => {
+      await platform.restart()
+    },
+    onHaptic: () => platform.haptic?.("light"),
+    isNestedScrollable: (target) => {
+      const el = target instanceof Element ? target : undefined
+      const nested = el?.closest("[data-scrollable]")
+      if (!nested || !scroller) return false
+      if (nested === scroller) return false
+      if (!(nested instanceof HTMLElement)) return false
+      return nested.scrollTop > 0
+    },
+  })
 
   let reviewFrame: number | undefined
   let todoFrame: number | undefined
@@ -1601,6 +1619,7 @@ export default function Page() {
       {sessionSync() ?? ""}
       <SessionHeader />
       <div
+        ref={pullToRefresh.setRef}
         class="flex-1 min-h-0 flex flex-col md:flex-row "
         classList={{
           "gap-2 p-2": settings.general.newLayoutDesigns(),
@@ -1701,6 +1720,12 @@ export default function Page() {
                         }}
                         setScrollToEnd={(fn) => {
                           scrollToEnd = fn
+                        }}
+                        pullToRefresh={{
+                          pulling: pullToRefresh.pulling(),
+                          progress: pullToRefresh.progress(),
+                          refreshing: pullToRefresh.refreshing(),
+                          pullDistance: pullToRefresh.pullDistance(),
                         }}
                       />
                     )}
