@@ -1864,7 +1864,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     </Button>
                   </TooltipKeybind>
 
-                  <Show when={platform.platform === "ios" && platform.startVoiceInput}>
+                  <Show when={(platform.platform === "ios" || platform.platform === "android") && platform.startVoiceInput}>
                     <Tooltip placement="top" value="Voice input">
                       <Button
                         type="button"

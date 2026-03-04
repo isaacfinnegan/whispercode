@@ -16,8 +16,8 @@ type OpenAttachmentPickerOptions = {
   defaultPath?: string
 }
 type SaveFilePickerOptions = { title?: string; defaultPath?: string }
-export type PlatformName = "web" | "desktop" | "ios"
-type DesktopOS = "macos" | "windows" | "linux"
+export type PlatformName = "web" | "desktop" | "ios" | "android"
+type DesktopOS = "macos" | "windows" | "linux" | "ios" | "android"
 type UpdateInfo = { updateAvailable: boolean; version?: string }
 export type VoiceState = "prewarming" | "ready" | "recording" | "processing" | "error"
 export type VoiceStatus = {
@@ -129,19 +129,19 @@ type PlatformBase = {
   /** Record a fatal renderer error in platform logs (desktop only) */
   recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
 
-  /** Start voice input (iOS only) */
+  /** Start voice input (mobile only) */
   startVoiceInput?(): Promise<VoiceStartResult> | VoiceStartResult
 
-  /** Stop voice input and return transcription (iOS only) */
+  /** Stop voice input and return transcription (mobile only) */
   stopVoiceInput?(): Promise<VoiceStopResult> | VoiceStopResult
 
-  /** Current voice input status (iOS only) */
+  /** Current voice input status (mobile only) */
   voiceStatus?: Accessor<VoiceStatus>
 
-  /** Haptic feedback (iOS only) */
+  /** Haptic feedback (mobile only) */
   haptic?(style: "light" | "medium" | "heavy" | "success" | "warning" | "error"): void
 
-  /** Share content (iOS only) */
+  /** Share content (mobile only) */
   share?(data: { text?: string; url?: string }): Promise<boolean>
 }
 
@@ -154,6 +154,7 @@ export type Platform = PlatformBase &
         openDirectoryPickerDialog(opts?: OpenDirectoryPickerOptions): Promise<PickerPaths>
       }
     | { platform: "ios"; os?: never }
+    | { platform: "android"; os?: never }
   )
 
 export type DisplayBackend = "auto" | "wayland"
