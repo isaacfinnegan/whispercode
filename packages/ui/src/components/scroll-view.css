@@ -11,6 +11,11 @@
   outline: none;
 }
 
+:root[data-platform="ios"] .scroll-view__viewport[data-reverse="true"] {
+  display: block;
+  flex-direction: unset;
+}
+
 .scroll-view__viewport::-webkit-scrollbar {
   display: none;
 }
