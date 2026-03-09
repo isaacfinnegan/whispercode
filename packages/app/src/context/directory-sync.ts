@@ -508,6 +508,12 @@ export const createDirSyncContext = (
           await Promise.all([sessionReq, messagesReq])
         })
       },
+      async status() {
+        const [_, setStore] = serverSync.child(directory)
+        return retry(() => client.session.status()).then((x) => {
+          setStore("session_status", reconcile(x.data ?? {}))
+        })
+      },
       async diff(sessionID: string, opts?: { force?: boolean }) {
         const [store, setStore] = serverSync.child(directory)
         touch(directory, setStore, sessionID)
