@@ -39,6 +39,7 @@ import { LayoutProvider } from "@/context/layout"
 import { ModelsProvider } from "@/context/models"
 import { NotificationProvider } from "@/context/notification"
 import { PermissionProvider } from "@/context/permission"
+import { PushRelayProvider } from "@/context/push-relay"
 import { PromptProvider } from "@/context/prompt"
 import { ServerConnection, ServerProvider, serverName, useServer } from "@/context/server"
 import { SettingsProvider, useSettings } from "@/context/settings"
@@ -211,10 +212,12 @@ function BodyDesignClass() {
 function SharedProviders(props: ParentProps) {
   return (
     <SettingsProvider>
-      <BodyDesignClass />
-      <CommandProvider>
-        <HighlightsProvider>{props.children}</HighlightsProvider>
-      </CommandProvider>
+      <PushRelayProvider>
+        <BodyDesignClass />
+        <CommandProvider>
+          <HighlightsProvider>{props.children}</HighlightsProvider>
+        </CommandProvider>
+      </PushRelayProvider>
     </SettingsProvider>
   )
 }

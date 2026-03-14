@@ -47,6 +47,12 @@ await $`bun ./packages/sdk/js/script/publish.ts`
 console.log("\n=== plugin ===\n")
 await $`bun ./packages/plugin/script/publish.ts`
 
+console.log("\n=== push ===\n")
+await import(`../packages/push/script/publish.ts`)
+
+const dir = fileURLToPath(new URL("..", import.meta.url))
+process.chdir(dir)
+
 if (Script.release) {
   await $`bun ./packages/desktop/scripts/finalize-latest-json.ts`
   await $`bun ./packages/desktop/scripts/finalize-latest-yml.ts`

@@ -3,7 +3,20 @@ export { ACCEPTED_FILE_EXTENSIONS, ACCEPTED_FILE_TYPES, filePickerFilters } from
 export { useCommand } from "./context/command"
 export { loadLocaleDict, normalizeLocale, type Locale } from "./context/language"
 export { useWslServers } from "./wsl/context"
-export { type DisplayBackend, type FatalRendererErrorLog, type Platform, PlatformProvider } from "./context/platform"
+export {
+  type DisplayBackend,
+  type FatalRendererErrorLog,
+  type Platform,
+  type NotifyOpts,
+  type PairInfo,
+  type PairState,
+  type PushCred,
+  type PushKind,
+  type PushPerm,
+  type PushPrefs,
+  type PushState,
+  PlatformProvider,
+} from "./context/platform"
 export { type UpdaterPlatform, type UpdaterState } from "./updater"
 export {
   type WslDistroProbe,
