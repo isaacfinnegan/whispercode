@@ -1,10 +1,15 @@
+<<<<<<< HEAD
 import { Component, Show, createMemo, createResource, onMount, type JSX } from "solid-js"
+=======
+import { Component, Show, createMemo, createResource, type JSX } from "solid-js"
+import { createStore } from "solid-js/store"
+>>>>>>> 63c7246087 (add notifications)
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
-import { TextField } from "@opencode-ai/ui/text-field"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+<<<<<<< HEAD
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme/context"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useParams } from "@solidjs/router"
@@ -28,6 +33,14 @@ import {
 } from "@/context/settings"
 import { decode64 } from "@/utils/base64"
 import { playSoundById, SOUND_OPTIONS } from "@/utils/sound"
+=======
+import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
+import { showToast } from "@opencode-ai/ui/toast"
+import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
+import { useSettings, monoFontFamily } from "@/context/settings"
+import { playSound, SOUND_OPTIONS } from "@/utils/sound"
+>>>>>>> 63c7246087 (add notifications)
 import { Link } from "./link"
 import { SettingsList } from "./settings-list"
 
@@ -86,6 +99,7 @@ export const SettingsGeneral: Component = () => {
   const language = useLanguage()
   const permission = usePermission()
   const platform = usePlatform()
+<<<<<<< HEAD
   const dialog = useDialog()
   const params = useParams()
   const settings = useSettings()
@@ -117,6 +131,67 @@ export const SettingsGeneral: Component = () => {
     }
 
     permission.disableAutoAccept(params.id, value)
+=======
+  const settings = useSettings()
+
+  const [store, setStore] = createStore({
+    checking: false,
+  })
+
+  const linux = createMemo(() => platform.platform === "desktop" && platform.os === "linux")
+  const check = () => {
+    if (!platform.checkUpdate) return
+    setStore("checking", true)
+
+    void platform
+      .checkUpdate()
+      .then((result) => {
+        if (!result.updateAvailable) {
+          showToast({
+            variant: "success",
+            icon: "circle-check",
+            title: language.t("settings.updates.toast.latest.title"),
+            description: language.t("settings.updates.toast.latest.description", { version: platform.version ?? "" }),
+          })
+          return
+        }
+
+        const actions =
+          platform.update && platform.restart
+            ? [
+                {
+                  label: language.t("toast.update.action.installRestart"),
+                  onClick: async () => {
+                    await platform.update!()
+                    await platform.restart!()
+                  },
+                },
+                {
+                  label: language.t("toast.update.action.notYet"),
+                  onClick: "dismiss" as const,
+                },
+              ]
+            : [
+                {
+                  label: language.t("toast.update.action.notYet"),
+                  onClick: "dismiss" as const,
+                },
+              ]
+
+        showToast({
+          persistent: true,
+          icon: "download",
+          title: language.t("toast.update.title"),
+          description: language.t("toast.update.description", { version: result.version ?? "" }),
+          actions,
+        })
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        showToast({ title: language.t("common.requestFailed"), description: message })
+      })
+      .finally(() => setStore("checking", false))
+>>>>>>> 63c7246087 (add notifications)
   }
   const desktop = createMemo(() => platform.platform === "desktop")
 
@@ -606,7 +681,11 @@ export const SettingsGeneral: Component = () => {
             />
           </div>
         </SettingsRow>
+<<<<<<< HEAD
       </SettingsList>
+=======
+      </div>
+>>>>>>> 63c7246087 (add notifications)
     </div>
   )
 

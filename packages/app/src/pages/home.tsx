@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import type { Session } from "@opencode-ai/sdk/v2/client"
 import { batch, createEffect, createMemo, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js"
 import { makeEventListener } from "@solid-primitives/event-listener"
@@ -13,6 +14,12 @@ import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
 import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { MenuV2 } from "@opencode-ai/ui/v2/menu-v2"
 import { getProjectAvatarVariant, useLayout, type LocalProject } from "@/context/layout"
+=======
+import { createMemo, For, Match, Switch } from "solid-js"
+import { Button } from "@opencode-ai/ui/button"
+import { Logo } from "@opencode-ai/ui/logo"
+import { useLayout } from "@/context/layout"
+>>>>>>> 63c7246087 (add notifications)
 import { useNavigate } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/core/util/encode"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -26,6 +33,7 @@ import { ServerConnection, useServer } from "@/context/server"
 import { sessionHasOpenTab, useTabs } from "@/context/tabs"
 import { useServerSync, type ServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
+<<<<<<< HEAD
 import { useNotification } from "@/context/notification"
 import {
   closeHomeProject,
@@ -112,6 +120,8 @@ function matchesHomeSessionSearch(record: HomeSessionRecord, query: string) {
 function homeSessionSearchKey(record: HomeSessionRecord) {
   return `${pathKey(record.session.directory)}:${record.session.id}`
 }
+=======
+>>>>>>> 63c7246087 (add notifications)
 
 export default function Home() {
   const settings = useSettings()
@@ -131,6 +141,7 @@ function HomeDesign() {
   const navigate = useNavigate()
   const server = useServer()
   const language = useLanguage()
+<<<<<<< HEAD
   const global = useGlobal()
   const command = useCommand()
   const notification = useNotification()
@@ -1103,6 +1114,9 @@ function LegacyHome() {
   const server = useServer()
   const language = useLanguage()
   const homedir = createMemo(() => sync().data.path.home)
+=======
+  const homedir = createMemo(() => sync.data.path.home)
+>>>>>>> 63c7246087 (add notifications)
   const recent = createMemo(() => {
     return sync()
       .data.project.slice()
@@ -1117,10 +1131,16 @@ function LegacyHome() {
     return "bg-border-weak-base"
   })
 
+<<<<<<< HEAD
   function openProject(server: ServerConnection.Any, directory: string) {
     const serverCtx = global.createServerCtx(server)
     serverCtx.projects.open(directory)
     serverCtx.projects.touch(directory)
+=======
+  function openProject(directory: string) {
+    layout.projects.open(directory)
+    server.projects.touch(directory)
+>>>>>>> 63c7246087 (add notifications)
     navigate(`/${base64Encode(directory)}`)
   }
 

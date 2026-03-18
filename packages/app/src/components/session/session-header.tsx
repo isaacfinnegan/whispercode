@@ -300,9 +300,7 @@ export function SessionHeader() {
               aria-label={language.t("session.header.searchFiles")}
             >
               <Icon name="magnifying-glass" size="small" class="md:hidden icon-base shrink-0 size-4" />
-              <span class="md:hidden text-12-regular text-text-weak">
-                {language.t("common.search.placeholder")}
-              </span>
+              <span class="md:hidden text-12-regular text-text-weak">{language.t("common.search.placeholder")}</span>
               <div class="hidden md:flex min-w-0 flex-1 items-center gap-1.5 overflow-visible">
                 <Icon name="magnifying-glass" size="small" class="icon-base shrink-0 size-4" />
                 <span class="flex-1 min-w-0 text-12-regular text-text-weak truncate text-left">
@@ -314,7 +312,9 @@ export function SessionHeader() {
 
               <Show when={hotkey()}>
                 {(keybind) => (
-                  <Keybind class="hidden md:flex shrink-0 !border-0 !bg-transparent !shadow-none px-0">{keybind()}</Keybind>
+                  <Keybind class="hidden md:flex shrink-0 !border-0 !bg-transparent !shadow-none px-0">
+                    {keybind()}
+                  </Keybind>
                 )}
               </Show>
             </Button>

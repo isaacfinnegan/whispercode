@@ -586,6 +586,7 @@ export const dict = {
   "home.recentProjects": "Recent projects",
   "home.empty.title": "No recent projects",
   "home.empty.description": "Get started by opening a local project",
+<<<<<<< HEAD
   "home.title": "Home",
   "home.projects": "Projects",
   "home.project.add": "Add project",
@@ -621,6 +622,8 @@ export const dict = {
     "Notifications are ready on this iPhone. Send a quick test and tap it to verify WhisperCode routes you back into the app.",
   "home.push.action.later": "Not now",
   "home.push.action.done": "Done",
+=======
+>>>>>>> 63c7246087 (add notifications)
 
   "session.tab.session": "Session",
   "session.tab.review": "Review",
@@ -816,7 +819,9 @@ export const dict = {
 
   "settings.section.desktop": "Desktop",
   "settings.section.server": "Server",
+  "settings.section.whispercode": "WhisperCode",
   "settings.tab.general": "General",
+  "settings.tab.phone": "Phone",
   "settings.tab.shortcuts": "Shortcuts",
   "settings.desktop.section.wsl": "WSL",
   "settings.desktop.wsl.title": "WSL integration",
@@ -966,13 +971,15 @@ export const dict = {
   "settings.general.notifications.push.permission.provisional": "Ready for quiet generic alerts on this iPhone",
   "settings.general.notifications.push.permission.ephemeral": "Ready for temporary generic alerts on this iPhone",
   "settings.general.notifications.push.permission.unsupported": "Notifications are unavailable on this device",
+  "settings.general.notifications.push.permission.ios":
+    "If you skipped notification setup during onboarding, you can finish it here. WhisperCode will guide you through permissions and install an OpenCode plugin on your server.",
   "settings.general.notifications.push.generic.title": "Privacy",
   "settings.general.notifications.push.generic.description":
     "Alerts stay generic by default. Prompt text, response text, file paths, and session titles stay on-device.",
   "settings.general.notifications.push.generic.value": "Generic only",
   "settings.general.notifications.push.test.title": "Send test notification",
   "settings.general.notifications.push.test.description":
-    "Schedule a generic alert and verify that tapping it brings you back to WhisperCode",
+    "Send a relay-backed alert from the connected OpenCode host and verify that tapping it brings you back to WhisperCode",
   "settings.general.notifications.push.relay.title": "Push relay",
   "settings.general.notifications.push.relay.description.custom":
     "Using a custom relay URL for pairing and background push delivery: {url}",
@@ -983,15 +990,32 @@ export const dict = {
   "settings.general.notifications.push.relay.action.auto": "Use Default",
   "settings.general.notifications.push.pairing.title": "Phone pairing",
   "settings.general.notifications.push.pairing.pending": "Checking whether this iPhone is paired to a push channel.",
-  "settings.general.notifications.push.pairing.unpaired": "No paired push channel is stored on this iPhone yet.",
+  "settings.general.notifications.push.pairing.server":
+    "Connect to an OpenCode server first so WhisperCode can finish pairing.",
+  "settings.general.notifications.push.pairing.unpaired":
+    "Tap Set Up once and WhisperCode will request permission, install an OpenCode plugin on your server, and pair this iPhone automatically.",
   "settings.general.notifications.push.pairing.paired":
-    "This iPhone has stored channel credentials for generic push delivery.",
-  "settings.general.notifications.push.pairing.action.repair": "Re-pair",
+    "This iPhone is paired to your OpenCode host. WhisperCode will repair the connection automatically if it drifts.",
+  "settings.general.notifications.push.pairing.retry":
+    "WhisperCode is finishing host pairing for this iPhone and will keep retrying until it sticks.",
+  "settings.general.notifications.push.pairing.step.permission":
+    "Requesting notification permission from iPhone Settings.",
+  "settings.general.notifications.push.pairing.step.register": "Waiting for Apple push registration to finish.",
+  "settings.general.notifications.push.pairing.step.begin": "Preparing a secure pairing request for this iPhone.",
+  "settings.general.notifications.push.pairing.step.claim": "Connecting this iPhone to the OpenCode host.",
+  "settings.general.notifications.push.pairing.step.finish": "Finishing pairing on this iPhone.",
+  "settings.general.notifications.push.pairing.action.setup": "Set Up",
+  "settings.general.notifications.push.pairing.action.finish": "Finish Setup",
+  "settings.general.notifications.push.pairing.action.repair": "Repair",
+  "settings.general.notifications.push.pairing.action.pairing": "Pairing...",
   "settings.general.notifications.push.pairing.action.clear": "Remove Pairing",
   "settings.general.notifications.push.pairing.action.clearing": "Removing...",
   "settings.general.notifications.push.pairing.toast.cleared.title": "Pairing removed",
   "settings.general.notifications.push.pairing.toast.cleared.description":
     "Stored push channel credentials were removed from this iPhone.",
+  "settings.general.notifications.push.pairing.toast.paired.title": "iPhone paired",
+  "settings.general.notifications.push.pairing.toast.paired.description":
+    "WhisperCode can now keep this iPhone connected to the OpenCode host for push delivery.",
   "settings.general.notifications.push.action.enable": "Enable",
   "settings.general.notifications.push.action.openSettings": "Open Settings",
   "settings.general.notifications.push.action.enabled": "Enabled",
@@ -1033,6 +1057,7 @@ export const dict = {
   "notification.push.route.title": "OpenCode notification",
   "notification.push.route.server": "WhisperCode could not match this notification to a connected server yet.",
   "notification.push.route.session": "WhisperCode could not restore that session yet, so it opened the server home.",
+  "settings.whispercode.mobile.unavailable": "This tab is available on WhisperCode mobile builds.",
 
   "settings.general.sounds.agent.title": "Agent",
   "settings.general.sounds.agent.description": "Play sound when the agent is complete or needs attention",
