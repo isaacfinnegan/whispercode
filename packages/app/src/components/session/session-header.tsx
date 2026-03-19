@@ -217,6 +217,13 @@ export function SessionHeader() {
   }
 
   const [prefs, setPrefs] = persisted(Persist.global("open.app"), createStore({ app: "finder" as OpenApp }))
+
+  const mobile = createMemo(() => platform.platform === "ios" || platform.platform === "android")
+
+  const refresh = () => {
+    platform.haptic?.("light")
+    void platform.restart()
+  }
   const [menu, setMenu] = createStore({ open: false })
   const [openRequest, setOpenRequest] = createStore({
     app: undefined as OpenApp | undefined,
@@ -442,6 +449,16 @@ export function SessionHeader() {
                     </div>
                   </Show>
                   <div class="flex items-center gap-1">
+                    <Show when={mobile()}>
+                      <IconButton
+                        icon="refresh"
+                        variant="ghost"
+                        class="titlebar-icon w-6 h-6 p-0 box-border shrink-0"
+                        onClick={refresh}
+                        aria-label={language.t("session.header.refresh")}
+                        data-action="session-refresh"
+                      />
+                    </Show>
                     <Show when={status()}>
                       <Tooltip placement="bottom" value={language.t("status.popover.trigger")}>
                         <StatusPopover />

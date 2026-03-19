@@ -14,6 +14,7 @@ import type {
 import type { State, VcsCache } from "./types"
 import { trimSessions } from "./session-trim"
 import { dropSessionCaches } from "./session-cache"
+import { copyTodos } from "../todo-store"
 import { diffs as list, message as clean } from "@/utils/diffs"
 
 const SKIP_PARTS = new Set(["patch", "step-start", "step-finish"])
@@ -175,7 +176,7 @@ export function applyDirectoryEvent(input: {
     }
     case "todo.updated": {
       const props = event.properties as { sessionID: string; todos: Todo[] }
-      input.setStore("todo", props.sessionID, reconcile(props.todos, { key: "id" }))
+      input.setStore("todo", props.sessionID, copyTodos(props.todos))
       input.setSessionTodo?.(props.sessionID, props.todos)
       break
     }

@@ -105,6 +105,7 @@ const names = [
   "keyboard",
   "selector",
   "arrow-down-to-line",
+  "refresh",
   "warning",
   "link",
   "providers",

@@ -37,6 +37,7 @@ import { retry } from "@opencode-ai/core/util/retry"
 import type { ServerScope } from "@/utils/server-scope"
 import { persisted } from "@/utils/persist"
 import { toggleMcp } from "./global-sync/mcp"
+import { copyTodos } from "./todo-store"
 
 type GlobalStore = {
   ready: boolean
@@ -198,7 +199,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
       )
       return
     }
-    setGlobalStore("session_todo", sessionID, reconcile(todos, { key: "id" }))
+    setGlobalStore("session_todo", sessionID, copyTodos(todos))
   }
 
   const paused = () => untrack(() => globalStore.reload) !== undefined

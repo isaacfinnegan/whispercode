@@ -49,7 +49,16 @@ import { usePermission } from "@/context/permission"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { createSessionTabs } from "@/pages/session/helpers"
-import { createTextFragment, getCursorPosition, setCursorPosition, setRangeEdge } from "./prompt-input/editor-dom"
+import {
+  createTextFragment,
+  getCursorPosition,
+  getDeleteWordRange,
+  getEditorText,
+  getSelectionRange,
+  setCursorPosition,
+  setRangeEdge,
+  setSelectionRange,
+} from "./prompt-input/editor-dom"
 import { createPromptAttachments } from "./prompt-input/attachments"
 import { ACCEPTED_FILE_TYPES, pickAttachmentFiles } from "./prompt-input/files"
 import {
@@ -1023,6 +1032,40 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     queueScroll()
   }
 
+  const deleteWord = () => {
+    if (!editorRef) return
+
+    const active = document.activeElement
+    const focused = active instanceof HTMLElement && active === editorRef
+    const selected = getSelectionRange(editorRef)
+    if (!focused && !selected) return
+
+    const text = getEditorText(editorRef)
+    const span = getDeleteWordRange(text, selected)
+    if (!span) return
+
+    const selection = window.getSelection()
+    if (!selection) return
+
+    const range = document.createRange()
+    editorRef.focus()
+    setSelectionRange(editorRef, range, span.start, span.end)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    range.deleteContents()
+    setCursorPosition(editorRef, span.start)
+    handleInput()
+  }
+
+  createEffect(() => {
+    const handleDeleteWord = () => {
+      deleteWord()
+    }
+
+    window.addEventListener("opencode:keyboard-delete-word", handleDeleteWord)
+    onCleanup(() => window.removeEventListener("opencode:keyboard-delete-word", handleDeleteWord))
+  })
+
   const addPart = (part: ContentPart) => {
     if (part.type === "image") return false
 
@@ -1976,7 +2019,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                       style={{ "will-change": "opacity", transform: "translateZ(0)" }}
                                     />
                                   </Show>
-                                  <span class="truncate">
+                                  <span
+                                    class="block min-w-0 max-w-[8ch] truncate"
+                                    title={props.controls.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
+                                  >
                                     {props.controls.model.selection.current()?.name ??
                                       language.t("dialog.model.select.title")}
                                   </span>
@@ -2010,7 +2056,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                     style={{ "will-change": "opacity", transform: "translateZ(0)" }}
                                   />
                                 </Show>
-                                <span class="truncate">
+                                <span
+                                  class="block min-w-0 max-w-[8ch] truncate"
+                                  title={props.controls.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
+                                >
                                   {props.controls.model.selection.current()?.name ??
                                     language.t("dialog.model.select.title")}
                                 </span>

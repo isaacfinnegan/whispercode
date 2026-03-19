@@ -67,6 +67,7 @@ import { Identifier } from "@/utils/id"
 import { diffs as list } from "@/utils/diffs"
 import { Persist, persisted } from "@/utils/persist"
 import { extractPromptFromParts } from "@/utils/prompt"
+import { same } from "@/utils/same"
 import { formatServerError } from "@/utils/server-errors"
 import { useUsageExceededDialogs } from "./session/usage-exceeded-dialogs"
 
@@ -134,6 +135,7 @@ export default function Page() {
     if (now - lastResumeSync < RESUME_SYNC_COOLDOWN_MS) return
     lastResumeSync = now
     void sync().session.sync(id, { force: true })
+    void sync().session.todo(id, { force: true })
     void sync().session.status()
   }
 
@@ -305,21 +307,6 @@ export default function Page() {
   }, sessionKey())
 
   const platform = usePlatform()
-  const pullToRefresh = usePullToRefresh({
-    scrollElement: () => scroller,
-    onRefresh: async () => {
-      await platform.restart()
-    },
-    onHaptic: () => platform.haptic?.("light"),
-    isNestedScrollable: (target) => {
-      const el = target instanceof Element ? target : undefined
-      const nested = el?.closest("[data-scrollable]")
-      if (!nested || !scroller) return false
-      if (nested === scroller) return false
-      if (!(nested instanceof HTMLElement)) return false
-      return nested.scrollTop > 0
-    },
-  })
 
   let reviewFrame: number | undefined
   let todoFrame: number | undefined
@@ -1560,6 +1547,7 @@ export default function Page() {
     if (fillFrame !== undefined) cancelAnimationFrame(fillFrame)
   })
 
+<<<<<<< HEAD
   useUsageExceededDialogs()
 
   const composerRegion = (placement: "dock" | "inline") => (
@@ -1620,7 +1608,6 @@ export default function Page() {
       {sessionSync() ?? ""}
       <SessionHeader />
       <div
-        ref={pullToRefresh.setRef}
         class="flex-1 min-h-0 flex flex-col md:flex-row "
         classList={{
           "gap-2 p-2": settings.general.newLayoutDesigns(),
@@ -1721,12 +1708,6 @@ export default function Page() {
                         }}
                         setScrollToEnd={(fn) => {
                           scrollToEnd = fn
-                        }}
-                        pullToRefresh={{
-                          pulling: pullToRefresh.pulling(),
-                          progress: pullToRefresh.progress(),
-                          refreshing: pullToRefresh.refreshing(),
-                          pullDistance: pullToRefresh.pullDistance(),
                         }}
                       />
                     )}
