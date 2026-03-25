@@ -1547,7 +1547,6 @@ export default function Page() {
     if (fillFrame !== undefined) cancelAnimationFrame(fillFrame)
   })
 
-<<<<<<< HEAD
   useUsageExceededDialogs()
 
   const composerRegion = (placement: "dock" | "inline") => (
