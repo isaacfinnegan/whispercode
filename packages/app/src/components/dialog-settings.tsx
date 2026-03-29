@@ -11,6 +11,9 @@ import { SettingsProviders } from "./settings-providers"
 import { SettingsModels } from "./settings-models"
 import { SettingsServers } from "./settings-servers"
 
+// UPSTREAM-DIVERGENCE-FILE: The settings dialog exposes a fork-only WhisperCode phone tab added after
+// upstream sync 6b9ce5e63. Preserve this entrypoint when upstream reorganizes the settings navigation.
+
 export const DialogSettings: Component = () => {
   const language = useLanguage()
   const platform = usePlatform()
@@ -55,6 +58,8 @@ export const DialogSettings: Component = () => {
                 </div>
 
                 <div class="flex flex-col gap-1.5">
+                  {/* UPSTREAM-DIVERGENCE: This section anchors the fork's mobile notification setup UI
+                      inside the shared settings dialog rather than in a separate mobile-only route. */}
                   <Tabs.SectionTitle>{language.t("settings.section.whispercode")}</Tabs.SectionTitle>
                   <div class="flex flex-col gap-1.5 w-full">
                     <Tabs.Trigger value="mobile-notifications">
@@ -86,6 +91,8 @@ export const DialogSettings: Component = () => {
         <Tabs.Content value="models" class="no-scrollbar">
           <SettingsModels />
         </Tabs.Content>
+        {/* UPSTREAM-DIVERGENCE: Keep the phone settings content mounted under the shared dialog tabs so
+            iOS/Android builds do not need a forked settings shell when upstream changes tab layout. */}
         <Tabs.Content value="mobile-notifications" class="no-scrollbar">
           <SettingsMobileNotifications />
         </Tabs.Content>

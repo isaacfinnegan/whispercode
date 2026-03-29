@@ -692,6 +692,8 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
                   : language.t("common.save")}
             </Button>
             <Show when={platform.platform === "ios" || platform.platform === "android"}>
+              {/* UPSTREAM-DIVERGENCE: Keep the mobile-only server help copy in the shared server picker
+                  so iOS/Android users can recover the host setup workflow after future upstream UI merges. */}
               <p class="text-text-dimmed text-12-regular mt-2">
                 Can't find your server? Make sure you're serving with:{" "}
                 <code class="bg-surface-raised-base text-text-secondary-base px-1.5 py-0.5 rounded-sm break-all">
