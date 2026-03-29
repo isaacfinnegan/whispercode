@@ -1,58 +1,53 @@
 # AGENTS.md
-This is the root operating guide for agentic coding assistants in this repository.
-Scope: entire repo unless a deeper `AGENTS.md` exists in a subdirectory.
 
-## Quick Rules (Read First)
-- Use Bun 1.3.x (`packageManager` is `bun@1.3.9`).
-- Run commands from repo root with `bun run --cwd <package> ...` when possible.
-- ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.
-- Default branch is `dev`; local `main` may not exist.
-- Prefer automation: execute requested actions unless blocked by missing info or safety concerns.
-- Do not run tests from repo root (`bun test` intentionally fails).
-- `bunfig.toml` sets test root to `./do-not-run-tests-from-root`.
-- To regenerate the JS SDK, run `./packages/sdk/js/script/build.ts`.
-- If API/SDK surface changes, run `./script/generate.ts`.
+Root guide for agentic coding assistants working in this repository.
+Scope: applies to the whole repo unless a deeper `AGENTS.md` exists.
 
-## Branch Names
+## Quick Rules
 
-Use a short branch name of at most three words, separated by hyphens. Do not use slashes or type prefixes such as `feat/` or `fix/`.
+- Use Bun `1.3.10` (`packageManager` is `bun@1.3.10`)
+- Default branch is `dev`; local `main` may not exist
+- Prefer `bun run --cwd <package> ...` from repo root
+- Use parallel tool calls when tasks do not depend on each other
+- Prefer automation: do the work unless blocked by missing info or safety concerns
+- Do not run tests from repo root; `bunfig.toml` points tests at `./do-not-run-tests-from-root`
+- `bun dev` is the local equivalent of `opencode`; for CLI or TUI work use `bun dev .` or `bun dev <dir>`
+- If API or SDK surface changes, run `./script/generate.ts`
+- To regenerate the JS SDK, run `./packages/sdk/js/script/build.ts`
 
-Examples: `session-recovery`, `fix-scroll-state`, `regenerate-sdk`.
+## Respect Deeper Guides
 
-## Commits and PR Titles
+More specific instructions exist and override this file:
 
-Use conventional commit-style messages and PR titles: `type(scope): summary`.
-
-Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes are optional; use the affected package or area when helpful, e.g. `core`, `opencode`, `tui`, `app`, `desktop`, `sdk`, or `plugin`.
-
-Examples: `fix(tui): simplify thinking toggle styling`, `docs: update contributing guide`, `chore(sdk): regenerate types`.
+- `packages/app/AGENTS.md`
+- `packages/app/e2e/AGENTS.md`
+- `packages/desktop/AGENTS.md`
+- `packages/desktop-electron/AGENTS.md`
+- `packages/opencode/AGENTS.md`
+- `packages/opencode/test/AGENTS.md`
 
 ## Repo Map
-- `packages/opencode`: core CLI, runtime, server, and TUI.
-- `packages/app`: SolidJS app and unit/e2e tests.
-- `packages/desktop`: Tauri desktop wrapper.
-- `packages/android`, `packages/ios`: mobile wrappers.
-- `packages/ui`: shared UI components/context/theme.
-- `packages/sdk/js`: TypeScript SDK.
-- `packages/plugin`, `packages/util`, `packages/function`: shared logic.
-- `packages/console/*`: console app/core/function/resource/mail.
-- `packages/web`: Astro docs/site package.
-- `sdks/vscode`: VS Code extension.
 
-## Setup And Dev
+- `packages/opencode`: core CLI, runtime, server, and TUI - DO NOT MODIFY THIS PACKAGE
+- `packages/app`: Solid app with unit and e2e tests
+- `packages/desktop`, `packages/desktop-electron`: desktop wrappers
+- `packages/ios`, `packages/android`: mobile wrappers
+- `packages/ui`, `packages/storybook`, `packages/web`: UI primitives, previews, and docs site
+- `packages/sdk/js`, `sdks/vscode`: TypeScript SDK and VS Code extension 
+- `packages/plugin`, `packages/util`, `packages/function`, `packages/push`, `packages/push-relay`: shared logic and push services
+- `packages/console/*`: console app, core, function, resource, and mail
+
+## Commands
+
 ```bash
+# setup and dev
 bun install
 bun dev
 bun dev --help
 bun dev serve --port 4096
 bun run --cwd packages/app dev
 bun run --cwd packages/desktop tauri dev
-```
-- `bun dev` is the local equivalent of `opencode`.
-- For CLI/TUI work: `bun dev <directory>` or `bun dev .`.
 
-## Build, Typecheck, Lint
-```bash
 # repo-wide typecheck
 bun run typecheck
 
@@ -60,6 +55,7 @@ bun run typecheck
 bun run --cwd packages/opencode build
 bun run --cwd packages/app build
 bun run --cwd packages/desktop build
+bun run --cwd packages/desktop-electron build
 bun run --cwd packages/android build
 bun run --cwd packages/ios build
 bun run --cwd packages/web build
@@ -68,283 +64,73 @@ bun run --cwd packages/plugin build
 bun run --cwd packages/sdk/js build
 bun run --cwd packages/console/app build
 
-# lint/type checks
+# lint and checks
 bun run --cwd packages/opencode lint
 bun run --cwd sdks/vscode lint
 bun run --cwd sdks/vscode check-types
-```
-- There is no single repo-wide `lint` script at root.
-- Root formatting defaults: no semicolons, `printWidth: 120`, 2-space indent, LF endings.
-- Format ad hoc with `bunx prettier --write <paths>`.
+bunx prettier --write <paths>
 
-### Naming Enforcement (Read This)
-
-THIS RULE IS MANDATORY FOR AGENT WRITTEN CODE.
-
-- Use single word names by default for new locals, params, and helper functions.
-- Multi-word names are allowed only when a single word would be unclear or ambiguous.
-- Do not introduce new camelCase compounds when a short single-word alternative is clear.
-- Before finishing edits, review touched lines and shorten newly introduced identifiers where possible.
-- Good short names to prefer: `pid`, `cfg`, `err`, `opts`, `dir`, `root`, `child`, `state`, `timeout`.
-- Examples to avoid unless truly required: `inputPID`, `existingClient`, `connectTimeout`, `workerPath`.
-
-```ts
-// Good
-const foo = 1
-function journal(dir: string) {}
-```
-
-## Test Commands (Including Single-Test Runs)
-- Never run tests from repo root; use package `--cwd`.
-
-### `packages/opencode` (Bun tests)
-```bash
+# tests: packages/opencode
 bun run --cwd packages/opencode test
 bun run --cwd packages/opencode test -- test/tool/bash.test.ts
 bun run --cwd packages/opencode test -- test/tool/bash.test.ts -t "times out"
-```
 
-### `packages/app` unit tests (Bun + Happy DOM)
-```bash
-bun run --cwd packages/app test
+# tests: packages/app unit
 bun run --cwd packages/app test:unit
 bun run --cwd packages/app test:unit -- ./src/utils/server-health.test.ts
 bun run --cwd packages/app test:unit -- -t "reports healthy"
-# direct equivalent
-bun test --preload ./happydom.ts ./src/components/prompt-input/submit.test.ts
-```
 
-### `packages/app` e2e tests (Playwright)
-```bash
+# from packages/app when you need raw Bun control
+bun test --preload ./happydom.ts ./src/components/prompt-input/submit.test.ts
+
+# tests: packages/app e2e
 bun run --cwd packages/app test:e2e
 bun run --cwd packages/app test:e2e -- e2e/app/home.spec.ts
 bun run --cwd packages/app test:e2e -- -g "home renders and shows core entrypoints"
+bun run --cwd packages/app test:e2e:local
 bun run --cwd packages/app test:e2e:ui
 bun run --cwd packages/app test:e2e:report
-```
 
-### `sdks/vscode` tests
-```bash
+# tests: run from packages/push
+bun test src
+bun test src/relay.test.ts
+bun test src/relay.test.ts -t "relay"
+
+# tests: run from packages/push-relay
+bun test src
+bun test src/server.test.ts
+bun test src/server.test.ts -t "server"
+
+# tests: sdks/vscode
 bun run --cwd sdks/vscode test
 ```
 
+- There is no single repo-wide lint script at root
+- `packages/opencode`'s `lint` script is a repo check, not a standalone ESLint run
+- Prefer the narrowest test command that proves the change; start with a file or test-name filter
+- No dedicated single-file wrapper was found for `sdks/vscode`; use the package test harness as-is unless you add one
+
 ## Code Style Guidelines
-### General Naming And Structure
-- Keep things in one function unless composable or reusable.
-- Do not extract single-use helpers preemptively. Inline the logic at the call site unless the helper is reused, hides a genuinely complex boundary, or has a clear independent name that improves the caller.
-- Naming: Prefer concise names; single-word identifiers are preferred when still clear (`camelCase` for vars/functions, `PascalCase` for types/components, `SCREAMING_SNAKE_CASE` for constants).
-- Prefer `const` over `let`. Use ternaries or early returns instead of reassignment/else blocks.
-- Avoid unnecessary destructuring; `obj.field` is often clearer.
-- Avoid using the `any` type; prefer precise types or inference.
-- Add explicit annotations at exported/public boundaries.
-- Use type guards in narrowing/filter paths to preserve downstream inference.
-- Prefer Bun APIs when they are a natural fit (`Bun.file()`, etc.).
-- In `src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module.
 
-### Imports
-- Keep imports at top of file.
-- Prefer explicit type imports (`import type { Foo } from "..."`) when possible.
-- Use configured aliases where available (`@/*`, `@tui/*`) instead of deep relative paths.
-- In `packages/app/e2e`, import `test`/`expect` from `../fixtures`, not `@playwright/test`.
-- Never alias imports. Do not use `import { foo as bar } from "..."` or renamed imports like `resolve as pathResolve`.
-- Never use star imports. Do not use `import * as Foo from "..."` or `import type * as Foo from "..."`.
-- If a namespace-style value is needed, import the module's own exported namespace by name, for example `import { Project } from "@opencode-ai/core/project"`, then reference `Project.ID`.
-- Prefer dynamic imports for heavy modules that are only needed in selected code paths, especially in startup-sensitive entrypoints. Destructure dynamic import bindings near the top of the narrowest scope that needs them so they read like normal imports. Avoid inline chains such as `await import("./module").then((mod) => mod.value())` or `(await import("./module")).value()`. Keep branch-specific imports inside the branch that needs them to preserve lazy loading.
-
-### Formatting
-- Follow Prettier and existing file formatting; do not hand-format inconsistently.
-- No semicolons; 2 spaces; LF; UTF-8; keep lines readable (Prettier width 120).
-- Minimize non-essential comments; prefer clear naming and structure.
-
-### Error Handling
-- Avoid `try/catch` when a clearer pattern exists.
-- Prefer explicit checks, early exits, and `.catch(...)` where it improves clarity.
-- Return/throw errors with useful context for debugging.
-
-### Complex Logic
-When a function has several validation branches or supporting details, make the main function read as the happy path and move supporting details into small helpers below it.
-
-- Keep helpers close to the code they support, below the main export when that improves readability.
-- Do not over-abstract simple expressions into many single-use helpers; extract only when it names a real concept like `requireConfig` or `readMetadata`.
-- Do not return `Effect` from helpers unless they actually perform effectful work. Synchronous parsing, validation, and option building should stay synchronous.
-- Prefer Effect schema helpers such as `Schema.UnknownFromJsonString` and `Schema.decodeUnknownOption` over manual `JSON.parse` wrapped in `Effect.try` when parsing untrusted JSON strings.
-- Add comments for non-obvious constraints and surprising behavior, not for obvious assignments or control flow.
-
-### Schema Definitions (Drizzle)
-
-### Testing Style
-- Prefer testing real behavior over heavy mocks.
-- Keep tests focused and avoid duplicating implementation logic in assertions.
-- Use reusable fixtures/helpers.
-- In `packages/opencode` tests, use `tmpdir` with `await using` for automatic cleanup.
-- In e2e, prefer `data-component`/`data-action` selectors or semantic roles.
-- Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/opencode`.
-
-### Database Style (`packages/opencode`)
-- Drizzle schema files: `src/**/*.sql.ts`.
-- Naming: snake_case for tables/columns; join keys `<entity>_id`.
-- Index naming: `<table>_<column>_idx`.
-- Generate migrations with `bun run db generate --name <slug>`.
+- **Imports**: keep imports at the top; prefer `import type`; use aliases such as `@/*` and `@tui/*` when available; in `packages/app/e2e` import `test` and `expect` from `../fixtures`, not `@playwright/test`
+- **Formatting**: follow existing formatting and Prettier output; no semicolons; `printWidth` is `120`; use 2-space indentation, LF endings, and UTF-8; keep comments minimal and only for non-obvious logic
+- **Types**: avoid `any`; prefer precise types or inference; add explicit types at public or exported boundaries; use type guards when narrowing helps inference; prefer Bun APIs when they are a natural fit
+- **Naming**: prefer concise names; use single-word names for locals, params, and helpers unless clarity suffers; avoid long camelCase compounds when a short clear name exists; use `camelCase` for values, `PascalCase` for types/components, `SCREAMING_SNAKE_CASE` for constants, and `snake_case` for DB schema names
+- **Structure**: prefer `const` over `let`; prefer early returns over nested `else`; avoid unnecessary destructuring when `obj.field` is clearer; split code only when reuse or readability clearly improves; in `packages/app`, prefer `createStore` over many `createSignal` calls
+- **Error handling**: avoid `try/catch` when a clearer flow exists; prefer explicit checks and early exits; use `.catch(...)` when it improves readability; return or throw errors with enough context to debug
+- **Testing style**: prefer real behavior over heavy mocks; keep tests focused; reuse fixtures and helpers; in `packages/opencode` tests use `await using` with `tmpdir`; in e2e use `data-component`, `data-action`, or semantic roles; in app e2e prefer `withSession`, `trackSession`, and `trackDirectory` for cleanup
 
 ## Package-Specific Rules
-- `packages/app`: NEVER restart the app/server process manually during debugging.
-- `packages/app`: for local UI changes, run both:
-  - Backend: `bun run --cwd packages/opencode --conditions=browser ./src/index.ts serve --port 4096`
-  - App: `bun run --cwd packages/app dev -- --port 4444`
-- `packages/app`: prefer `createStore` over many `createSignal` calls.
-- `packages/desktop`: never call Tauri `invoke` directly; use `packages/desktop/src/bindings.ts`.
 
-## Type Checking
-- Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
+- `packages/app`: never restart the app or server process manually during debugging
+- `packages/app`: `opencode dev web` proxies `https://app.opencode.ai`, so local UI or CSS changes will not show there; for local UI work run backend `bun run --cwd packages/opencode --conditions=browser ./src/index.ts serve --port 4096` and app `bun run --cwd packages/app dev -- --port 4444`
+- `packages/desktop`: do not call Tauri `invoke` directly; use `packages/desktop/src/bindings.ts`
+- `packages/desktop-electron`: renderer code should use `window.api` from preload; main IPC handlers belong in `src/main/ipc.ts`
+- `packages/opencode`: Drizzle schema files live in `src/**/*.sql.ts`; use `<entity>_id` for join keys and `<table>_<column>_idx` for DB index names
+- `packages/ios`: if asked to push, release, or upload an iOS build, default to `bun run --cwd packages/ios beam`; it uploads a private TestFlight build, not a public App Store release
 
-## Cursor/Copilot Rules
-- No `.cursorrules` file found.
-- No `.cursor/rules/` directory found.
-- No `.github/copilot-instructions.md` found.
-- If added later, treat them as authoritative and merge into this guide.
+## Mobile Fork And Assistant Rules
 
-## V2 Session Core
-- Keep durable prompt admission separate from model execution. `SessionV2.prompt(...)` admits one durable `session_input` row before scheduling advisory `SessionExecution.wake(sessionID)` unless `resume: false` requests admit-only behavior. The serialized runner promotes admitted inputs into visible user messages at safe boundaries.
-- Reusing a Session ID adopts the existing Session. Reusing a prompt message ID reconciles an exact retry only when Session, prompt, and delivery mode match; conflicting reuse fails. Historical projected prompts lazily synthesize promoted inbox records during exact retry.
-- Keep `SessionExecution` process-global and Session-ID based. Its local implementation owns the process-local Session coordinator and discovers placement through `SessionStore` plus `LocationServiceMap.get(session.location)` only when a drain starts; no layer should take a Session ID. V2 interruption targets the active process-local ownership chain for that Session; idle or missing interruption is a no-op.
-- Keep `SessionRunner`, model resolution, tool registry, permissions, and filesystem Location-scoped. Omitted `Location.workspaceID` means implicit-local placement; explicit workspace identity remains reserved for future placement semantics.
-- Preserve one explicit `llm.stream(request)` call per provider turn and reload projected history before durable continuation. Do not bridge through legacy `SessionPrompt.loop(...)` or delegate orchestration to an in-memory tool loop.
-- Keep local Session drains process-local until clustering is implemented. `SessionRunCoordinator` joins explicit same-Session resumes, coalesces prompt wakeups, and allows different Sessions to run concurrently. Advisory wakes drain eligible durable inbox rows only; post-crash activity recovery requires a separate explicit design before it may retry provider work.
-- Keep delivery vocabulary explicit. Prompts steer by default and coalesce into the active activity at the next safe provider-turn boundary. Explicit `queue` inputs open FIFO future activities one at a time after the active activity settles.
-- Keep EventV2 replay owner claims separate from clustered Session execution ownership.
-- Keep the System Context algebra, registry, and built-ins in `src/system-context`; keep Context Source producers with their observed domains, and keep Session History selection plus Context Epoch persistence Session-owned.
-
----
-
-## WhisperCode Fork — Mobile Deviations from Upstream (sst/opencode)
-
-This repo is a mobile (iOS/Android) fork of [sst/opencode](https://github.com/sst/opencode). The upstream remote is `upstream` (`https://github.com/sst/opencode.git`). The fork adds mobile platform support throughout `packages/app/src/` and two new packages (`packages/ios/`, `packages/android/`). **All deviations below must be preserved when merging upstream.**
-
-### Upstream Merge Procedure
-
-1. `git fetch upstream` and merge `upstream/dev` into a temporary branch off `dev`.
-2. Resolve conflicts using the file-by-file guide below: take upstream's version as the base, then re-apply the fork additions listed for each file.
-3. Delete any `README.*.md` translation files that upstream modifies but the fork has deleted.
-4. Keep `README.md` as ours (WhisperCode branding).
-5. For `.gitignore`: take upstream + re-add the Android lines at the bottom.
-6. For `AGENTS.md`: take upstream + keep the fork's Repo Map entries, Build commands, Test Commands section, and this Mobile Deviations section.
-7. After resolving, run `bun install`, `bun run typecheck`, build app/ios/android, and run tests.
-
-### Fork-Only Files (no upstream equivalent — auto-merge cleanly)
-
-| File | Purpose |
-|------|---------|
-| `packages/ios/` | Entire iOS Tauri wrapper package |
-| `packages/android/` | Entire Android Tauri wrapper package |
-| `packages/app/src/hooks/use-pull-to-refresh.ts` | Touch gesture hook for pull-to-refresh (155 lines) |
-| `packages/app/src/components/pull-to-refresh-indicator.tsx` | Pull-to-refresh spinner/arrow UI component |
-| `packages/app/src/pages/session/session-mobile-tabs.tsx` | Mobile "Session"/"Changes" tab navigation |
-| `ANDROID_BUILD.md` | Android release build documentation |
-| `whispercode-logo-*.png` | Fork branding assets |
-
-### Files Modified from Upstream (conflict risk on merge)
-
-#### `packages/app/src/context/platform.tsx`
-
-Extends the `Platform` type with mobile discriminators and capabilities. Usually auto-merges cleanly since upstream rarely touches this file, but verify after merge.
-
-- `platform` discriminator includes `"ios" | "android"` (not just `"web" | "desktop"`)
-- Mobile-only types: `VoiceState`, `VoiceStatus`, `VoiceStartResult`, `VoiceStopResult`
-- Mobile-only methods on `Platform`: `startVoiceInput()`, `stopVoiceInput()`, `voiceStatus`, `haptic()`, `share()`
-
-#### `packages/app/src/pages/session.tsx` (HIGH conflict risk)
-
-Upstream refactors this file frequently. Fork adds 6 integration points:
-
-1. **Imports** — `usePullToRefresh` from `@/hooks/use-pull-to-refresh`, `usePlatform` from `@/context/platform`
-2. **`refreshActiveSession()` helper** — Cooldown-gated force-sync of the active session on resume. Uses `RESUME_SYNC_COOLDOWN_MS = 1000` and calls `sync.session.sync(id, { force: true })`
-3. **`platform` + `pullToRefresh` setup** — `usePlatform()` call and `usePullToRefresh({ scrollElement, onRefresh: platform.restart, onHaptic: platform.haptic, isNestedScrollable })` — placed near the `scroller`/`content` variable declarations
-4. **`onMount` resume event listeners** — `focus`, `pageshow`, `online`, `opencode:resume` (custom mobile event), `visibilitychange` — all call `refreshActiveSession()`
-5. **`pullToRefresh.setRef`** — Added as `ref` on the main flex container div wrapping `SessionMobileTabs` and the session content
-6. **`pullToRefresh` props** — Passed to `<MessageTimeline>`: `pulling`, `progress`, `refreshing`, `pullDistance`
-
-#### `packages/app/src/pages/session/message-timeline.tsx` (HIGH conflict risk)
-
-Upstream refactors this file frequently. Fork adds 4 integration points:
-
-1. **Import** — `PullToRefreshIndicator` from `@/components/pull-to-refresh-indicator`
-2. **Props type** — `pullToRefresh: { pulling: boolean; progress: number; refreshing: boolean; pullDistance: number }` on the `MessageTimeline` component props
-3. **CSS** — `"overscroll-behavior-y": "contain"` added to the `ScrollView` style object (prevents iOS bounce interfering with pull-to-refresh)
-4. **Component** — `<PullToRefreshIndicator pulling={...} progress={...} refreshing={...} pullDistance={...} />` rendered inside the ScrollView, after the main content `</div>`
-
-#### `packages/app/src/context/global-sync.tsx` (MEDIUM conflict risk)
-
-Fork adds mobile resume-from-background data refresh:
-
-1. **Constants/state** — `RESUME_REFRESH_COOLDOWN_MS = 1000`, `lastResumeRefresh` counter. Placed just before the `loadSessions` function.
-2. **`queueDirectories(clearMeta?)`** — Iterates `children.children`, optionally clears `sessionMeta`, pushes each directory to `queue`. Also called from the SSE event listener when `server.connected` or `global.disposed` fires.
-3. **`refreshOnResume()`** — Cooldown-gated: calls `queue.refresh()` then `queueDirectories(true)`
-4. **`onMount` event listeners** — Same pattern as session.tsx: `focus`, `pageshow`, `online`, `opencode:resume`, `visibilitychange`. All call `refreshOnResume()`.
-
-#### `packages/app/src/context/sync.tsx` (MEDIUM conflict risk)
-
-Fork adds a `force` option to the session sync method:
-
-1. **Parameter** — `async sync(sessionID: string, opts?: { force?: boolean })` (upstream has no `opts` param)
-2. **Usage** — `const force = opts?.force === true` — used to bypass the `hasSession` check on `sessionReq` (forces re-fetch of session data from server). The `messagesReq` side uses upstream's logic (always loads messages).
-3. **Caller** — `session.tsx`'s `refreshActiveSession()` calls `sync.session.sync(id, { force: true })`
-
-#### `packages/app/src/components/dialog-select-server.tsx` (LOW conflict risk)
-
-Fork adds a mobile help text block after the form submit button:
-
-```tsx
-<Show when={platform.platform === "ios" || platform.platform === "android"}>
-  <p class="text-text-dimmed text-12-regular mt-2">
-    Can't find your server? Make sure you're serving with:{" "}
-    <code class="...">opencode web --hostname 0.0.0.0</code>
-    {" "}<a class="..." href="https://github.com/DNGriffin/whispercode?...">Quick Start Guide</a>
-  </p>
-</Show>
-```
-
-Also imports and uses `usePlatform`.
-
-#### `packages/app/src/pages/home.tsx` (LOW conflict risk)
-
-Fork adds a mobile help text link below the main content:
-
-```tsx
-{(platform.platform === "ios" || platform.platform === "android") && (
-  <p class="...">Need help connecting? <a href="...">Quick Start Guide</a></p>
-)}
-```
-
-Also imports and uses `usePlatform`.
-
-#### `packages/app/src/components/prompt-input.tsx` (LOW conflict risk)
-
-Fork adds:
-
-1. **Import + usage** — `usePlatform` from `@/context/platform`
-2. **Desktop escape blur** — `platform.platform === "desktop" && platform.os === "macos"` check
-3. **Voice input button** — A `<Show when={platform === "ios" || "android" && platform.startVoiceInput}>` block rendering a microphone button that calls `platform.startVoiceInput()`. Disabled during `recording`/`processing` states.
-
-#### `packages/app/src/components/session/session-header.tsx` (LOW conflict risk)
-
-Fork adds platform integration for session sharing:
-
-1. **Import + usage** — `usePlatform` from `@/context/platform`
-2. **Share hook** — `platform` object passed to `useSessionShare()` which uses `platform.openLink()` for share URLs
-
-#### `packages/app/src/utils/persist.ts` (LOW conflict risk)
-
-Fork uses `platform.storage` for async storage on mobile:
-
-- Imports `Platform, usePlatform` from `@/context/platform`
-- Checks `platform.platform !== "web" && !!platform.storage` to decide sync vs async storage
-- Calls `platform.storage?.(storageName)` for mobile-specific persistence
-
-### Root Config Deviations
-
-| File | Fork change |
-|------|-------------|
-| `README.md` | Fully rewritten for WhisperCode branding — always keep ours |
-| `.gitignore` | 3 Android lines at bottom: `packages/android/src-tauri/**/build/`, `packages/android/src-tauri/gen/`, `packages/android/release.keystore` |
-| `README.*.md` translations | All deleted — keep deleted when upstream modifies them |
-| `AGENTS.md` | Fork additions: `packages/android`/`packages/ios` in Repo Map, their build commands, Test Commands section, this Mobile Deviations section |
+- This repo is a mobile fork of `sst/opencode`; preserve `packages/ios`, `packages/android`, and mobile platform/resume/storage/share/voice integrations in `packages/app` when merging upstream
+- No `.cursorrules`, `.cursor/rules/`, or `.github/copilot-instructions.md` files were found
+- If any of those files appear later, treat them as authoritative and merge them with this guide
