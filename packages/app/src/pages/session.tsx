@@ -1,4 +1,4 @@
-import type { Project, UserMessage } from "@opencode-ai/sdk/v2"
+import type { Project, UserMessage, VcsFileDiff } from "@opencode-ai/sdk/v2"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { createQuery, skipToken, useMutation, useQueryClient } from "@tanstack/solid-query"
 import {
@@ -356,6 +356,44 @@ export default function Page() {
     () =>
       ["session-vcs", sdk().directory, sync().data.vcs?.branch ?? "", sync().data.vcs?.default_branch ?? ""] as const,
   )
+  const fallbackGitDiff = async () => {
+    const status = await sdk.client.file
+      .status()
+      .then((result) => result.data ?? [])
+      .catch(() => [])
+
+    const diffs = await Promise.all(
+      status.map(async (item): Promise<VcsFileDiff | undefined> => {
+        const content = await sdk.client.file
+          .read({ path: item.path })
+          .then((result) => result.data)
+          .catch(() => undefined)
+        if (!content || content.type !== "text") return
+
+        if (content.diff) {
+          return {
+            file: item.path,
+            patch: content.diff,
+            additions: item.added,
+            deletions: item.removed,
+            status: item.status,
+          }
+        }
+
+        if (item.status !== "added") return
+        return list({
+          file: item.path,
+          before: "",
+          after: content.content,
+          additions: item.added,
+          deletions: item.removed,
+          status: item.status,
+        })[0]
+      }),
+    )
+
+    return diffs.filter((item): item is VcsFileDiff => item !== undefined)
+  }
   const vcsQuery = createQuery(() => {
     const mode = vcsMode()
     const enabled = wantsReview() && sync().project?.vcs === "git"
@@ -367,10 +405,14 @@ export default function Page() {
         ? () =>
             sdk()
               .client.vcs.diff({ mode })
-              .then((result) => list(result.data))
+              .then(async (result) => {
+                const diffs = list(result.data)
+                if (diffs.length > 0 || mode !== "git") return diffs
+                return fallbackGitDiff()
+              })
               .catch((error) => {
                 console.debug("[session-review] failed to load vcs diff", { mode, error })
-                return []
+                return mode === "git" ? fallbackGitDiff() : []
               })
         : skipToken,
     }
@@ -388,6 +430,14 @@ export default function Page() {
     if (store.changes === "git" || store.changes === "branch") return !vcsQuery.isPending
     return true
   }
+
+  createEffect(
+    on([sessionKey, wantsReview, () => store.changes] as const, ([, wants, changes]) => {
+      if (!wants) return
+      if (changes !== "git" && changes !== "branch") return
+      refreshVcs()
+    }),
+  )
 
   const newSessionWorktree = createMemo(() => {
     if (store.newSessionWorktree === "create") return "create"
