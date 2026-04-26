@@ -1721,24 +1721,27 @@ export default function Page() {
         }}
       >
         <Show when={!isDesktop() && !!params.id}>
+          {/* UPSTREAM-DIVERGENCE: Mobile uses a compact chat switcher so the primary flow keeps more vertical space. */}
           <Tabs value={store.mobileTab} class="h-auto">
-            <Tabs.List>
+            <Tabs.List class="!h-9 !px-2 !py-1 !bg-background-stronger">
               <Tabs.Trigger
                 value="session"
-                class="!w-1/2 !max-w-none"
-                classes={{ button: "w-full" }}
+                class="!w-1/2 !max-w-none !h-full text-13-medium"
+                classes={{ button: "w-full !h-full !px-2 !py-0" }}
                 onClick={() => setStore("mobileTab", "session")}
               >
                 {language.t("session.tab.session")}
               </Tabs.Trigger>
               <Tabs.Trigger
                 value="changes"
-                class="!w-1/2 !max-w-none !border-r-0"
-                classes={{ button: "w-full" }}
+                class="!w-1/2 !max-w-none !h-full !border-r-0 text-13-medium"
+                classes={{ button: "w-full !h-full !px-2 !py-0" }}
                 onClick={() => setStore("mobileTab", "changes")}
               >
                 {hasReview()
-                  ? language.t("session.review.filesChanged", { count: reviewCount() })
+                  ? `${reviewCount()} ${language.t(
+                      reviewCount() === 1 ? "session.review.change.one" : "session.review.change.other",
+                    )}`
                   : language.t("session.review.change.other")}
               </Tabs.Trigger>
             </Tabs.List>
