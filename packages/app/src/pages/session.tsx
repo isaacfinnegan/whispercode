@@ -65,6 +65,7 @@ import { useSessionCommands } from "@/pages/session/use-session-commands"
 import { useSessionHashScroll } from "@/pages/session/use-session-hash-scroll"
 import { Identifier } from "@/utils/id"
 import { diffs as list } from "@/utils/diffs"
+import { diffCount, MOBILE_REVIEW_FILE_LIMIT, mobileReviewLimit } from "@/utils/mobile-review-limit"
 import { Persist, persisted } from "@/utils/persist"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { same } from "@/utils/same"
@@ -77,6 +78,7 @@ const emptyFollowups: FollowupItem[] = []
 
 type ChangeMode = "git" | "branch" | "turn"
 type VcsMode = "git" | "branch"
+type ReviewLimit = { mode: ChangeMode; count: number; limit: number }
 
 export default function Page() {
   const serverSync = useServerSync()
@@ -278,6 +280,7 @@ export default function Page() {
     changes: "git" as ChangeMode,
     newSessionWorktree: "main",
     deferRender: false,
+    reviewLimit: undefined as ReviewLimit | undefined,
   })
 
   const [followup, setFollowup] = persisted(
@@ -327,11 +330,33 @@ export default function Page() {
     return open
   }, desktopReviewOpen())
 
-  const turnDiffs = createMemo(() => list(lastUserMessage()?.summary?.diffs))
-  const nogit = createMemo(() => {
-    const project = sync().project
-    return !!project && project.vcs !== "git"
+  const turnDiffSource = createMemo(() => lastUserMessage()?.summary?.diffs)
+  const turnDiffs = createMemo(() => list(turnDiffSource()))
+  // UPSTREAM-DIVERGENCE: Mobile webviews can stall or terminate when a power-user session tries to
+  // hydrate hundreds of file diffs. Keep this guard simple: above the cap, show a message instead.
+  const mobilePlatform = () => platform.platform === "ios" || platform.platform === "android"
+  const setReviewLimit = (mode: ChangeMode, count: number) => {
+    const limit = mobileReviewLimit(count, mobilePlatform())
+    if (!limit) {
+      if (store.reviewLimit?.mode === mode) setStore("reviewLimit", undefined)
+      return false
+    }
+
+    setStore("reviewLimit", { mode, ...limit })
+    return true
+  }
+  const activeReviewLimit = createMemo<ReviewLimit | undefined>(() => {
+    if (!mobilePlatform()) return
+
+    if (store.changes === "turn") {
+      const limit = mobileReviewLimit(diffCount(turnDiffSource()), true)
+      if (limit) return { mode: "turn", ...limit }
+    }
+
+    const limit = store.reviewLimit
+    if (limit?.mode === store.changes) return limit
   })
+  const nogit = createMemo(() => !!sync().project && sync().project.vcs !== "git")
   const changesOptions = createMemo<ChangeMode[]>(() => {
     const list: ChangeMode[] = []
     const project = sync().project
@@ -361,6 +386,7 @@ export default function Page() {
       .status()
       .then((result) => result.data ?? [])
       .catch(() => [])
+    if (setReviewLimit("git", status.length)) return []
 
     const diffs = await Promise.all(
       status.map(async (item): Promise<VcsFileDiff | undefined> => {
@@ -402,23 +428,29 @@ export default function Page() {
       queryKey: [...vcsKey(), mode] as const,
       enabled,
       queryFn: mode
-        ? () =>
-            sdk()
-              .client.vcs.diff({ mode })
-              .then(async (result) => {
-                const diffs = list(result.data)
-                if (diffs.length > 0 || mode !== "git") return diffs
-                return fallbackGitDiff()
-              })
-              .catch((error) => {
-                console.debug("[session-review] failed to load vcs diff", { mode, error })
-                return mode === "git" ? fallbackGitDiff() : []
-              })
+        ? async () => {
+            try {
+              if (mode === "git" && mobilePlatform()) {
+                const status = await sdk().client.file.status().then((result) => result.data ?? [])
+                if (setReviewLimit("git", status.length)) return []
+              }
+
+              const data = await sdk().client.vcs.diff({ mode }).then((result) => result.data ?? [])
+              const diffs = list(data)
+              if (setReviewLimit(mode, diffs.length)) return []
+              if (diffs.length > 0 || mode !== "git") return diffs
+              return fallbackGitDiff()
+            } catch (error) {
+              console.debug("[session-review] failed to load vcs diff", { mode, error })
+              return mode === "git" ? fallbackGitDiff() : []
+            }
+          }
         : skipToken,
     }
   })
   const refreshVcs = debounce(() => void queryClient.invalidateQueries({ queryKey: vcsKey() }), 100)
   const reviewDiffs = () => {
+    if (activeReviewLimit()) return []
     if (store.changes === "git" || store.changes === "branch")
       // avoids suspense
       return vcsQuery.isFetched ? (vcsQuery.data ?? []) : []
@@ -552,6 +584,8 @@ export default function Page() {
   let scrollMark = 0
   let messageMark = 0
 
+  // UPSTREAM-DIVERGENCE: The fork removed its earlier pull-to-refresh hook in favor of the titlebar
+  // refresh button, but still tracks scroll gestures to protect nested mobile scrolling behavior.
   const scrollGestureWindowMs = 250
 
   const markScrollGesture = (target?: EventTarget | null) => {
@@ -881,6 +915,20 @@ export default function Page() {
   })
 
   const reviewEmpty = (input: { loadingClass: string; emptyClass: string }) => {
+    const limit = activeReviewLimit()
+    if (limit) {
+      return (
+        <div class={input.emptyClass}>
+          <div class="text-14-regular text-text-weak max-w-72">
+            {language.t("session.review.tooManyFilesMobile", {
+              count: limit.count,
+              limit: MOBILE_REVIEW_FILE_LIMIT,
+            })}
+          </div>
+        </div>
+      )
+    }
+
     if (store.changes === "git" || store.changes === "branch") {
       if (!reviewReady()) return <div class={input.loadingClass}>{language.t("session.review.loadingChanges")}</div>
       return empty(reviewEmptyText())
@@ -1042,6 +1090,8 @@ export default function Page() {
     if (!id) return
 
     if (!wantsReview()) return
+    if (mobilePlatform() && store.changes !== "turn") return
+    if (mobilePlatform() && activeReviewLimit()) return
     if (sync().data.session_diff[id] !== undefined) return
     if (sync().status === "loading") return
 
@@ -1057,6 +1107,8 @@ export default function Page() {
         diffFrame = undefined
         diffTimer = undefined
         if (!wants) return
+        if (mobilePlatform() && store.changes !== "turn") return
+        if (mobilePlatform() && activeReviewLimit()) return
 
         const id = params.id
         if (!id) return
