@@ -178,6 +178,20 @@ export const SettingsGeneral: Component = () => {
 
   const themeOptions = createMemo<ThemeOption[]>(() => theme.ids().map((id) => ({ id, name: theme.name(id) })))
 
+  const [speechLocales] = createResource(async () => {
+    if (platform.platform !== "ios" || !platform.getSpeechLocales) return [] as string[]
+    const locales = await platform.getSpeechLocales().catch(() => [] as string[])
+    return locales.slice().sort((a, b) => localeLabel(a).localeCompare(localeLabel(b), language.intl()))
+  })
+  const speechAvailable = createMemo(() => platform.platform === "ios" && !!platform.getSpeechLocales)
+  const speechOptions = createMemo(() =>
+    (speechLocales() ?? []).map((value) => ({
+      value,
+      label: localeLabel(value),
+    })),
+  )
+  const currentSpeech = createMemo(() => speechOptions().find((option) => option.value === settings.speech.locale()))
+
   const globalSync = useGlobalSync()
   const globalSdk = useGlobalSDK()
 
@@ -309,6 +323,38 @@ export const SettingsGeneral: Component = () => {
             size="small"
             triggerVariant="settings"
           />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Speech language"
+          description={
+            speechAvailable()
+              ? "Choose the language used for iPhone speech-to-text. Availability and offline support can vary by locale."
+              : "Speech language settings are currently available on iPhone builds."
+          }
+        >
+          <Show
+            when={speechAvailable()}
+            fallback={<span class="text-12-medium text-text-dimmed">Unavailable</span>}
+          >
+            <Select
+              data-action="settings-speech-language"
+              options={speechOptions()}
+              current={currentSpeech()}
+              value={(option) => option.value}
+              label={(option) => option.label}
+              valueClass="whitespace-normal break-words text-left leading-tight"
+              class="max-w-[320px]"
+              children={(option) => (
+                <span class="whitespace-normal break-words text-left leading-tight">{option?.label}</span>
+              )}
+              onSelect={(option) => option && settings.speech.setLocale(option.value)}
+              variant="secondary"
+              size="small"
+              triggerVariant="settings"
+              triggerStyle={{ "min-width": "220px", height: "auto" }}
+            />
+          </Show>
         </SettingsRow>
 
         <SettingsRow
@@ -802,4 +848,17 @@ const SettingsRow: Component<SettingsRowProps> = (props) => {
       <div class="flex w-full justify-end sm:w-auto sm:shrink-0">{props.children}</div>
     </div>
   )
+}
+
+function localeLabel(identifier: string) {
+  try {
+    const locale = new Intl.Locale(identifier)
+    const languageNames = new Intl.DisplayNames(undefined, { type: "language" })
+    const regionNames = new Intl.DisplayNames(undefined, { type: "region" })
+    const language = locale.language ? languageNames.of(locale.language) : undefined
+    const region = locale.region ? regionNames.of(locale.region) : undefined
+    if (language && region) return `${language} (${region})`
+    if (language) return language
+  } catch {}
+  return identifier
 }
