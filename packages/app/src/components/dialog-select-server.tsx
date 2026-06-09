@@ -260,8 +260,11 @@ export function useServerManagementController(options: { onSelect?: () => void; 
       if (store.addServer.password && store.addServer.username) conn.http.username = store.addServer.username
       const result = await checkServerHealth(conn.http)
       if (!result.healthy) {
-        setStore("addServer", { error: language.t("dialog.server.add.error") })
-        return
+        showToast({
+          variant: "default",
+          title: "Warning",
+          description: "Server health check failed, but adding anyway.",
+        })
       }
 
       resetAdd()
@@ -364,7 +367,6 @@ export function useServerManagementController(options: { onSelect?: () => void; 
   })
 
   async function select(conn: ServerConnection.Any, persist?: boolean) {
-    if (!persist && global.servers.health[ServerConnection.key(conn)]?.healthy === false) return
     options.onSelect?.()
     if (persist && conn.type === "http") {
       server.add(conn)
@@ -666,50 +668,6 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
             {" "}<a class="external-link text-text-link underline" href="https://github.com/DNGriffin/whispercode?tab=readme-ov-file#quick-start">Quick Start Guide</a>
           </p>
         </Show>
-<<<<<<< HEAD
-=======
-
-        <div class="px-5 pb-5">
-          <Show
-            when={isFormMode()}
-            fallback={
-              <Button
-                variant="secondary"
-                icon="plus-small"
-                size="large"
-                onClick={startAdd}
-                class="py-1.5 pl-1.5 pr-3 flex items-center gap-1.5"
-              >
-                {language.t("dialog.server.add.button")}
-              </Button>
-            }
-          >
-            <Button variant="primary" size="large" onClick={submitForm} disabled={formBusy()} class="px-3 py-1.5">
-              {formBusy()
-                ? language.t("dialog.server.add.checking")
-                : isAddMode()
-                  ? language.t("dialog.server.add.button")
-                  : language.t("common.save")}
-            </Button>
-            <Show when={platform.platform === "ios" || platform.platform === "android"}>
-              {/* UPSTREAM-DIVERGENCE: Keep the mobile-only server help copy in the shared server picker
-                  so iOS/Android users can recover the host setup workflow after future upstream UI merges. */}
-              <p class="text-text-dimmed text-12-regular mt-2">
-                Can't find your server? Make sure you're serving with:{" "}
-                <code class="bg-surface-raised-base text-text-secondary-base px-1.5 py-0.5 rounded-sm break-all">
-                  opencode web --hostname 0.0.0.0
-                </code>{" "}
-                <a
-                  class="external-link text-text-link underline"
-                  href="https://github.com/DNGriffin/whispercode?tab=readme-ov-file#quick-start"
-                >
-                  Quick Start Guide
-                </a>
-              </p>
-            </Show>
-          </Show>
-        </div>
->>>>>>> 63c7246087 (add notifications)
       </div>
     </div>
   )
