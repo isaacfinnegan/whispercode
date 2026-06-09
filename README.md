@@ -43,4 +43,8 @@ WhisperCode does not collect, transmit, or store any analytics, telemetry, or pe
 
 ## Upstream
 
-[OpenCode](https://github.com/anomalyco/opencode)
+Developed by the OpenCode team at [anomalyco/opencode](https://github.com/anomalyco/opencode).
+
+### Contributing
+
+If you're interested in contributing to OpenCode, please read our [contributing docs](./CONTRIBUTING.md) before submitting a pull request.

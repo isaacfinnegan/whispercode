@@ -56,7 +56,7 @@ await import(`../packages/push/script/publish.ts`)
 
 if (Script.release) {
   await $`bun ./packages/desktop/scripts/finalize-latest-json.ts`
-  await $`bun ./packages/desktop-electron/scripts/finalize-latest-yml.ts`
+  await $`bun ./packages/desktop/scripts/finalize-latest-yml.ts`
 }
 
 if (Script.release && !Script.preview) {
