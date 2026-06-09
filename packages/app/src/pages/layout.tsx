@@ -242,6 +242,10 @@ export default function Layout(props: ParentProps) {
     setNotificationOpen((value) => {
       void openPush(value)
     })
+    if (platform.pushState) {
+      // Sync push pairing & relay tokens
+      platform.pushState()
+    }
     onCleanup(() => {
       setNavigate(undefined as any)
       setNotificationOpen(undefined)
