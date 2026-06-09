@@ -1,15 +1,10 @@
-<<<<<<< HEAD
 import { Component, Show, createMemo, createResource, onMount, type JSX } from "solid-js"
-=======
-import { Component, Show, createMemo, createResource, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
->>>>>>> 63c7246087 (add notifications)
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
-<<<<<<< HEAD
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme/context"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useParams } from "@solidjs/router"
@@ -32,15 +27,8 @@ import {
   useSettings,
 } from "@/context/settings"
 import { decode64 } from "@/utils/base64"
-import { playSoundById, SOUND_OPTIONS } from "@/utils/sound"
-=======
-import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
 import { showToast } from "@opencode-ai/ui/toast"
-import { useLanguage } from "@/context/language"
-import { usePlatform } from "@/context/platform"
-import { useSettings, monoFontFamily } from "@/context/settings"
-import { playSound, SOUND_OPTIONS } from "@/utils/sound"
->>>>>>> 63c7246087 (add notifications)
+import { playSoundById, SOUND_OPTIONS } from "@/utils/sound"
 import { Link } from "./link"
 import { SettingsList } from "./settings-list"
 
@@ -102,10 +90,26 @@ export const SettingsGeneral: Component = () => {
   const language = useLanguage()
   const permission = usePermission()
   const platform = usePlatform()
-<<<<<<< HEAD
   const dialog = useDialog()
   const params = useParams()
   const settings = useSettings()
+  const [store, setStore] = createStore({
+    checking: false,
+  })
+
+  const [speechLocales] = createResource(async () => {
+    if (platform.platform !== "ios" || !platform.getSpeechLocales) return [] as string[]
+    const locales = await platform.getSpeechLocales().catch(() => [] as string[])
+    return locales.slice().sort((a, b) => localeLabel(a).localeCompare(localeLabel(b), language.intl()))
+  })
+  const speechAvailable = createMemo(() => platform.platform === "ios" && !!platform.getSpeechLocales)
+  const speechOptions = createMemo(() =>
+    (speechLocales() ?? []).map((value) => ({
+      value,
+      label: localeLabel(value),
+    })),
+  )
+  const currentSpeech = createMemo(() => speechOptions().find((option) => option.value === settings.speech.locale()))
 
   const updater = useUpdaterAction()
 
@@ -134,14 +138,8 @@ export const SettingsGeneral: Component = () => {
     }
 
     permission.disableAutoAccept(params.id, value)
-=======
-  const settings = useSettings()
+  }
 
-  const [store, setStore] = createStore({
-    checking: false,
-  })
-
-  const linux = createMemo(() => platform.platform === "desktop" && platform.os === "linux")
   const check = () => {
     if (!platform.checkUpdate) return
     setStore("checking", true)
@@ -194,7 +192,7 @@ export const SettingsGeneral: Component = () => {
         showToast({ title: language.t("common.requestFailed"), description: message })
       })
       .finally(() => setStore("checking", false))
->>>>>>> 63c7246087 (add notifications)
+  }
   }
   const desktop = createMemo(() => platform.platform === "desktop")
 
@@ -344,6 +342,38 @@ export const SettingsGeneral: Component = () => {
             size="small"
             triggerVariant="settings"
           />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Speech language"
+          description={
+            speechAvailable()
+              ? "Choose the language used for iPhone speech-to-text. Availability and offline support can vary by locale."
+              : "Speech language settings are currently available on iPhone builds."
+          }
+        >
+          <Show
+            when={speechAvailable()}
+            fallback={<span class="text-12-medium text-text-dimmed">Unavailable</span>}
+          >
+            <Select
+              data-action="settings-speech-language"
+              options={speechOptions()}
+              current={currentSpeech()}
+              value={(option) => option.value}
+              label={(option) => option.label}
+              valueClass="whitespace-normal break-words text-left leading-tight"
+              class="max-w-[320px]"
+              children={(option) => (
+                <span class="whitespace-normal break-words text-left leading-tight">{option?.label}</span>
+              )}
+              onSelect={(option) => option && settings.speech.setLocale(option.value)}
+              variant="secondary"
+              size="small"
+              triggerVariant="settings"
+              triggerStyle={{ "min-width": "220px", height: "auto" }}
+            />
+          </Show>
         </SettingsRow>
 
         <SettingsRow
@@ -684,11 +714,7 @@ export const SettingsGeneral: Component = () => {
             />
           </div>
         </SettingsRow>
-<<<<<<< HEAD
       </SettingsList>
-=======
-      </div>
->>>>>>> 63c7246087 (add notifications)
     </div>
   )
 
@@ -858,4 +884,17 @@ const SettingsRow: Component<SettingsRowProps> = (props) => {
       <div class="flex w-full justify-end sm:w-auto sm:shrink-0">{props.children}</div>
     </div>
   )
+}
+
+function localeLabel(identifier: string) {
+  try {
+    const locale = new Intl.Locale(identifier)
+    const languageNames = new Intl.DisplayNames(undefined, { type: "language" })
+    const regionNames = new Intl.DisplayNames(undefined, { type: "region" })
+    const language = locale.language ? languageNames.of(locale.language) : undefined
+    const region = locale.region ? regionNames.of(locale.region) : undefined
+    if (language && region) return `${language} (${region})`
+    if (language) return language
+  } catch {}
+  return identifier
 }
