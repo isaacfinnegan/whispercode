@@ -8,19 +8,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Environment setup
-export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
-export NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
-export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
+export NDK_HOME="$ANDROID_HOME/ndk/30.0.14904198"
+export PATH="/Users/isaac/.bun/bin:/Users/isaac/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:/opt/homebrew/bin:$PATH"
 
 # Verify prerequisites
 if [ ! -d "$JAVA_HOME" ]; then
-  echo "ERROR: JDK 21 not found. Install with: brew install openjdk@21"
-  exit 1
-fi
-
-if ! adb devices 2>/dev/null | grep -q "device$"; then
-  echo "ERROR: No Android device connected. Connect via USB and enable USB debugging."
+  echo "ERROR: JDK not found at $JAVA_HOME"
   exit 1
 fi
 
@@ -36,8 +31,13 @@ if [ ! -f "$APK" ]; then
   exit 1
 fi
 
-echo "==> Installing on device..."
-adb install -r "$APK"
-
-echo "==> Done! Launching app..."
-adb shell am start -n com.devgriffin.whispercode/.MainActivity
+if adb devices 2>/dev/null | grep -q "device$"; then
+  echo "==> Installing on device via ADB..."
+  adb install -r "$APK"
+  echo "==> Done! Launching app..."
+  adb shell am start -n com.devgriffin.whispercode/.MainActivity
+else
+  echo "==> No USB/ADB device online. Pushing to pixel-10-pro-fold via Tailscale..."
+  /usr/local/bin/tailscale file cp "$APK" "pixel-10-pro-fold:"
+  echo "==> Done! Pushed to pixel-10-pro-fold via Tailscale."
+fi
