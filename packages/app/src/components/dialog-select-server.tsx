@@ -242,8 +242,11 @@ export function DialogSelectServer() {
       if (store.addServer.password && store.addServer.username) conn.http.username = store.addServer.username
       const result = await checkServerHealth(conn.http)
       if (!result.healthy) {
-        setStore("addServer", { error: language.t("dialog.server.add.error") })
-        return
+        showToast({
+          variant: "default",
+          title: "Warning",
+          description: "Server health check failed, but adding anyway.",
+        })
       }
 
       resetAdd()
@@ -350,7 +353,6 @@ export function DialogSelectServer() {
   })
 
   async function select(conn: ServerConnection.Any, persist?: boolean) {
-    if (!persist && store.status[ServerConnection.key(conn)]?.healthy === false) return
     dialog.close()
     if (persist && conn.type === "http") {
       server.add(conn)
