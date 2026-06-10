@@ -13,15 +13,22 @@ type ScanResult = { host: string; port: number; url: string }
 
 async function checkHealth(url: string, username?: string, password?: string): Promise<boolean> {
   const base = url.replace(/\/+$/, "")
-  const headers: HeadersInit = {}
-  if (password) {
-    headers["Authorization"] = `Basic ${btoa(`${username || "opencode"}:${password}`)}`
+  const token = password ? btoa(`${username || "opencode"}:${password}`) : ""
+  const query = token ? `?auth_token=${encodeURIComponent(token)}` : ""
+  const getSignal = () => {
+    try {
+      return AbortSignal.timeout(3000)
+    } catch {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(), 3000)
+      return controller.signal
+    }
   }
-  const primary = await fetch(`${base}/global/health`, { headers, signal: AbortSignal.timeout(3000) })
+  const primary = await fetch(`${base}/global/health${query}`, { signal: getSignal() })
     .then((r) => r.ok)
     .catch(() => false)
   if (primary) return true
-  return fetch(`${base}/health`, { headers, signal: AbortSignal.timeout(3000) })
+  return fetch(`${base}/health${query}`, { signal: getSignal() })
     .then((r) => r.ok)
     .catch(() => false)
 }

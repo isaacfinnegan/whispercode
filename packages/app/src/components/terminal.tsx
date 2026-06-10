@@ -2,14 +2,13 @@ import { withAlpha } from "@opencode-ai/ui/theme/color"
 import { useTheme } from "@opencode-ai/ui/theme/context"
 import { resolveThemeVariant } from "@opencode-ai/ui/theme/resolve"
 import type { HexColor } from "@opencode-ai/ui/theme/types"
-import { showToast } from "@opencode-ai/ui/toast"
+import { showToast } from "@/utils/toast"
 import type { FitAddon, Ghostty, Terminal as Term } from "ghostty-web"
 import { type ComponentProps, createEffect, createMemo, onCleanup, onMount, splitProps } from "solid-js"
 import { SerializeAddon } from "@/addons/serialize"
 import { matchKeybind, parseKeybind } from "@/context/command"
 import { useLanguage } from "@/context/language"
-import type { Platform } from "@/context/platform"
-import { usePlatform } from "@/context/platform"
+import { usePlatform, type Platform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
 import { useServer } from "@/context/server"
 import { terminalFontFamily, useSettings } from "@/context/settings"
@@ -69,13 +68,6 @@ const debugTerminal = (...values: unknown[]) => {
   console.debug("[terminal]", ...values)
 }
 
-const errorName = (err: unknown) => {
-  if (!err || typeof err !== "object") return
-  if (!("name" in err)) return
-  const errorName = err.name
-  return typeof errorName === "string" ? errorName : undefined
-}
-
 export const terminalTouchScrollAmount = (input: { deltaY: number; lineHeight: number; remainder: number }) => {
   const lineHeight = Math.max(8, input.lineHeight)
   const raw = input.remainder + input.deltaY / lineHeight
@@ -95,6 +87,7 @@ const terminalLineHeight = (container: HTMLDivElement, term: Term) => {
   }
   return container.clientHeight > 0 ? container.clientHeight / term.rows : 16
 }
+
 const useTerminalUiBindings = (input: {
   container: HTMLDivElement
   platform: Platform
@@ -191,9 +184,6 @@ const useTerminalUiBindings = (input: {
     }),
   )
 
-  // UPSTREAM-DIVERGENCE: ghostty-web only handles wheel scrollback today. Native mobile users drag
-  // inside the terminal, so translate that touch gesture to terminal scrollback and keep it out of
-  // the surrounding session scroller.
   input.container.addEventListener("touchstart", handleTouchStart, { passive: true })
   input.container.addEventListener("touchmove", handleTouchMove, { passive: false })
   input.container.addEventListener("touchend", handleTouchEnd)

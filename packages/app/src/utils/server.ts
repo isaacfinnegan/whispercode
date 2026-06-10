@@ -17,23 +17,18 @@ export function authFromToken(token: string | null) {
   }
 }
 
-// UPSTREAM-DIVERGENCE-FILE: Server auth header generation was split out after upstream sync 6b9ce5e63
-// so the fork's push pairing helpers can reuse the exact same HTTP auth behavior as the shared SDK.
-
-export function serverAuthHeaders(server: ServerConnection.HttpBase) {
-  if (!server.password) return
-  return {
-    Authorization: `Basic ${btoa(`${server.username ?? "opencode"}:${server.password}`)}`,
-  }
-}
-
 export function createSdkForServer({
   server,
   ...config
 }: Omit<NonNullable<Parameters<typeof createOpencodeClient>[0]>, "baseUrl"> & {
   server: ServerConnection.HttpBase
 }) {
-  const auth = serverAuthHeaders(server)
+  const auth = (() => {
+    if (!server.password) return
+    return {
+      Authorization: `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`,
+    }
+  })()
 
   return createOpencodeClient({
     ...config,
@@ -43,4 +38,11 @@ export function createSdkForServer({
     },
     baseUrl: server.url,
   })
+}
+
+export function serverAuthHeaders(server: ServerConnection.HttpBase): Record<string, string> {
+  if (!server.password) return {}
+  return {
+    Authorization: `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`,
+  }
 }

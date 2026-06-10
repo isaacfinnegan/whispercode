@@ -302,6 +302,7 @@ export const dict = {
   "mcp.status.connected": "conectado",
   "mcp.status.failed": "fallido",
   "mcp.status.needs_auth": "necesita auth",
+  "mcp.auth.clickToAuthenticate": "Haz clic para autenticar",
   "mcp.status.disabled": "deshabilitado",
 
   "dialog.fork.empty": "No hay mensajes desde donde bifurcar",
@@ -464,7 +465,7 @@ export const dict = {
   "error.dev.rootNotFound":
     "Elemento raíz no encontrado. ¿Olvidaste añadirlo a tu index.html? ¿O tal vez el atributo id está mal escrito?",
 
-  "error.globalSync.connectFailed": "No se pudo conectar al servidor. ¿Hay un servidor ejecutándose en `{{url}}`?",
+  "error.serverSync.connectFailed": "No se pudo conectar al servidor. ¿Hay un servidor ejecutándose en `{{url}}`?",
   "directory.error.invalidUrl": "URL de directorio inválida.",
 
   "error.chain.unknown": "Error desconocido",
@@ -1053,8 +1054,8 @@ export const dict = {
   "common.key.insert": "Insert",
   "common.unknown": "desconocido",
   "error.page.circular": "[Circular]",
-  "error.globalSDK.noServerAvailable": "Ningún servidor disponible",
-  "error.globalSDK.serverNotAvailable": "Servidor no disponible",
+  "error.serverSDK.noServerAvailable": "Ningún servidor disponible",
+  "error.serverSDK.serverNotAvailable": "Servidor no disponible",
   "error.childStore.persistedCacheCreateFailed": "Error al crear caché persistente",
   "error.childStore.persistedProjectMetadataCreateFailed": "Error al crear metadatos de proyecto persistentes",
   "error.childStore.persistedProjectIconCreateFailed": "Error al crear icono de proyecto persistente",

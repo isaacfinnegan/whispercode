@@ -1,99 +1,108 @@
 import { describe, expect, test } from "bun:test"
-import type { OpencodeClient, Session } from "@opencode-ai/sdk/v2/client"
 import { createStore } from "solid-js/store"
-import type { State } from "./types"
-import { warmSessions } from "./bootstrap"
+import { QueryClient } from "@tanstack/solid-query"
+import type { Config, OpencodeClient, Project } from "@opencode-ai/sdk/v2/client"
+import type { NormalizedProviderListResponse } from "@opencode-ai/ui/context"
+import { bootstrapDirectory, loadPathQuery, loadProvidersQuery } from "./bootstrap"
+import type { State, VcsCache } from "./types"
+import { ServerScope } from "@/utils/server-scope"
 
-const session = (input: { id: string; parentID?: string }) =>
-  ({
-    id: input.id,
-    parentID: input.parentID,
-    time: {
-      created: 1,
-      updated: 1,
-    },
-  }) as Session
+const provider = { all: new Map(), connected: [], default: {} } satisfies NormalizedProviderListResponse
 
-const baseState = (input: Partial<State> = {}) =>
-  ({
-    status: "complete",
-    agent: [],
-    command: [],
-    project: "",
-    projectMeta: undefined,
-    icon: undefined,
-    provider_ready: true,
-    provider: {} as State["provider"],
-    config: {} as State["config"],
-    path: { directory: "/tmp" } as State["path"],
-    session: [],
-    sessionTotal: 0,
-    session_status: {},
-    session_diff: {},
-    todo: {},
-    permission: {},
-    question: {},
-    mcp_ready: true,
-    mcp: {},
-    lsp_ready: true,
-    lsp: [],
-    vcs: undefined,
-    limit: 10,
-    message: {},
-    part: {},
-    ...input,
-  }) as State
-
-function sdkWithSessions(sessions: Record<string, Session>, calls: string[]) {
-  return {
-    session: {
-      get: async ({ sessionID }: { sessionID: string }) => {
-        calls.push(sessionID)
-        return { data: sessions[sessionID] }
+describe("bootstrapDirectory", () => {
+  test("marks a loading directory partial during bootstrap and complete after success", async () => {
+    const mcpReads: string[] = []
+    const [store, setStore] = createStore<State>({
+      status: "loading",
+      agent: [],
+      command: [],
+      project: "",
+      projectMeta: undefined,
+      icon: undefined,
+      provider_ready: true,
+      provider,
+      config: {},
+      path: { state: "", config: "", worktree: "/project", directory: "/project", home: "/home" },
+      session: [],
+      sessionTotal: 0,
+      session_status: {},
+      session_working(id: string) {
+        return this.session_status[id]?.type !== "idle"
       },
-    },
-  } as unknown as OpencodeClient
-}
+      session_diff: {},
+      todo: {},
+      permission: {},
+      question: {},
+      mcp_ready: true,
+      mcp: {},
+      lsp_ready: true,
+      lsp: [],
+      vcs: undefined,
+      limit: 5,
+      message: {},
+      part: {},
+      part_text_accum_delta: {},
+    })
 
-describe("warmSessions", () => {
-  test("loads missing session ancestors for prompt request trees", async () => {
-    const [store, setStore] = createStore(
-      baseState({
-        session: [session({ id: "root" })],
-      }),
-    )
-    const calls: string[] = []
-    const sdk = sdkWithSessions(
-      {
-        child: session({ id: "child", parentID: "root" }),
-        grandchild: session({ id: "grandchild", parentID: "child" }),
+    await bootstrapDirectory({
+      directory: "/project",
+      scope: ServerScope.local,
+      mcp: false,
+      global: {
+        config: {} satisfies Config,
+        path: { state: "", config: "", worktree: "/project", directory: "/project", home: "/home" },
+        project: [{ id: "project", worktree: "/project" } as Project],
+        provider,
       },
-      calls,
-    )
+      sdk: {
+        app: { agents: async () => ({ data: [{ name: "build", mode: "primary" }] }) },
+        config: { get: async () => ({ data: {} }) },
+        session: { status: async () => ({ data: {} }) },
+        vcs: { get: async () => ({ data: undefined }) },
+        command: {
+          list: async () => {
+            mcpReads.push("command")
+            return { data: [] }
+          },
+        },
+        permission: { list: async () => ({ data: [] }) },
+        question: { list: async () => ({ data: [] }) },
+        mcp: {
+          status: async () => {
+            mcpReads.push("status")
+            return { data: {} }
+          },
+        },
+        provider: { list: async () => ({ data: { all: [], connected: [], default: {} } }) },
+      } as unknown as OpencodeClient,
+      store,
+      setStore,
+      vcsCache: { setStore() {} } as unknown as VcsCache,
+      loadSessions() {},
+      translate: (key) => key,
+      queryClient: new QueryClient(),
+    })
 
-    await warmSessions({ ids: ["grandchild"], store, setStore, sdk })
+    expect(store.status).toBe("partial")
 
-    expect(calls).toEqual(["grandchild", "child"])
-    expect(store.session.map((item) => item.id)).toEqual(["child", "grandchild", "root"])
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    expect(store.status).toBe("complete")
+    expect(mcpReads).toEqual([])
   })
+})
 
-  test("walks ancestors for already-known prompt sessions", async () => {
-    const [store, setStore] = createStore(
-      baseState({
-        session: [session({ id: "grandchild", parentID: "child" }), session({ id: "root" })],
-      }),
-    )
-    const calls: string[] = []
-    const sdk = sdkWithSessions(
-      {
-        child: session({ id: "child", parentID: "root" }),
-      },
-      calls,
-    )
+describe("query keys", () => {
+  test("partitions identical directories by server scope", () => {
+    const client = {} as OpencodeClient
+    const remote = "https://debian.example" as typeof ServerScope.local
 
-    await warmSessions({ ids: ["grandchild"], store, setStore, sdk })
-
-    expect(calls).toEqual(["child"])
-    expect(store.session.map((item) => item.id)).toEqual(["child", "grandchild", "root"])
+    expect([...loadPathQuery(ServerScope.local, "/repo", client).queryKey]).toEqual(["local", "/repo", "path"])
+    expect([...loadPathQuery(remote, "/repo", client).queryKey]).toEqual(["https://debian.example", "/repo", "path"])
+    expect([...loadProvidersQuery(remote, null, client).queryKey]).toEqual([
+      "https://debian.example",
+      null,
+      "providers",
+    ])
   })
 })

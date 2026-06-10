@@ -1,7 +1,10 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import type { AsyncStorage, SyncStorage } from "@solid-primitives/storage"
 import type { Accessor } from "solid-js"
+import type { DesktopMenuAction } from "../desktop-menu"
 import { ServerConnection } from "./server"
+import type { WslServersPlatform } from "../wsl/types"
+import type { UpdaterPlatform } from "../updater"
 
 // UPSTREAM-DIVERGENCE-FILE: This platform contract is extended by the fork's iOS/Android wrappers.
 // When merging upstream platform changes, preserve the push pairing, relay, and notification metadata
@@ -9,7 +12,13 @@ import { ServerConnection } from "./server"
 
 type PickerPaths = string | string[] | null
 type OpenDirectoryPickerOptions = { title?: string; multiple?: boolean }
-type OpenFilePickerOptions = { title?: string; multiple?: boolean; accept?: string[]; extensions?: string[] }
+type OpenAttachmentPickerOptions = {
+  title?: string
+  multiple?: boolean
+  accept?: string[]
+  extensions?: string[]
+  defaultPath?: string
+}
 type SaveFilePickerOptions = { title?: string; defaultPath?: string }
 type UpdateInfo = { updateAvailable: boolean; version?: string }
 // UPSTREAM-DIVERGENCE: These exported types are consumed across packages/app, packages/ios, and
@@ -80,13 +89,18 @@ export type VoiceStopResult = {
   message?: string
 }
 
-export type Platform = {
-  /** Platform discriminator */
-  platform: "web" | "desktop" | "ios" | "android"
+export type PlatformName = "web" | "desktop" | "ios" | "android"
+export type DesktopOS = "macos" | "windows" | "linux" | "ios" | "android"
 
-  /** Desktop OS (Tauri only) */
-  os?: "macos" | "windows" | "linux" | "ios" | "android"
+export type FatalRendererErrorLog = {
+  error: string
+  url: string
+  version?: string
+  platform: PlatformName
+  os?: DesktopOS
+}
 
+type PlatformBase = {
   /** App version */
   version?: string
 
@@ -109,13 +123,13 @@ export type Platform = {
       choose generic push payloads while the web implementation safely ignores the extra options. */
   notify(title: string, description?: string, href?: string, opts?: NotifyOpts): Promise<void>
 
-  /** Open directory picker dialog (native on Tauri, server-backed on web) */
-  openDirectoryPickerDialog?(opts?: OpenDirectoryPickerOptions): Promise<PickerPaths>
+  /** Open a native attachment picker and read selected files sequentially (desktop only) */
+  openAttachmentPickerDialog?(
+    opts: OpenAttachmentPickerOptions,
+    onFile: (file: File) => Promise<unknown>,
+  ): Promise<void>
 
-  /** Open native file picker dialog (Tauri only) */
-  openFilePickerDialog?(opts?: OpenFilePickerOptions): Promise<PickerPaths>
-
-  /** Save file picker dialog (Tauri only) */
+  /** Open a native save file picker dialog (desktop only) */
   saveFilePickerDialog?(opts?: SaveFilePickerOptions): Promise<string | null>
 
   /** Storage mechanism, defaults to localStorage */
@@ -155,11 +169,8 @@ export type Platform = {
   /** Clear paired push credentials (optional native platforms) */
   clearPushPairing?(): Promise<PushState>
 
-  /** Check for a downloadable desktop update */
-  checkUpdate?(): Promise<UpdateInfo>
-
-  /** Install the downloaded update using the platform restart flow */
-  updateAndRestart?(): Promise<void>
+  /** Application-global desktop updater */
+  updater?: UpdaterPlatform
 
   /** Fetch override */
   fetch?: typeof fetch
@@ -170,11 +181,8 @@ export type Platform = {
   /** Set the default server URL to use on app startup (platform-specific) */
   setDefaultServer?(url: ServerConnection.Key | null): Promise<void> | void
 
-  /** Get the configured WSL integration (desktop only) */
-  getWslEnabled?(): Promise<boolean>
-
-  /** Set the configured WSL integration (desktop only) */
-  setWslEnabled?(config: boolean): Promise<void> | void
+  /** Manage WSL sidecar servers (Electron on Windows only) */
+  wslServers?: WslServersPlatform
 
   /** Get the preferred display backend (desktop only) */
   getDisplayBackend?(): Promise<DisplayBackend | null> | DisplayBackend | null
@@ -187,6 +195,15 @@ export type Platform = {
 
   /** Webview zoom level (desktop only) */
   webviewZoom?: Accessor<number>
+
+  /** Get whether native pinch/Ctrl-scroll zoom gestures are enabled (desktop only) */
+  getPinchZoomEnabled?(): Promise<boolean> | boolean
+
+  /** Allow native pinch/Ctrl-scroll zoom gestures (desktop only) */
+  setPinchZoomEnabled?(enabled: boolean): Promise<void> | void
+
+  /** Run a desktop-only menu action from the app chrome */
+  runDesktopMenuAction?(action: DesktopMenuAction): Promise<void> | void
 
   /** Check if an editor app exists (desktop only) */
   checkAppExists?(appName: string): Promise<boolean>
@@ -214,7 +231,25 @@ export type Platform = {
 
   /** Share content (mobile only) */
   share?(data: { text?: string; url?: string }): Promise<boolean>
+
+  /** Export collected diagnostic logs (desktop only) */
+  exportDebugLogs?(): Promise<string>
+
+  /** Record a fatal renderer error in platform logs (desktop only) */
+  recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
 }
+
+export type Platform = PlatformBase &
+  (
+    | { platform: "web"; os?: never }
+    | {
+        platform: "desktop"
+        os?: DesktopOS
+        openDirectoryPickerDialog(opts?: OpenDirectoryPickerOptions): Promise<PickerPaths>
+      }
+    | { platform: "ios"; os?: "ios" }
+    | { platform: "android"; os?: "android" }
+  )
 
 export type DisplayBackend = "auto" | "wayland"
 

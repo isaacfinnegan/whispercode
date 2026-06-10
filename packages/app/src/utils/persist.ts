@@ -4,6 +4,7 @@ import { checksum } from "@opencode-ai/core/util/encode"
 import { createResource, type Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
 import { pathKey } from "@/utils/path-key"
+import { ScopedKey, ServerScope, type ServerScope as ServerScopeValue } from "@/utils/server-scope"
 
 type InitType = Promise<string> | string | null
 type PersistedWithReady<T> = [
@@ -340,6 +341,12 @@ function workspaceStorage(dir: string) {
   return `opencode.workspace.${head}.${sum}.dat`
 }
 
+function draftStorage(draftID: string) {
+  const head = (draftID.slice(0, 12) || "draft").replace(/[^a-zA-Z0-9._-]/g, "-")
+  const sum = checksum(draftID) ?? "0"
+  return `opencode.draft.${head}.${sum}.dat`
+}
+
 function legacyWorkspaceStorage(dir: string) {
   const storage = workspaceStorage(pathKey(dir))
   const result = new Set<string>()
@@ -355,6 +362,11 @@ function legacyWorkspaceStorage(dir: string) {
 
   if (result.size === 0) return
   return [...result]
+}
+
+function serverWorkspaceTarget(scope: ServerScopeValue, dir: string, key: string, legacy?: string[]): PersistTarget {
+  if (scope !== ServerScope.local) return { storage: workspaceStorage(ScopedKey.from(scope, pathKey(dir))), key }
+  return { storage: workspaceStorage(pathKey(dir)), legacyStorageNames: legacyWorkspaceStorage(dir), key, legacy }
 }
 
 function localStorageWithPrefix(prefix: string): SyncStorage {
@@ -444,6 +456,12 @@ function localStorageDirect(): SyncStorage {
   }
 }
 
+const DRAFT_PERSISTED_KEYS = ["prompt", "comments", "model-selection", "file-view", "layout"]
+
+export function draftPersistedKeys() {
+  return DRAFT_PERSISTED_KEYS
+}
+
 export const PersistTesting = {
   localStorageDirect,
   localStorageWithPrefix,
@@ -456,22 +474,32 @@ export const Persist = {
   global(key: string, legacy?: string[]): PersistTarget {
     return { storage: GLOBAL_STORAGE, key, legacy }
   },
+  draft(draftID: string, key: string, legacy?: string[]): PersistTarget {
+    return { storage: draftStorage(draftID), key: `draft:${key}`, legacy }
+  },
+  serverGlobal(scope: ServerScopeValue, key: string, legacy?: string[]): PersistTarget {
+    if (scope === ServerScope.local) return Persist.global(key, legacy)
+    return { storage: GLOBAL_STORAGE, key: ScopedKey.from(scope, key) }
+  },
   workspace(dir: string, key: string, legacy?: string[]): PersistTarget {
-    const storage = workspaceStorage(pathKey(dir))
-    return { storage, legacyStorageNames: legacyWorkspaceStorage(dir), key: `workspace:${key}`, legacy }
+    return serverWorkspaceTarget(ServerScope.local, dir, `workspace:${key}`, legacy)
+  },
+  serverWorkspace(scope: ServerScopeValue, dir: string, key: string, legacy?: string[]): PersistTarget {
+    return serverWorkspaceTarget(scope, dir, `workspace:${key}`, legacy)
   },
   session(dir: string, session: string, key: string, legacy?: string[]): PersistTarget {
-    const storage = workspaceStorage(pathKey(dir))
-    return {
-      storage,
-      legacyStorageNames: legacyWorkspaceStorage(dir),
-      key: `session:${session}:${key}`,
-      legacy,
-    }
+    return serverWorkspaceTarget(ServerScope.local, dir, `session:${session}:${key}`, legacy)
+  },
+  serverSession(scope: ServerScopeValue, dir: string, session: string, key: string, legacy?: string[]): PersistTarget {
+    return serverWorkspaceTarget(scope, dir, `session:${session}:${key}`, legacy)
   },
   scoped(dir: string, session: string | undefined, key: string, legacy?: string[]): PersistTarget {
     if (session) return Persist.session(dir, session, key, legacy)
     return Persist.workspace(dir, key, legacy)
+  },
+  serverScoped(scope: ServerScopeValue, dir: string, session: string | undefined, key: string, legacy?: string[]) {
+    if (session) return Persist.serverSession(scope, dir, session, key, legacy)
+    return Persist.serverWorkspace(scope, dir, key, legacy)
   },
 }
 
@@ -479,9 +507,9 @@ export function removePersisted(
   target: { storage?: string; legacyStorageNames?: string[]; key: string },
   platform?: Platform,
 ) {
-  const useAsync = platform?.platform !== "web" && !!platform?.storage
+  const isDesktop = platform?.platform === "desktop" && !!platform.storage
 
-  if (useAsync) {
+  if (isDesktop) {
     void platform.storage?.(target.storage)?.removeItem(target.key)
     for (const storage of target.legacyStorageNames ?? []) {
       void platform.storage?.(storage)?.removeItem(target.key)
@@ -510,16 +538,16 @@ export function persisted<T>(
   const defaults = snapshot(store[0])
   const legacy = config.legacy ?? []
 
-  const useAsync = platform.platform !== "web" && !!platform.storage
+  const isDesktop = platform.platform === "desktop" && !!platform.storage
 
   const currentStorage = (() => {
-    if (useAsync) return platform.storage?.(config.storage)
+    if (isDesktop) return platform.storage?.(config.storage)
     if (!config.storage) return localStorageDirect()
     return localStorageWithPrefix(config.storage)
   })()
 
   const legacyStorage = (() => {
-    if (!useAsync) return localStorageDirect()
+    if (!isDesktop) return localStorageDirect()
     if (!config.storage) return platform.storage?.()
     return platform.storage?.(LEGACY_STORAGE)
   })()
@@ -527,7 +555,7 @@ export function persisted<T>(
   const legacyStorageNames = config.legacyStorageNames ?? []
 
   const storage = (() => {
-    if (!useAsync) {
+    if (!isDesktop) {
       const current = currentStorage as SyncStorage
       const legacyStore = legacyStorage as SyncStorage
       const legacyStores = legacyStorageNames.map(localStorageWithPrefix)
