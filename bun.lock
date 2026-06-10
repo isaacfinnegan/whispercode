@@ -36,6 +36,7 @@
         "@solid-primitives/storage": "catalog:",
         "@tauri-apps/api": "^2",
         "@tauri-apps/plugin-haptics": "~2",
+        "@tauri-apps/plugin-http": "~2.0.0",
         "@tauri-apps/plugin-notification": "~2",
         "@tauri-apps/plugin-opener": "^2",
         "@tauri-apps/plugin-store": "~2",
@@ -2671,6 +2672,8 @@
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.11.2", "", { "os": "win32", "cpu": "x64" }, "sha512-d2JchlFIpZevZVReyqhQOekJmb1UH3rhZ5VX6sH3ty9ETE0TKQavpihvoScUXfKKpW6HZC0MrFGRU0ZtD+w3gA=="],
 
     "@tauri-apps/plugin-haptics": ["@tauri-apps/plugin-haptics@2.3.2", "", { "dependencies": { "@tauri-apps/api": "^2.8.0" } }, "sha512-TqvBR5JoPodDQWPXsNymmyqp37dOpunZOdVVbx5xOAxki7rVwiCMvoEPdtJQNIrU+dQDfkQYZ2oDBVOu4hf+ig=="],
+
+    "@tauri-apps/plugin-http": ["@tauri-apps/plugin-http@2.0.2", "", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-uPb9JrPc1JotOCNKth5V6CRkJVS0KuOAPANWm4vKzILRoRSUPn1MUke0Xg1GVlKRrQqhpUWLqiscedVSzO4efQ=="],
 
     "@tauri-apps/plugin-notification": ["@tauri-apps/plugin-notification@2.3.3", "", { "dependencies": { "@tauri-apps/api": "^2.8.0" } }, "sha512-Zw+ZH18RJb41G4NrfHgIuofJiymusqN+q8fGUIIV7vyCH+5sSn5coqRv/MWB9qETsUs97vmU045q7OyseCV3Qg=="],
 
