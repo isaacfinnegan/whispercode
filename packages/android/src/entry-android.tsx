@@ -160,7 +160,6 @@ const App = () => {
       return result
     }
     const message = result?.message ?? "Voice input is unavailable."
-    showVoiceError(message)
     await refreshVoice()
     return {
       ok: false,
@@ -174,7 +173,6 @@ const App = () => {
     const result = await bridge.sendAsync<VoiceStopResult>("stopRecording")
     if (!result) {
       const message = "Voice input is unavailable."
-      showVoiceError(message)
       await refreshVoice()
       return {
         text: "",
@@ -183,7 +181,6 @@ const App = () => {
       }
     }
     if (result.code) {
-      showVoiceError(result.message ?? "Voice transcription failed.")
       await refreshVoice()
       return result
     }
