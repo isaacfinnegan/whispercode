@@ -157,9 +157,16 @@ export function SessionHeader() {
   })
   const hotkey = createMemo(() => command.keybind("file.open"))
   const os = createMemo(() => detectOS(platform))
-  const isV2 = settings.general.newLayoutDesigns
-  const search = settings.visibility.search
-  const status = settings.visibility.status
+  // UPSTREAM-DIVERGENCE: The fork exposes extra titlebar affordances on mobile without affecting the
+  // desktop header flow that upstream continues to evolve.
+  const mobile = createMemo(() => platform.platform === "ios" || platform.platform === "android")
+  const isDesktopV2 = createMemo(
+    () => (platform.platform === "desktop" || platform.platform === "web") && settings.general.newLayoutDesigns(),
+  )
+  const search = createMemo(() => (isDesktopV2() ? settings.general.showSearch() : true))
+  const tree = createMemo(() => (isDesktopV2() ? settings.general.showFileTree() : true))
+  const term = createMemo(() => (isDesktopV2() ? settings.general.showTerminal() : true))
+  const status = createMemo(() => (isDesktopV2() ? settings.general.showStatus() : true))
 
   const [exists, setExists] = createStore<Partial<Record<OpenApp, boolean>>>({
     finder: true,
@@ -247,6 +254,9 @@ export function SessionHeader() {
     reviewKeybind: command.keybind("review.toggle"),
     reviewOpened: view().reviewPanel.opened(),
     onReviewToggle: () => view().reviewPanel.toggle(),
+    termVisible: term(),
+    terminalOpened: view().terminal.opened(),
+    onTerminalToggle: toggleTerminal,
   }))
 
   const selectApp = (app: OpenApp) => {
@@ -542,15 +552,36 @@ type SessionHeaderV2ActionsState = {
   reviewKeybind: string
   reviewOpened: boolean
   onReviewToggle: () => void
+  termVisible: boolean
+  terminalOpened: boolean
+  onTerminalToggle: () => void
 }
 
 function SessionHeaderV2Actions(props: { state: SessionHeaderV2ActionsState }) {
+  const language = useLanguage()
+  const command = useCommand()
   return (
     <div class="flex items-center gap-2">
       <Show when={props.state.statusVisible}>
         <Tooltip placement="bottom" value={props.state.statusLabel}>
           <StatusPopoverV2 />
         </Tooltip>
+      </Show>
+      <Show when={props.state.termVisible}>
+        <TooltipKeybind title={language.t("command.terminal.toggle")} keybind={command.keybind("terminal.toggle")}>
+          <IconButtonV2
+            type="button"
+            variant="ghost-muted"
+            size="large"
+            class="!w-9 shrink-0"
+            state={props.state.terminalOpened ? "pressed" : undefined}
+            onClick={props.state.onTerminalToggle}
+            aria-label={language.t("command.terminal.toggle")}
+            aria-expanded={props.state.terminalOpened}
+            aria-controls="terminal-panel"
+            icon={<IconV2 name="terminal" />}
+          />
+        </TooltipKeybind>
       </Show>
       <TooltipKeybind title={props.state.reviewLabel} keybind={props.state.reviewKeybind}>
         <IconButtonV2
