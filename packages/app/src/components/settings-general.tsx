@@ -824,7 +824,7 @@ export const SettingsGeneral: Component = () => {
           </div>
         </Show>
 
-        <Show when={desktop() && import.meta.env.VITE_OPENCODE_CHANNEL === "beta"}>
+        <Show when={true}>
           <AdvancedSection />
         </Show>
       </div>
