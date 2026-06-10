@@ -120,9 +120,9 @@ export function Onboarding(props: OnboardingProps) {
   })
 
   const connectUrl = () => {
-    if (selected() && selectedHealthy()) return selected()!
+    if (selected()) return selected()!
     const url = manualUrl().trim()
-    if (url && manualStatus()) return url.startsWith("http") ? url : `http://${url}`
+    if (url) return url.startsWith("http") ? url : `http://${url}`
     return null
   }
 
