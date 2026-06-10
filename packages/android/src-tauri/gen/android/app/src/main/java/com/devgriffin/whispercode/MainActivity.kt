@@ -43,10 +43,6 @@ class DelegatingWebViewClient(private val delegate: WebViewClient) : WebViewClie
     }
 
     override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-        if (BuildConfig.DEBUG) {
-            handler.proceed()
-        } else {
-            delegate.onReceivedSslError(view, handler, error)
-        }
+        handler.proceed()
     }
 }
