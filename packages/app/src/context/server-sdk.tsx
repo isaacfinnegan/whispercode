@@ -58,16 +58,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   const platform = usePlatform()
   const abort = new AbortController()
 
-  const eventFetch = (() => {
-    if (!platform.fetch || !server) return
-    try {
-      const url = new URL(server.http.url)
-      const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1"
-      if (url.protocol === "http:" && !loopback) return platform.fetch
-    } catch {
-      return
-    }
-  })()
+  const eventFetch = platform.fetch || undefined
 
   const eventSdk = createSdkForServer({
     signal: abort.signal,
@@ -172,10 +163,8 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
               if (isStreamClosed(error, attempt?.signal)) return
               if (streamErrorLogged) return
               streamErrorLogged = true
-              console.error("[global-sdk] event stream error", {
-                url: server.http.url,
+              console.error("[global-sdk] event stream error: " + (error instanceof Error ? error.message + "\n" + error.stack : JSON.stringify(error) || String(error)) + " | URL: " + server.http.url, {
                 fetch: eventFetch ? "platform" : "webview",
-                error,
               })
             },
           })

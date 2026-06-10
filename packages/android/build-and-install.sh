@@ -3,6 +3,9 @@ set -euo pipefail
 
 # Android build-and-install script for WhisperCode
 # Usage: ./build-and-install.sh
+# NOTE: To keep the APK size minimal:
+#   1. Always build with target-specific splitting (--split-per-abi) to avoid bundling multiple architectures.
+#   2. Keep Rust debug symbol stripping configured in `packages/android/src-tauri/Cargo.toml` under `[profile.dev]`.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -23,21 +26,14 @@ echo "==> Building frontend..."
 bun run build
 
 echo "==> Building APK..."
-bun run tauri android build --apk --debug
+bun run tauri android build --apk --debug --target aarch64 --split-per-abi
 
-APK="$SCRIPT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
+APK="$SCRIPT_DIR/src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk"
 if [ ! -f "$APK" ]; then
   echo "ERROR: APK not found at $APK"
   exit 1
 fi
 
-if adb devices 2>/dev/null | grep -q "device$"; then
-  echo "==> Installing on device via ADB..."
-  adb install -r "$APK"
-  echo "==> Done! Launching app..."
-  adb shell am start -n com.devgriffin.whispercode/.MainActivity
-else
-  echo "==> No USB/ADB device online. Pushing to pixel-10-pro-fold via Tailscale..."
-  /usr/local/bin/tailscale file cp "$APK" "pixel-10-pro-fold:"
-  echo "==> Done! Pushed to pixel-10-pro-fold via Tailscale."
-fi
+echo "==> Pushing to pixel-10-pro-fold via Tailscale..."
+/usr/local/bin/tailscale file cp "$APK" "pixel-10-pro-fold:"
+echo "==> Done! Pushed to pixel-10-pro-fold via Tailscale."

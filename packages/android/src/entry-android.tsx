@@ -100,6 +100,8 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error("Root element not found")
 }
 
+declare const __BUILD_NUMBER__: string
+
 const App = () => {
   const [voice, setVoice] = createSignal<VoiceStatus>({ state: "prewarming", ready: false })
 
@@ -193,7 +195,7 @@ const App = () => {
   const platform: Platform = {
     platform: "android",
     os: "android",
-    version: pkg.version,
+    version: `${pkg.version} (${__BUILD_NUMBER__})`,
     openLink: (url: string) => {
       void openUrl(url).catch(() => undefined)
     },
@@ -232,7 +234,92 @@ const App = () => {
     getDefaultServerUrl,
     setDefaultServerUrl,
     storage: (name?: string) => createTauriStorage(name),
-    fetch: tauriFetch,
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      let urlStr = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      let requestObj: Request | undefined
+      if (input instanceof Request) {
+        requestObj = input
+      }
+      const headers = new Headers(init?.headers ?? (requestObj ? requestObj.headers : undefined))
+      const auth = headers.get("Authorization") || headers.get("authorization")
+      if (auth && auth.startsWith("Basic ")) {
+        const token = auth.substring(6)
+        try {
+          const parsedUrl = new URL(urlStr)
+          parsedUrl.searchParams.set("auth_token", token)
+          urlStr = parsedUrl.toString()
+          headers.delete("Authorization")
+          headers.delete("authorization")
+        } catch {}
+      }
+      
+      // Consume streaming bodies into a flat Uint8Array to prevent Chromium from forcing
+      // HTTP/2 and ALPN negotiation (which fails over non-secure HTTP connections).
+      let body: any = requestObj ? requestObj.body : init?.body
+      if (body instanceof ReadableStream) {
+        const reader = body.getReader()
+        const chunks: Uint8Array[] = []
+        let totalLength = 0
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (value) {
+            chunks.push(value)
+            totalLength += value.length
+          }
+        }
+        const flat = new Uint8Array(totalLength)
+        let offset = 0
+        for (const chunk of chunks) {
+          flat.set(chunk, offset)
+          offset += chunk.length
+        }
+        body = flat
+      }
+
+      const makeRequest = () => {
+        if (requestObj) {
+          return new Request(urlStr, {
+            method: requestObj.method,
+            body: body,
+            headers,
+            signal: requestObj.signal,
+            referrer: requestObj.referrer,
+            referrerPolicy: requestObj.referrerPolicy,
+            mode: requestObj.mode,
+            credentials: requestObj.credentials,
+            cache: requestObj.cache,
+            redirect: requestObj.redirect,
+            integrity: requestObj.integrity,
+            keepalive: requestObj.keepalive,
+          })
+        } else {
+          return new Request(urlStr, {
+            ...init,
+            body,
+            headers,
+          })
+        }
+      }
+
+      try {
+        const parsedUrl = new URL(urlStr)
+        if (parsedUrl.protocol === "http:") {
+          return await tauriFetch(makeRequest())
+        }
+        if (parsedUrl.protocol === "https:") {
+          try {
+            return await tauriFetch(makeRequest())
+          } catch (e) {
+            console.warn("[entry-android] HTTPS tauriFetch failed, falling back to WebView fetch:", e)
+            return await globalThis.fetch(makeRequest())
+          }
+        }
+      } catch (e) {
+        console.error("[entry-android] fetch routing error:", e)
+      }
+      return globalThis.fetch(makeRequest())
+    },
   }
 
   const [defaultConfig] = createResource(async () => {
