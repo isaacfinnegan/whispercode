@@ -1,0 +1,1 @@
+import{ak as s,i as o,bx as e,az as i}from"./index-DQEdYBd2.js";function u(){const a=s(),n=o();return e(()=>({mutationFn:a.mcp.toggle,onError:t=>i({variant:"error",title:n.t("common.requestFailed"),description:t instanceof Error?t.message:String(t)})}))}export{u};

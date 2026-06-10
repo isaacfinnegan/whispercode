@@ -1,0 +1,32 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:2:1-7:12
+INJECTED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:2:1-7:12
+	package
+		INJECTED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.INTERNET
+ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:3:5-67
+	android:name
+		ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:3:22-64
+uses-permission#android.permission.ACCESS_NETWORK_STATE
+ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:4:5-79
+	android:name
+		ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:4:22-76
+uses-permission#android.permission.RECORD_AUDIO
+ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:5:5-71
+	android:name
+		ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:5:22-68
+uses-permission#android.permission.ACCESS_WIFI_STATE
+ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:6:5-76
+	android:name
+		ADDED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml:6:22-73
+uses-sdk
+INJECTED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml
+INJECTED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/AndroidManifest.xml

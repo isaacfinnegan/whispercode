@@ -233,6 +233,47 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let slashPopoverRef!: HTMLDivElement
   let projectSearchRef: HTMLInputElement | undefined
 
+  let touchStartX = 0
+  let touchStartY = 0
+  let touchStartTime = 0
+
+  const handleTouchStart = (e: TouchEvent) => {
+    const touch = e.touches[0]
+    if (!touch) return
+    touchStartX = touch.clientX
+    touchStartY = touch.clientY
+    touchStartTime = Date.now()
+  }
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (touchStartTime === 0) return
+    const touch = e.touches[0]
+    if (!touch) return
+    const deltaX = touch.clientX - touchStartX
+    const deltaY = touch.clientY - touchStartY
+    const deltaTime = Date.now() - touchStartTime
+
+    if (deltaX < -50 && Math.abs(deltaY) < 25 && deltaTime < 300) {
+      if (
+        store.mode === "normal" &&
+        (platform.platform === "ios" || platform.platform === "android") &&
+        platform.startVoiceInput
+      ) {
+        ;(platform as { vibrate?: () => void }).vibrate?.()
+        void platform.startVoiceInput()
+        touchStartX = 0
+        touchStartY = 0
+        touchStartTime = 0
+      }
+    }
+  }
+
+  const handleTouchEnd = () => {
+    touchStartX = 0
+    touchStartY = 0
+    touchStartTime = 0
+  }
+
   const mirror = { input: false }
   const inset = 56
   const space = `${inset}px`
@@ -1618,7 +1659,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   editorRef?.focus()
                 }}
               >
-                <div class="relative max-h-[180px] overflow-y-auto no-scrollbar" ref={(el) => (scrollRef = el)}>
+                <div
+                  class="relative max-h-[180px] overflow-y-auto no-scrollbar"
+                  ref={(el) => (scrollRef = el)}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  onTouchCancel={handleTouchEnd}
+                >
                   <div
                     data-component="prompt-input"
                     ref={(el) => {
@@ -1802,6 +1850,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 class="relative max-h-[240px] overflow-y-auto no-scrollbar"
                 ref={(el) => (scrollRef = el)}
                 style={{ "scroll-padding-bottom": space }}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
               >
                 <div
                   data-component="prompt-input"
