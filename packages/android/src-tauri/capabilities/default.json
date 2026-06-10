@@ -9,6 +9,7 @@
     "notification:default",
     "opener:default",
     "store:default",
-    "mobile-bridge:default"
+    "mobile-bridge:default",
+    "http:default"
   ]
 }
