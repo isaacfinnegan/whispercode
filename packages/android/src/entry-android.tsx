@@ -8,6 +8,7 @@ import { impactFeedback, notificationFeedback } from "@tauri-apps/plugin-haptics
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
@@ -231,74 +232,7 @@ const App = () => {
     getDefaultServer: getDefaultServerUrl,
     setDefaultServer: setDefaultServerUrl,
     storage: (name?: string) => createTauriStorage(name),
-    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-      let urlStr = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
-      let requestObj: Request | undefined
-      if (input instanceof Request) {
-        requestObj = input
-      }
-      const headers = new Headers(init?.headers ?? (requestObj ? requestObj.headers : undefined))
-      const auth = headers.get("Authorization") || headers.get("authorization")
-      if (auth && auth.startsWith("Basic ")) {
-        const token = auth.substring(6)
-        try {
-          const parsedUrl = new URL(urlStr)
-          parsedUrl.searchParams.set("auth_token", token)
-          urlStr = parsedUrl.toString()
-          headers.delete("Authorization")
-          headers.delete("authorization")
-        } catch {}
-      }
-      
-      // Consume streaming bodies into a flat Uint8Array to prevent Chromium from forcing
-      // HTTP/2 and ALPN negotiation (which fails over non-secure HTTP connections).
-      let body: any = requestObj ? requestObj.body : init?.body
-      if (body instanceof ReadableStream) {
-        const reader = body.getReader()
-        const chunks: Uint8Array[] = []
-        let totalLength = 0
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          if (value) {
-            chunks.push(value)
-            totalLength += value.length
-          }
-        }
-        const flat = new Uint8Array(totalLength)
-        let offset = 0
-        for (const chunk of chunks) {
-          flat.set(chunk, offset)
-          offset += chunk.length
-        }
-        body = flat
-      }
-
-      let finalRequest: Request
-      if (requestObj) {
-        finalRequest = new Request(urlStr, {
-          method: requestObj.method,
-          body: body,
-          headers,
-          signal: requestObj.signal,
-          referrer: requestObj.referrer,
-          referrerPolicy: requestObj.referrerPolicy,
-          mode: requestObj.mode,
-          credentials: requestObj.credentials,
-          cache: requestObj.cache,
-          redirect: requestObj.redirect,
-          integrity: requestObj.integrity,
-          keepalive: requestObj.keepalive,
-        })
-      } else {
-        finalRequest = new Request(urlStr, {
-          ...init,
-          body,
-          headers,
-        })
-      }
-      return globalThis.fetch(finalRequest)
-    },
+    fetch: tauriFetch,
   }
 
   const [defaultConfig] = createResource(async () => {
