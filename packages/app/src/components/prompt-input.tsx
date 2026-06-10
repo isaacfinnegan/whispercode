@@ -274,6 +274,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     touchStartTime = 0
   }
 
+  const safeFocus = () => {
+    if (!editorRef) return
+    const isMobile = platform.platform === "ios" || platform.platform === "android"
+    if (isMobile && document.activeElement !== editorRef) return
+    editorRef.focus()
+  }
+
   const mirror = { input: false }
   const inset = 56
   const space = `${inset}px`
@@ -551,7 +558,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     applyHistoryComments(entry.comments)
     prompt.set(p, length)
     requestAnimationFrame(() => {
-      editorRef.focus()
+      safeFocus()
       setCursorPosition(editorRef, length)
       setStore("applyingHistory", false)
       queueScroll()
@@ -595,7 +602,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const setMode = (mode: "normal" | "shell") => {
     setStore("mode", mode)
     setStore("popover", null)
-    requestAnimationFrame(() => editorRef?.focus())
+    requestAnimationFrame(() => safeFocus())
   }
 
   const shellModeKey = "mod+shift+x"
@@ -647,13 +654,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const focusEditorEnd = () => {
     requestAnimationFrame(() => {
-      editorRef.focus()
-      const range = document.createRange()
-      const selection = window.getSelection()
-      range.selectNodeContents(editorRef)
-      range.collapse(false)
-      selection?.removeAllRanges()
-      selection?.addRange(range)
+      if (editorRef) {
+        const isMobile = platform.platform === "ios" || platform.platform === "android"
+        if (!(isMobile && document.activeElement !== editorRef)) {
+          editorRef.focus()
+          const range = document.createRange()
+          const selection = window.getSelection()
+          range.selectNodeContents(editorRef)
+          range.collapse(false)
+          selection?.removeAllRanges()
+          selection?.addRange(range)
+        }
+      }
     })
   }
 
@@ -665,10 +677,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const restoreFocus = () => {
     requestAnimationFrame(() => {
-      const cursor = prompt.cursor() ?? promptLength(prompt.current())
-      editorRef.focus()
-      setCursorPosition(editorRef, cursor)
-      queueScroll()
+      if (editorRef) {
+        const isMobile = platform.platform === "ios" || platform.platform === "android"
+        if (!(isMobile && document.activeElement !== editorRef)) {
+          const cursor = prompt.cursor() ?? promptLength(prompt.current())
+          editorRef.focus()
+          setCursorPosition(editorRef, cursor)
+          queueScroll()
+        }
+      }
     })
   }
 
@@ -1221,9 +1238,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         setStore("savedPrompt", null)
         prompt.set(edit.prompt, promptLength(edit.prompt))
         requestAnimationFrame(() => {
-          editorRef.focus()
-          setCursorPosition(editorRef, promptLength(edit.prompt))
-          queueScroll()
+          if (editorRef) {
+            const isMobile = platform.platform === "ios" || platform.platform === "android"
+            if (!(isMobile && document.activeElement !== editorRef)) {
+              editorRef.focus()
+              setCursorPosition(editorRef, promptLength(edit.prompt))
+              queueScroll()
+            }
+          }
         })
         props.onEditLoaded?.()
       },
