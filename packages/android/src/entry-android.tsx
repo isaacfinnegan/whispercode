@@ -231,6 +231,40 @@ const App = () => {
     getDefaultServer: getDefaultServerUrl,
     setDefaultServer: setDefaultServerUrl,
     storage: (name?: string) => createTauriStorage(name),
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      let urlStr = ""
+      let requestInit: RequestInit = init || {}
+      if (input instanceof Request) {
+        urlStr = input.url
+        const headers = new Headers(input.headers)
+        if (init?.headers) {
+          new Headers(init.headers).forEach((v, k) => headers.set(k, v))
+        }
+        requestInit = {
+          method: input.method,
+          headers,
+          body: input.body,
+          signal: input.signal,
+          ...init,
+        }
+      } else {
+        urlStr = input.toString()
+        requestInit.headers = new Headers(requestInit.headers)
+      }
+      const headersObj = requestInit.headers as Headers
+      const auth = headersObj.get("Authorization") || headersObj.get("authorization")
+      if (auth && auth.startsWith("Basic ")) {
+        const token = auth.substring(6)
+        try {
+          const parsedUrl = new URL(urlStr)
+          parsedUrl.searchParams.set("auth_token", token)
+          urlStr = parsedUrl.toString()
+          headersObj.delete("Authorization")
+          headersObj.delete("authorization")
+        } catch {}
+      }
+      return globalThis.fetch(urlStr, requestInit)
+    },
   }
 
   const [defaultConfig] = createResource(async () => {
