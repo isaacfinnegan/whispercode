@@ -860,7 +860,7 @@ export const SettingsGeneral: Component = () => {
 
         <DisplaySection />
 
-        <Show when={desktop()}>
+        <Show when={true}>
           <AdvancedSection />
         </Show>
       </div>
