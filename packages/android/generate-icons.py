@@ -86,6 +86,18 @@ def generate_icons(res_dir, dark, tinted, label):
     print(f"\n--- {label} ---")
     print(f"  Output: {res_dir}")
 
+    # Clean up conflicting default Tauri/Android drawables
+    for drawable_path in [
+        os.path.join(res_dir, "drawable-v24", "ic_launcher_foreground.xml"),
+        os.path.join(res_dir, "drawable", "ic_launcher_background.xml"),
+    ]:
+        if os.path.exists(drawable_path):
+            try:
+                os.remove(drawable_path)
+                print(f"  Removed conflicting template: {drawable_path}")
+            except Exception as e:
+                print(f"  Warning: could not remove {drawable_path}: {e}")
+
     for density, size in FOREGROUND_SIZES.items():
         out_dir = os.path.join(res_dir, f"mipmap-{density}")
         os.makedirs(out_dir, exist_ok=True)
