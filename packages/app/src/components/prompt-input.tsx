@@ -1678,7 +1678,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   const target = e.target
                   if (!(target instanceof HTMLElement)) return
                   if (target.closest('[data-action^="prompt-"]')) return
-                  editorRef?.focus()
+                  const isMobile = platform.platform === "ios" || platform.platform === "android"
+                  if (!isMobile) {
+                    editorRef?.focus()
+                  }
                 }}
               >
                 <div
@@ -1865,7 +1868,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 ) {
                   return
                 }
-                editorRef?.focus()
+                const isMobile = platform.platform === "ios" || platform.platform === "android"
+                if (!isMobile) {
+                  editorRef?.focus()
+                }
               }}
             >
               <div
