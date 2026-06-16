@@ -33,7 +33,12 @@ logs/
 *.bun-build
 tsconfig.tsbuildinfo
 packages/android/src-tauri/**/build/
-packages/android/src-tauri/gen/
+packages/android/src-tauri/gen/*
+!packages/android/src-tauri/gen/android/
+packages/android/src-tauri/gen/android/*
+!packages/android/src-tauri/gen/android/app/
+packages/android/src-tauri/gen/android/app/*
+!packages/android/src-tauri/gen/android/app/build.gradle.kts
 packages/android/release.keystore
 todo.md
 *.internal.md

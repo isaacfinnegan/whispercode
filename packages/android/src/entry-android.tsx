@@ -302,7 +302,12 @@ const App = () => {
       try {
         const parsedUrl = new URL(urlStr)
         if (parsedUrl.protocol === "http:") {
-          return await tauriFetch(makeRequest())
+          try {
+            return await tauriFetch(makeRequest())
+          } catch (e) {
+            console.warn("[entry-android] HTTP tauriFetch failed, falling back to WebView fetch:", e)
+            return await globalThis.fetch(makeRequest())
+          }
         }
         if (parsedUrl.protocol === "https:") {
           try {
