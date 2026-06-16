@@ -6,6 +6,7 @@ import { useComments } from "@/context/comments"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
+import { usePlatform } from "@/context/platform"
 import { createSessionComposerState, SessionComposerRegion } from "@/pages/session/composer"
 
 /**
@@ -14,6 +15,7 @@ import { createSessionComposerState, SessionComposerRegion } from "@/pages/sessi
  * timeline. Submitting promotes the draft into a real session (see prompt-input/submit).
  */
 export default function NewSessionPage() {
+  const platform = usePlatform()
   const prompt = usePrompt()
   const sdk = useSDK()
   const sync = useSync()
@@ -46,7 +48,10 @@ export default function NewSessionPage() {
   })
 
   onMount(() => {
-    requestAnimationFrame(() => inputRef?.focus())
+    const isMobile = platform.platform === "ios" || platform.platform === "android"
+    if (!isMobile) {
+      requestAnimationFrame(() => inputRef?.focus())
+    }
   })
 
   return (
