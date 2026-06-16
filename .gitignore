@@ -37,8 +37,15 @@ packages/android/src-tauri/gen/*
 !packages/android/src-tauri/gen/android/
 packages/android/src-tauri/gen/android/*
 !packages/android/src-tauri/gen/android/app/
-packages/android/src-tauri/gen/android/app/*
+packages/android/src-tauri/gen/android/app/**/*
 !packages/android/src-tauri/gen/android/app/build.gradle.kts
+!packages/android/src-tauri/gen/android/app/src/
+!packages/android/src-tauri/gen/android/app/src/main/
+!packages/android/src-tauri/gen/android/app/src/main/java/
+!packages/android/src-tauri/gen/android/app/src/main/java/com/
+!packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/
+!packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/whispercode/
+!packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/whispercode/MainActivity.kt
 packages/android/release.keystore
 todo.md
 *.internal.md
