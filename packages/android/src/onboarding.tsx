@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js"
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { Button } from "@opencode-ai/ui/button"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -17,13 +18,24 @@ async function checkHealth(url: string, username?: string, password?: string): P
   if (password) {
     headers["Authorization"] = `Basic ${btoa(`${username || "opencode"}:${password}`)}`
   }
-  const primary = await fetch(`${base}/global/health`, { headers, signal: AbortSignal.timeout(3000) })
-    .then((r) => r.ok)
-    .catch(() => false)
+  const safeFetch = async (endpoint: string) => {
+    try {
+      const response = await tauriFetch(endpoint, { headers, signal: AbortSignal.timeout(3000) })
+      return response.ok
+    } catch (e) {
+      console.warn("[onboarding] tauriFetch failed, falling back to WebView fetch:", e)
+      try {
+        const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(3000) })
+        return response.ok
+      } catch {
+        return false
+      }
+    }
+  }
+
+  const primary = await safeFetch(`${base}/global/health`)
   if (primary) return true
-  return fetch(`${base}/health`, { headers, signal: AbortSignal.timeout(3000) })
-    .then((r) => r.ok)
-    .catch(() => false)
+  return safeFetch(`${base}/health`)
 }
 
 function CopyBlock(props: { code: string }) {
@@ -120,9 +132,9 @@ export function Onboarding(props: OnboardingProps) {
   })
 
   const connectUrl = () => {
-    if (selected() && selectedHealthy()) return selected()!
+    if (selected()) return selected()!
     const url = manualUrl().trim()
-    if (url && manualStatus()) return url.startsWith("http") ? url : `http://${url}`
+    if (url) return url.startsWith("http") ? url : `http://${url}`
     return null
   }
 
