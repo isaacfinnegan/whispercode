@@ -802,7 +802,10 @@ export default function Page() {
 
     if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
       if (composer.blocked() || isChildSession()) return
-      inputRef?.focus()
+      const isMobile = platform.platform === "ios" || platform.platform === "android"
+      if (!isMobile) {
+        inputRef?.focus()
+      }
     }
   }
 
@@ -855,6 +858,8 @@ export default function Page() {
 
   const focusInput = () => {
     if (isChildSession()) return
+    const isMobile = platform.platform === "ios" || platform.platform === "android"
+    if (isMobile && document.activeElement !== inputRef) return
     inputRef?.focus()
   }
 
@@ -1632,7 +1637,12 @@ export default function Page() {
     on(
       () => params.id,
       (id) => {
-        if (!id) requestAnimationFrame(() => inputRef?.focus())
+        if (!id) {
+          const isMobile = platform.platform === "ios" || platform.platform === "android"
+          if (!isMobile) {
+            requestAnimationFrame(() => inputRef?.focus())
+          }
+        }
       },
     ),
   )
