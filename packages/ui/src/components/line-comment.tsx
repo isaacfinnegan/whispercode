@@ -308,6 +308,8 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
 
   onMount(() => {
     if (split.autofocus === false) return
+    const platform = document.documentElement.dataset.platform
+    if (platform === "ios" || platform === "android") return
     requestAnimationFrame(focus)
   })
 

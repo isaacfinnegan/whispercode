@@ -145,7 +145,10 @@ export function Select<T>(props: SelectProps<T> & Omit<ButtonProps, "children">)
       onOpenChange={(open) => {
         local.onOpenChange?.(open)
         if (open && local.search && typeof local.search === "object" && local.search.autofocus) {
-          queueMicrotask(() => searchRef?.focus())
+          const platform = document.documentElement.dataset.platform
+          if (platform !== "ios" && platform !== "android") {
+            queueMicrotask(() => searchRef?.focus())
+          }
         }
         if (!open) {
           setQuery("")

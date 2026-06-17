@@ -382,7 +382,10 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
 
   const focusCustom = (el: HTMLTextAreaElement) => {
     setTimeout(() => {
-      el.focus()
+      const platform = document.documentElement.dataset.platform
+      if (platform !== "ios" && platform !== "android") {
+        el.focus()
+      }
       resizeInput(el)
     }, 0)
   }
@@ -530,6 +533,8 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
                 return
               }
               if (e.target instanceof HTMLTextAreaElement) return
+              const platform = document.documentElement.dataset.platform
+              if (platform === "ios" || platform === "android") return
               const input = e.currentTarget.querySelector('[data-slot="question-custom-input"]')
               if (input instanceof HTMLTextAreaElement) input.focus()
             }}

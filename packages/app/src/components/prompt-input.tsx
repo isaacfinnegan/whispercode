@@ -1589,7 +1589,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     },
     onOpenChange: (open) => {
       setPicker("projectOpen", open)
-      if (open) requestAnimationFrame(() => projectSearchRef?.focus())
+      if (open && platform.platform !== "ios" && platform.platform !== "android") {
+        requestAnimationFrame(() => projectSearchRef?.focus())
+      }
     },
     onSearchInput: (value) => setPicker("projectSearch", value),
     onSearchClear: () => setPicker("projectSearch", ""),

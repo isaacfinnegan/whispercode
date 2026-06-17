@@ -36,7 +36,10 @@ export function Dialog(props: DialogProps) {
             const autofocusEl = target?.querySelector("[autofocus]") as HTMLElement | null
             if (autofocusEl) {
               e.preventDefault()
-              autofocusEl.focus()
+              const platform = document.documentElement.dataset.platform
+              if (platform !== "ios" && platform !== "android") {
+                autofocusEl.focus()
+              }
             }
           }}
         >

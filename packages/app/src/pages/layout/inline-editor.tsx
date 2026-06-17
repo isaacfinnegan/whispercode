@@ -90,7 +90,10 @@ export function createInlineEditorController() {
             frame = requestAnimationFrame(() => {
               frame = undefined
               if (!el.isConnected) return
-              el.focus()
+              const platform = document.documentElement.dataset.platform
+              if (platform !== "ios" && platform !== "android") {
+                el.focus()
+              }
             })
           }}
           value={editorValue()}

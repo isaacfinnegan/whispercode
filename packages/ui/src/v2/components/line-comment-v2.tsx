@@ -98,6 +98,8 @@ export function LineCommentEditorV2(props: LineCommentEditorV2Props) {
 
   onMount(() => {
     if (local.autofocus === false) return
+    const platform = document.documentElement.dataset.platform
+    if (platform === "ios" || platform === "android") return
     requestAnimationFrame(() => textareaRef?.focus())
   })
 

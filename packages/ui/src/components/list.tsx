@@ -272,7 +272,10 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
 
               const node = container.querySelector("input, textarea")
               const input = node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement ? node : inputRef
-              input?.focus()
+              const platform = document.documentElement.dataset.platform
+              if (platform !== "ios" && platform !== "android") {
+                input?.focus()
+              }
 
               // Prevent global listeners (e.g. dnd sensors) from cancelling focus.
               event.stopPropagation()
@@ -283,7 +286,11 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                 <Icon name="magnifying-glass" />
               </Show>
               <TextField
-                autofocus={searchProps().autofocus}
+                autofocus={(() => {
+                  const platform = document.documentElement.dataset.platform
+                  if (platform === "ios" || platform === "android") return false
+                  return searchProps().autofocus
+                })()}
                 variant="ghost"
                 data-slot="list-search-input"
                 type="text"
@@ -306,7 +313,10 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                 variant="ghost"
                 onClick={() => {
                   setInternalFilter("")
-                  queueMicrotask(() => inputRef?.focus())
+                  const platform = document.documentElement.dataset.platform
+                  if (platform !== "ios" && platform !== "android") {
+                    queueMicrotask(() => inputRef?.focus())
+                  }
                 }}
                 aria-label={i18n.t("ui.list.clearFilter")}
               />
