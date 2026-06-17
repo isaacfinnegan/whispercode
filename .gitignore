@@ -47,6 +47,8 @@ packages/android/src-tauri/gen/android/app/**/*
 !packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/whispercode/
 !packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/whispercode/MainActivity.kt
 packages/android/release.keystore
+app-universal-release.apk
+packages/android/src-tauri/**/.tauri/
 todo.md
 *.internal.md
 *.tgz
