@@ -50,14 +50,16 @@ export function Dialog(props: DialogProps) {
             [local.class ?? ""]: !!local.class,
           }}
           onOpenAutoFocus={(e) => {
+            const platform = document.documentElement.dataset.platform
+            if (platform === "ios" || platform === "android") {
+              e.preventDefault()
+              return
+            }
             const target = e.currentTarget as HTMLElement | null
             const autofocusEl = target?.querySelector("[autofocus]") as HTMLElement | null
             if (autofocusEl) {
               e.preventDefault()
-              const platform = document.documentElement.dataset.platform
-              if (platform !== "ios" && platform !== "android") {
-                autofocusEl.focus()
-              }
+              autofocusEl.focus()
             }
           }}
         >

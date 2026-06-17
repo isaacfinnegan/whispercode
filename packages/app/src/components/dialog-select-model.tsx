@@ -142,6 +142,12 @@ export function ModelSelectorPopover(props: {
       <Kobalte.Portal>
         <Kobalte.Content
           class="w-72 h-80 flex flex-col p-2 rounded-md border border-border-base bg-surface-raised-stronger-non-alpha shadow-md z-50 outline-none overflow-hidden"
+          onOpenAutoFocus={(event) => {
+            const platform = document.documentElement.dataset.platform
+            if (platform === "ios" || platform === "android") {
+              event.preventDefault()
+            }
+          }}
           onEscapeKeyDown={(event) => {
             close("escape")
             event.preventDefault()
