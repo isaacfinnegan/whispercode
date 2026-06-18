@@ -462,7 +462,7 @@ export function SessionHeader() {
                   <div class="flex items-center gap-1">
                     <Show when={mobile()}>
                       <IconButton
-                        icon="refresh"
+                        icon="reset"
                         variant="ghost"
                         class="titlebar-icon w-6 h-6 p-0 box-border shrink-0"
                         onClick={refresh}

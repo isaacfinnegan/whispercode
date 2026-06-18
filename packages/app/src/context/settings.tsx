@@ -166,6 +166,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     const [store, setStore, _, ready] = persisted("settings.v3", createStore<Settings>(defaultSettings))
     const showFileTree = withFallback(() => store.general?.showFileTree, defaultSettings.general.showFileTree)
     const showSearch = withFallback(() => store.general?.showSearch, defaultSettings.general.showSearch)
+    const showTerminal = withFallback(() => store.general?.showTerminal, defaultSettings.general.showTerminal)
     const showStatus = withFallback(() => store.general?.showStatus, defaultSettings.general.showStatus)
     const showCustomAgents = withFallback(
       () => store.general?.showCustomAgents,
@@ -234,7 +235,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setShowStatus(value: boolean) {
           setStore("general", "showStatus", value)
         },
-        showTerminal: withFallback(() => store.general?.showTerminal, defaultSettings.general.showTerminal),
+        showTerminal,
         setShowTerminal(value: boolean) {
           setStore("general", "showTerminal", value)
         },
@@ -278,6 +279,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
       visibility: {
         fileTree: visible(showFileTree),
         search: visible(showSearch),
+        terminal: visible(showTerminal),
         status: visible(showStatus),
         customAgents: visible(showCustomAgents),
       },

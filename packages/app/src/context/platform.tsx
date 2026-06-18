@@ -247,8 +247,8 @@ export type Platform = PlatformBase &
         os?: DesktopOS
         openDirectoryPickerDialog(opts?: OpenDirectoryPickerOptions): Promise<PickerPaths>
       }
-    | { platform: "ios"; os?: never }
-    | { platform: "android"; os?: never }
+    | { platform: "ios"; os?: "ios" }
+    | { platform: "android"; os?: "android" }
   )
 
 export type DisplayBackend = "auto" | "wayland"

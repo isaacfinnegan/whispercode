@@ -44,3 +44,10 @@ export function createSdkForServer({
     baseUrl: server.url,
   })
 }
+
+export function serverAuthHeaders(server: ServerConnection.HttpBase): Record<string, string> {
+  if (!server.password) return {}
+  return {
+    Authorization: `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`,
+  }
+}

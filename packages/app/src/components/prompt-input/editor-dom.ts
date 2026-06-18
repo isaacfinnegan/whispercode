@@ -42,6 +42,49 @@ function left(text: string, pos: number) {
   return word(text, end)
 }
 
+// UPSTREAM-DIVERGENCE-FILE: These editor DOM helpers were added after upstream sync 6b9ce5e63 for the
+// fork's mobile keyboard delete-word action. Preserve them when upstream changes cursor math.
+const GAP = /\s/
+
+function gap(char?: string) {
+  return !!char && GAP.test(char)
+}
+
+function text(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replace(/\u200B/g, "")
+  if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR") return "\n"
+
+  let value = ""
+  for (const child of Array.from(node.childNodes)) {
+    value += text(child)
+  }
+  return value
+}
+
+function offset(parent: HTMLElement, node: Node, pos: number) {
+  const range = document.createRange()
+  range.selectNodeContents(parent)
+  range.setEnd(node, pos)
+  return getTextLength(range.cloneContents())
+}
+
+function word(text: string, pos: number) {
+  let start = pos
+  let end = pos
+
+  while (start > 0 && !gap(text[start - 1])) start -= 1
+  while (end < text.length && !gap(text[end])) end += 1
+
+  if (start === end) return null
+  return { start, end }
+}
+
+function left(text: string, pos: number) {
+  let end = pos
+  while (end > 0 && gap(text[end - 1])) end -= 1
+  return word(text, end)
+}
+
 export function createTextFragment(content: string): DocumentFragment {
   const fragment = document.createDocumentFragment()
   let breaks = 0
