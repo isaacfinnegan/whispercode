@@ -536,7 +536,9 @@ export function MessageTimeline(props: {
     timelineRows().length
     if (measuredSessionKey !== key) {
       measuredSessionKey = key
-      virtualizer.measure()
+      if (virtualizer && "measure" in virtualizer) {
+        (virtualizer as any).measure()
+      }
     }
     maybeAnchorBottom()
   })
