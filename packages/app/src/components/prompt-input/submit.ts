@@ -15,6 +15,7 @@ import { usePermission } from "@/context/permission"
 import { type ContextItem, type ImageAttachmentPart, type Prompt, type usePrompt } from "@/context/prompt"
 import { useSDK, type DirectorySDK } from "@/context/sdk"
 import { useSync, type DirectorySync } from "@/context/sync"
+import { usePlatform } from "@/context/platform"
 import { Identifier } from "@/utils/id"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { buildRequestParts } from "./build-request-parts"
@@ -212,6 +213,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
   const serverSync = useServerSync()
   const local = useLocal()
   const permission = usePermission()
+  const platform = usePlatform()
   const prompt = input.prompt
   const layout = useLayout()
   const language = useLanguage()
@@ -434,7 +436,10 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       requestAnimationFrame(() => {
         const editor = input.editor()
         if (!editor) return
-        editor.focus()
+        const isMobile = platform.platform === "ios" || platform.platform === "android"
+        if (!(isMobile && document.activeElement !== editor)) {
+          editor.focus()
+        }
         setCursorPosition(editor, input.promptLength(currentPrompt))
         input.queueScroll()
       })
