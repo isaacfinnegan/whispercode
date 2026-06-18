@@ -81,7 +81,7 @@ export function Onboarding(props: OnboardingProps) {
   const [scanning, setScanning] = createSignal(false)
   const [servers, setServers] = createSignal<ScanResult[]>([])
   const [selected, setSelected] = createSignal<string | null>(null)
-  const [manualUrl, setManualUrl] = createSignal("")
+  const [manualUrl, setManualUrl] = createSignal("http://100.108.131.1:4096")
   const [manualName, setManualName] = createSignal("")
   const [manualUsername, setManualUsername] = createSignal("")
   const [manualPassword, setManualPassword] = createSignal("")
@@ -393,7 +393,7 @@ export function Onboarding(props: OnboardingProps) {
               <TextField
                 hideLabel
                 label="Server URL"
-                placeholder="http://192.168.1.100:4096"
+                placeholder="http://100.108.131.1:4096"
                 value={manualUrl()}
                 onChange={setManualUrl}
               />
