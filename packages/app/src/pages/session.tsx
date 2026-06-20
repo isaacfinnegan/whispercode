@@ -42,7 +42,6 @@ import { useServerSDK } from "@/context/server-sdk"
 import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
-import { usePullToRefresh } from "@/hooks/use-pull-to-refresh"
 import { type FollowupDraft, sendFollowupDraft } from "@/components/prompt-input/submit"
 import { createSessionComposerState, SessionComposerRegion } from "@/pages/session/composer"
 import {
@@ -309,8 +308,6 @@ export default function Page() {
     return key
   }, sessionKey())
 
-  const platform = usePlatform()
-
   let reviewFrame: number | undefined
   let todoFrame: number | undefined
   let todoTimer: number | undefined
@@ -356,13 +353,13 @@ export default function Page() {
     const limit = store.reviewLimit
     if (limit?.mode === store.changes) return limit
   })
-  const nogit = createMemo(() => !!sync().project && sync().project.vcs !== "git")
+  const nogit = createMemo(() => !!sync().project && sync().project?.vcs !== "git")
   const changesOptions = createMemo<ChangeMode[]>(() => {
     const list: ChangeMode[] = []
     const project = sync().project
     const vcs = sync().data.vcs
     if (project?.vcs === "git") list.push("git")
-    if (project?.vcs === "git" && vcs?.branch && vcs?.default_branch && vcs.branch !== vcs.default_branch) {
+    if (project?.vcs === "git" && vcs?.branch && vcs?.default_branch && vcs?.branch !== vcs?.default_branch) {
       list.push("branch")
     }
     list.push("turn")
@@ -382,7 +379,7 @@ export default function Page() {
       ["session-vcs", sdk().directory, sync().data.vcs?.branch ?? "", sync().data.vcs?.default_branch ?? ""] as const,
   )
   const fallbackGitDiff = async () => {
-    const status = await sdk.client.file
+    const status = await sdk().client.file
       .status()
       .then((result) => result.data ?? [])
       .catch(() => [])
@@ -398,10 +395,10 @@ export default function Page() {
             additions: item.added,
             deletions: item.removed,
             status: item.status,
-          })[0]
+          })[0] as VcsFileDiff | undefined
         }
 
-        const content = await sdk.client.file
+        const content = await sdk().client.file
           .read({ path: item.path })
           .then((result) => result.data)
           .catch(() => undefined)
@@ -425,7 +422,7 @@ export default function Page() {
           additions: item.added,
           deletions: item.removed,
           status: item.status,
-        })[0]
+        })[0] as VcsFileDiff | undefined
       }),
     )
 
@@ -442,11 +439,15 @@ export default function Page() {
         ? async () => {
             try {
               if (mode === "git" && mobilePlatform()) {
-                const status = await sdk().client.file.status().then((result) => result.data ?? [])
+                const status = await sdk()
+                  .client.file.status()
+                  .then((result) => result.data ?? [])
                 if (setReviewLimit("git", status.length)) return []
               }
 
-              const data = await sdk().client.vcs.diff({ mode }).then((result) => result.data ?? [])
+              const data = await sdk()
+                .client.vcs.diff({ mode })
+                .then((result) => result.data ?? [])
               const diffs = list(data)
               if (setReviewLimit(mode, diffs.length)) return []
               if (diffs.length > 0 || mode !== "git") return diffs
@@ -1195,7 +1196,7 @@ export default function Page() {
 
     // UPSTREAM-DIVERGENCE: Keep bottom detection aligned with reverseScrollTop above. Desktop reports
     // the bottom of the reversed timeline at scrollTop ~= 0, while mobile keeps normal positive offsets.
-    if (!mobile) return Math.abs(el.scrollTop)
+    if (!mobilePlatform()) return Math.abs(el.scrollTop)
     return Math.max(0, max - el.scrollTop)
   }
 

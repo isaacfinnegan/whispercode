@@ -163,9 +163,17 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
               if (isStreamClosed(error, attempt?.signal)) return
               if (streamErrorLogged) return
               streamErrorLogged = true
-              console.error("[global-sdk] event stream error: " + (error instanceof Error ? error.message + "\n" + error.stack : JSON.stringify(error) || String(error)) + " | URL: " + server.http.url, {
-                fetch: eventFetch ? "platform" : "webview",
-              })
+              console.error(
+                "[global-sdk] event stream error: " +
+                  (error instanceof Error
+                    ? error.message + "\n" + error.stack
+                    : JSON.stringify(error) || String(error)) +
+                  " | URL: " +
+                  server.http.url,
+                {
+                  fetch: eventFetch ? "platform" : "webview",
+                },
+              )
             },
           })
           let yielded = Date.now()

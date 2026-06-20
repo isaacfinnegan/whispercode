@@ -1966,7 +1966,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         onClick={() => void platform.startVoiceInput?.()}
                         disabled={
                           platform.voiceStatus
-                            ? platform.voiceStatus().state === "recording" || platform.voiceStatus().state === "processing"
+                            ? platform.voiceStatus().state === "recording" ||
+                              platform.voiceStatus().state === "processing"
                             : false
                         }
                         aria-label="Voice input"
@@ -2113,7 +2114,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                   </Show>
                                   <span
                                     class="block min-w-0 max-w-[8ch] truncate"
-                                    title={props.controls.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
+                                    title={
+                                      props.controls.model.selection.current()?.name ??
+                                      language.t("dialog.model.select.title")
+                                    }
                                   >
                                     {props.controls.model.selection.current()?.name ??
                                       language.t("dialog.model.select.title")}
@@ -2150,7 +2154,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                 </Show>
                                 <span
                                   class="block min-w-0 max-w-[8ch] truncate"
-                                  title={props.controls.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
+                                  title={
+                                    props.controls.model.selection.current()?.name ??
+                                    language.t("dialog.model.select.title")
+                                  }
                                 >
                                   {props.controls.model.selection.current()?.name ??
                                     language.t("dialog.model.select.title")}

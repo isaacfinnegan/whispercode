@@ -31,8 +31,8 @@ WhisperCode is a fork of [OpenCode](https://github.com/anomalyco/opencode) that 
 - **WhisperKit speech-to-text** — voice input for hands-free coding
 - **Custom keyboard shortcuts** — adapted for mobile
 - **Mobile UI tweaks** — e.g. always-visible search bar
-- **Push Notifications** - notifies you whenever your session needs attention. 
-  
+- **Push Notifications** - notifies you whenever your session needs attention.
+
 ## Philosophy
 
 WhisperCode is a mobile port that stays true to the desktop experience. Desktop updates from upstream are regularly synced in; mobile improvements are pushed upstream to benefit desktop users too.

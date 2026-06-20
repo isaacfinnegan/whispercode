@@ -131,8 +131,6 @@ const showRequestError = (language: ReturnType<typeof useLanguage>, err: unknown
   })
 }
 
-
-
 export function SessionHeader() {
   const layout = useLayout()
   const command = useCommand()
@@ -224,8 +222,6 @@ export function SessionHeader() {
   }
 
   const [prefs, setPrefs] = persisted(Persist.global("open.app"), createStore({ app: "finder" as OpenApp }))
-
-  const mobile = createMemo(() => platform.platform === "ios" || platform.platform === "android")
 
   const refresh = () => {
     platform.haptic?.("light")
@@ -343,7 +339,7 @@ export function SessionHeader() {
         {(mount) => (
           <Portal mount={mount()}>
             <Show
-              when={isV2}
+              when={isDesktopV2()}
               fallback={
                 <div class="flex items-center gap-2">
                   <Show when={projectDirectory()}>

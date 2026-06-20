@@ -664,8 +664,15 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
         <Show when={platform.platform === "ios" || platform.platform === "android"}>
           <p class="text-text-dimmed text-12-regular mt-2">
             Can't find your server? Make sure you're serving with:{" "}
-            <code class="bg-surface-raised-base text-text-secondary-base px-1.5 py-0.5 rounded-sm break-all">opencode web --hostname 0.0.0.0</code>
-            {" "}<a class="external-link text-text-link underline" href="https://github.com/DNGriffin/whispercode?tab=readme-ov-file#quick-start">Quick Start Guide</a>
+            <code class="bg-surface-raised-base text-text-secondary-base px-1.5 py-0.5 rounded-sm break-all">
+              opencode web --hostname 0.0.0.0
+            </code>{" "}
+            <a
+              class="external-link text-text-link underline"
+              href="https://github.com/DNGriffin/whispercode?tab=readme-ov-file#quick-start"
+            >
+              Quick Start Guide
+            </a>
           </p>
         </Show>
       </div>

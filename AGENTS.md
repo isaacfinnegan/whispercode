@@ -33,7 +33,7 @@ More specific instructions exist and override this file:
 - `packages/desktop`, `packages/desktop-electron`: desktop wrappers
 - `packages/ios`, `packages/android`: mobile wrappers
 - `packages/ui`, `packages/storybook`, `packages/web`: UI primitives, previews, and docs site
-- `packages/sdk/js`, `sdks/vscode`: TypeScript SDK and VS Code extension 
+- `packages/sdk/js`, `sdks/vscode`: TypeScript SDK and VS Code extension
 - `packages/plugin`, `packages/util`, `packages/function`, `packages/push`, `packages/push-relay`: shared logic and push services
 - `packages/console/*`: console app, core, function, resource, and mail
 

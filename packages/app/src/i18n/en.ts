@@ -589,7 +589,6 @@ export const dict = {
   "home.recentProjects": "Recent projects",
   "home.empty.title": "No recent projects",
   "home.empty.description": "Get started by opening a local project",
-<<<<<<< HEAD
   "home.title": "Home",
   "home.projects": "Projects",
   "home.project.add": "Add project",
@@ -625,8 +624,6 @@ export const dict = {
     "Notifications are ready on this iPhone. Send a quick test and tap it to verify WhisperCode routes you back into the app.",
   "home.push.action.later": "Not now",
   "home.push.action.done": "Done",
-=======
->>>>>>> 63c7246087 (add notifications)
 
   "session.tab.session": "Session",
   "session.tab.review": "Review",

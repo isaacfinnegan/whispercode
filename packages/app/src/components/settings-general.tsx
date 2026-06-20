@@ -5,6 +5,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { TextField } from "@opencode-ai/ui/text-field"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme/context"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useParams } from "@solidjs/router"
@@ -193,7 +194,6 @@ export const SettingsGeneral: Component = () => {
       })
       .finally(() => setStore("checking", false))
   }
-  }
   const desktop = createMemo(() => platform.platform === "desktop")
 
   const themeOptions = createMemo<ThemeOption[]>(() => theme.ids().map((id) => ({ id, name: theme.name(id) })))
@@ -352,10 +352,7 @@ export const SettingsGeneral: Component = () => {
               : "Speech language settings are currently available on iPhone builds."
           }
         >
-          <Show
-            when={speechAvailable()}
-            fallback={<span class="text-12-medium text-text-dimmed">Unavailable</span>}
-          >
+          <Show when={speechAvailable()} fallback={<span class="text-12-medium text-text-dimmed">Unavailable</span>}>
             <Select
               data-action="settings-speech-language"
               options={speechOptions()}
@@ -625,7 +622,7 @@ export const SettingsGeneral: Component = () => {
               hideLabel
               type="text"
               value={sans()}
-              onChange={(value) => settings.appearance.setUIFont(value)}
+              onChange={(value: string) => settings.appearance.setUIFont(value)}
               placeholder={sansDefault}
               spellcheck={false}
               autocorrect="off"
@@ -648,7 +645,7 @@ export const SettingsGeneral: Component = () => {
               hideLabel
               type="text"
               value={mono()}
-              onChange={(value) => settings.appearance.setFont(value)}
+              onChange={(value: string) => settings.appearance.setFont(value)}
               placeholder={monoDefault}
               spellcheck={false}
               autocorrect="off"
@@ -671,7 +668,7 @@ export const SettingsGeneral: Component = () => {
               hideLabel
               type="text"
               value={terminal()}
-              onChange={(value) => settings.appearance.setTerminalFont(value)}
+              onChange={(value: string) => settings.appearance.setTerminalFont(value)}
               placeholder={terminalDefault}
               spellcheck={false}
               autocorrect="off"

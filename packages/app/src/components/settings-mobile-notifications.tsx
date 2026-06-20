@@ -445,9 +445,7 @@ export const SettingsMobileNotifications: Component = () => {
                   valueClass="whitespace-normal break-words text-left leading-tight"
                   class="max-w-[320px]"
                   children={(option) => (
-                    <span class="whitespace-normal break-words text-left leading-tight">
-                      {option?.label}
-                    </span>
+                    <span class="whitespace-normal break-words text-left leading-tight">{option?.label}</span>
                   )}
                   onSelect={(option) => option && settings.speech.setLocale(option.value)}
                   variant="secondary"

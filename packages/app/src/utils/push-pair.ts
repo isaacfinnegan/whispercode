@@ -254,7 +254,7 @@ function hold(item: Read, gap: number) {
   return gap
 }
 
-function note(_input: Pick<PushSetupInput, "onTrace"> | undefined, _value: string) { }
+function note(_input: Pick<PushSetupInput, "onTrace"> | undefined, _value: string) {}
 
 function listText(list?: string[]) {
   if (!list?.length) return "-"
@@ -489,7 +489,7 @@ async function pullPair(input: PushSetupInput) {
 async function waitPush(input: PushSetupInput) {
   const end = Date.now() + WAIT_MS
   let last = ""
-  for (; ;) {
+  for (;;) {
     const push = await pull(input.platform)
     const line = pushText(push)
     if (line !== last) {
@@ -521,7 +521,7 @@ async function waitDone(input: PushSetupInput): Promise<WaitPair> {
   const end = Date.now() + WAIT_MS
   let last: PairInfo | undefined
   let seen = ""
-  for (; ;) {
+  for (;;) {
     let halt = false
     const next = await pullPair(input).catch((err) => {
       if (!limited(err)) throw err
@@ -778,7 +778,7 @@ function watchPty(conn: ServerConnection.Any, id: string, input?: Pick<PushSetup
         finish(new Error("Push pairing command stream timed out. Check that the host is reachable and try again."))
         try {
           socket?.close(1000)
-        } catch { }
+        } catch {}
       }, FETCH_MS)
     } catch (err) {
       finish(new Error(`Push pairing command stream could not connect: ${text(err)}`))
@@ -790,7 +790,7 @@ function watchPty(conn: ServerConnection.Any, id: string, input?: Pick<PushSetup
       if (settled) return
       try {
         socket?.close(1000)
-      } catch { }
+      } catch {}
     },
     done,
   }
@@ -1076,10 +1076,10 @@ export async function claimPush(input: {
 
     let done:
       | {
-        out: string
-        opened: boolean
-        error?: Error
-      }
+          out: string
+          opened: boolean
+          error?: Error
+        }
       | undefined
     let pairSeen: PairRes | undefined
 
@@ -1098,7 +1098,7 @@ export async function claimPush(input: {
 
     const deadline = Date.now() + PTY_TIMEOUT
     let seen = ""
-    for (; ;) {
+    for (;;) {
       if (Date.now() >= deadline) {
         stream.close()
         throw fail(
@@ -1147,12 +1147,12 @@ export async function claimPush(input: {
       pairSeen?.status === "active"
         ? pairSeen
         : await waitClaim(
-          fetch,
-          relay,
-          pairId,
-          pairSeen?.status === "claimed" || good || result.error ? WAIT_MS : out ? CLAIM_POLL : CLAIM_WAIT,
-          input,
-        )
+            fetch,
+            relay,
+            pairId,
+            pairSeen?.status === "claimed" || good || result.error ? WAIT_MS : out ? CLAIM_POLL : CLAIM_WAIT,
+            input,
+          )
     if (pair?.status === "active" || pair?.status === "claimed") {
       note(
         input,
@@ -1318,12 +1318,12 @@ export async function runPushSetup(input: PushSetupInput): Promise<PushSetupResu
     let done: PairInfo | undefined =
       claim.pair?.status === "active"
         ? {
-          id: pair.id,
-          status: "active" as const,
-          channel: claim.pair.channel_id,
-          device: claim.pair.device_id,
-          message: claim.pair.message,
-        }
+            id: pair.id,
+            status: "active" as const,
+            channel: claim.pair.channel_id,
+            device: claim.pair.device_id,
+            message: claim.pair.message,
+          }
         : undefined
     let relayDone = claim.pair
     note(input, `finish seed ${pairText({ id: pair.id, status: relayDone?.status, message: relayDone?.message })}`)

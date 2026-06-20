@@ -30,7 +30,6 @@ import {
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { Icon } from "@opencode-ai/ui/icon"
-import { PullToRefreshIndicator } from "@/components/pull-to-refresh-indicator"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { Dialog } from "@opencode-ai/ui/dialog"
@@ -253,12 +252,6 @@ export function MessageTimeline(props: {
   setRevealMessage?: (fn: (id: string) => void) => void
   setScrollToEnd?: (fn: () => void) => void
   setHistoryAnchor?: (handlers: { capture: () => void; restore: (done: boolean) => void }) => void
-  pullToRefresh: {
-    pulling: boolean
-    progress: number
-    refreshing: boolean
-    pullDistance: number
-  }
 }) {
   let touchGesture: number | undefined
 
@@ -537,7 +530,7 @@ export function MessageTimeline(props: {
     if (measuredSessionKey !== key) {
       measuredSessionKey = key
       if (virtualizer && "measure" in virtualizer) {
-        (virtualizer as any).measure()
+        ;(virtualizer as any).measure()
       }
     }
     maybeAnchorBottom()
@@ -1284,12 +1277,6 @@ export function MessageTimeline(props: {
           "overscroll-behavior-y": "contain",
         }}
       >
-        <PullToRefreshIndicator
-          pulling={props.pullToRefresh.pulling}
-          progress={props.pullToRefresh.progress}
-          refreshing={props.pullToRefresh.refreshing}
-          pullDistance={props.pullToRefresh.pullDistance}
-        />
         <Show when={showHeader()}>
           <div
             ref={(el) => {

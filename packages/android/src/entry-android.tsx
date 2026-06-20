@@ -228,8 +228,8 @@ const App = () => {
       const result = await bridge.sendAsync<boolean>("share", data)
       return result ?? false
     },
-    getDefaultServerUrl,
-    setDefaultServerUrl,
+    getDefaultServer: getDefaultServerUrl as any,
+    setDefaultServer: setDefaultServerUrl as any,
     storage: (name?: string) => createTauriStorage(name),
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
       let urlStr = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
@@ -249,7 +249,7 @@ const App = () => {
           headers.delete("authorization")
         } catch {}
       }
-      
+
       // Consume streaming bodies into a flat Uint8Array to prevent Chromium from forcing
       // HTTP/2 and ALPN negotiation (which fails over non-secure HTTP connections).
       let body: any = requestObj ? requestObj.body : init?.body

@@ -91,7 +91,6 @@ import {
 } from "./layout/sidebar-workspace"
 import { ProjectDragOverlay, SortableProject, type ProjectSidebarContext } from "./layout/sidebar-project"
 import { SidebarContent } from "./layout/sidebar-shell"
-import { ServerConnection } from "@/context/server"
 
 export default function Layout(props: ParentProps) {
   const serverSDK = useServerSDK()
@@ -108,7 +107,7 @@ export default function Layout(props: ParentProps) {
       gettingStartedDismissed: false,
     }),
   )
-  const [route, setRoute] = persisted(
+  const [pushRoute, setPushRoute] = persisted(
     Persist.global("push.route", ["push.route.v1"]),
     createStore({
       channel: {} as Record<string, ServerConnection.Key>,
@@ -189,11 +188,11 @@ export default function Layout(props: ParentProps) {
     const channel = platform.pushState?.()?.channel
     const key = server.key
     if (!channel || !key) return
-    setRoute("channel", channel, key)
+    setPushRoute("channel", channel, key)
   })
 
   async function openPush(value: PushOpen) {
-    const mapped = value.channel ? route.channel[value.channel] : undefined
+    const mapped = value.channel ? pushRoute.channel[value.channel] : undefined
     if (mapped && mapped !== server.key) {
       const known = server.list.some((item) => ServerConnection.key(item) === mapped)
       if (known) {
@@ -218,10 +217,10 @@ export default function Layout(props: ParentProps) {
     }
 
     if (value.session) {
-      const session = await globalSDK.client.session
+      const response = await serverSDK().client.session
         .get({ sessionID: value.session })
-        .then((x) => x.data)
         .catch(() => undefined)
+      const session = response?.data
       if (session?.directory) {
         layout.projects.open(session.directory)
         server.projects.touch(session.directory)

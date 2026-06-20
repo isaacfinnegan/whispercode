@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
-import { applyOptimisticAdd, applyOptimisticRemove, mergeOptimisticPage } from "./sync"
+import { applyOptimisticAdd, applyOptimisticRemove, mergeOptimisticPage } from "./directory-sync"
 
 type Text = Extract<Part, { type: "text" }>
 
@@ -67,8 +67,8 @@ describe("sync optimistic reducers", () => {
       [{ message: userMessage("msg_2", sessionID), parts: [textPart("prt_2", sessionID, "msg_2")] }],
     )
 
-    expect(page.session.map((x) => x.id)).toEqual(["msg_1", "msg_2"])
-    expect(page.part.find((x) => x.id === "msg_2")?.part.map((x) => x.id)).toEqual(["prt_2"])
+    expect(page.session.map((x: Message) => x.id)).toEqual(["msg_1", "msg_2"])
+    expect(page.part.find((x: any) => x.id === "msg_2")?.part.map((x: Part) => x.id)).toEqual(["prt_2"])
     expect(page.confirmed).toEqual([])
     expect(page.complete).toBe(true)
   })
@@ -89,7 +89,7 @@ describe("sync optimistic reducers", () => {
       ],
     )
 
-    expect(page.part.find((x) => x.id === "msg_2")?.part.map((x) => x.id)).toEqual(["prt_1", "prt_2"])
+    expect(page.part.find((x: any) => x.id === "msg_2")?.part.map((x: Part) => x.id)).toEqual(["prt_1", "prt_2"])
     expect(page.confirmed).toEqual([])
   })
 
@@ -115,7 +115,7 @@ describe("sync optimistic reducers", () => {
     )
 
     expect(page.confirmed).toEqual(["msg_2"])
-    expect(page.part.find((x) => x.id === "msg_2")?.part).toMatchObject([
+    expect(page.part.find((x: any) => x.id === "msg_2")?.part).toMatchObject([
       { id: "prt_1", type: "text", text: "server" },
       { id: "prt_2", type: "text", text: "prt_2" },
     ])

@@ -33,12 +33,12 @@ const IS_PREVIEW = CHANNEL !== "latest"
 
 const VERSION = await (async () => {
   if (env.OPENCODE_VERSION) return env.OPENCODE_VERSION
-  
+
   try {
     const opencodePkgPath = path.resolve(import.meta.dir, "../../opencode/package.json")
     const opencodePkg = await Bun.file(opencodePkgPath).json()
     const baseVersion = (opencodePkg.version || "1.17.3").split("-whispercode-")[0]
-    
+
     let commitsAhead = 0
     try {
       const commitsStr = await $`git rev-list --count HEAD ^upstream/dev`.text()
@@ -46,7 +46,7 @@ const VERSION = await (async () => {
     } catch (e) {
       console.warn("Could not determine commits ahead of upstream/dev, defaulting to 0:", e)
     }
-    
+
     return `${baseVersion}-whispercode-${commitsAhead}`
   } catch (e) {
     console.error("Failed to compute custom fork version:", e)
