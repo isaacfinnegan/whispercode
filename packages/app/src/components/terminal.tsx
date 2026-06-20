@@ -489,6 +489,23 @@ export const Terminal = (props: TerminalProps) => {
         handleLinkClick,
       })
 
+      const isMobile = platform.platform === "ios" || platform.platform === "android"
+      if (isMobile && t.textarea) {
+        const ta = t.textarea
+        ta.style.opacity = "0.01"
+        ta.style.clipPath = "none"
+        ta.style.width = "100%"
+        ta.style.height = "100%"
+        ta.style.zIndex = "-1"
+        ta.style.caretColor = "transparent"
+        ta.style.color = "transparent"
+        ta.style.background = "transparent"
+        ta.style.border = "none"
+        ta.style.outline = "none"
+        ta.style.resize = "none"
+        ta.style.fontSize = "16px"
+      }
+
       if (local.autoFocus !== false) focusTerminal()
 
       if (typeof document !== "undefined" && document.fonts) {
