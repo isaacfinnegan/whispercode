@@ -1,5 +1,7 @@
 # Android Release Build Guide
 
+> **CRITICAL NOTE:** Always ensure you are on the `dev` branch when running builds. The `dev` branch is the main branch to use and build from. Building from a detached HEAD (such as in the middle of an incomplete rebase) will produce outdated builds (e.g., older version numbers and missing features).
+
 This is the exact process used to produce the working Android test build.
 
 ## What worked best
