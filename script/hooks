@@ -6,14 +6,41 @@ fi
 
 mkdir -p .git/hooks
 
+# Pre-push hook
 cat > .git/hooks/pre-push << 'EOF'
 #!/bin/sh
+export PATH="$PATH:$HOME/.bun/bin"
+
 # Ensure dependencies are installed before typecheck
 if command -v bun >/dev/null 2>&1; then
   bun install >/dev/null 2>&1 || true
+  bun run script/sync-android-version.ts
+  bun run typecheck
 fi
-bun run typecheck
 EOF
-
 chmod +x .git/hooks/pre-push
 echo "✅ Pre-push hook installed"
+
+# Post-merge hook
+cat > .git/hooks/post-merge << 'EOF'
+#!/bin/sh
+export PATH="$PATH:$HOME/.bun/bin"
+
+if command -v bun >/dev/null 2>&1; then
+  bun run script/sync-android-version.ts
+fi
+EOF
+chmod +x .git/hooks/post-merge
+echo "✅ Post-merge hook installed"
+
+# Post-rewrite hook (for rebases)
+cat > .git/hooks/post-rewrite << 'EOF'
+#!/bin/sh
+export PATH="$PATH:$HOME/.bun/bin"
+
+if command -v bun >/dev/null 2>&1; then
+  bun run script/sync-android-version.ts
+fi
+EOF
+chmod +x .git/hooks/post-rewrite
+echo "✅ Post-rewrite hook installed"
