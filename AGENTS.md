@@ -134,3 +134,12 @@ bun run --cwd sdks/vscode test
 - This repo is a mobile fork of `sst/opencode`; preserve `packages/ios`, `packages/android`, and mobile platform/resume/storage/share/voice integrations in `packages/app` when merging upstream
 - No `.cursorrules`, `.cursor/rules/`, or `.github/copilot-instructions.md` files were found
 - If any of those files appear later, treat them as authoritative and merge them with this guide
+
+## Environment, Dependency, and Merge Rules
+
+- **Bun and Rust PATH**: Prepends `/Users/isaac/.bun/bin` and `/Users/isaac/.rustup/toolchains/stable-aarch64-apple-darwin/bin` to `PATH` for build tasks, test runs, and git hooks to avoid toolchain version conflicts and command-not-found errors.
+- **Ghostty-web Dependency**: Pin `"ghostty-web"` to a stable commit hash in `packages/app/package.json` (like `"github:anomalyco/ghostty-web#20bd361"`) to prevent GitHub download timeouts on `bun install`.
+- **Android Version Sync**: Sync the workspace version prefix from `packages/app/package.json` to `packages/android/package.json` using `bun run script/sync-android-version.ts`. Do not skip git hooks (`post-merge` and `post-rewrite`) which run this automatically.
+- **Upstream Merge Conflicts**:
+  - Keep upstream files clean by returning `null` (e.g., in `help-button.tsx`) rather than deleting them from the file system, minimizing merge conflicts.
+  - Discard conflicting non-English `README.*.md` translation files and retain the WhisperCode-specific English documentation.
