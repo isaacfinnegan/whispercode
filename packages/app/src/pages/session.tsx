@@ -1693,6 +1693,9 @@ export default function Page() {
       onSubmit={() => {
         comments.clear()
         resumeScroll()
+        if (mobilePlatform()) {
+          scroller?.focus()
+        }
       }}
       onResponseSubmit={resumeScroll}
       followup={
