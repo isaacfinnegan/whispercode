@@ -504,6 +504,10 @@ export const Terminal = (props: TerminalProps) => {
         ta.style.outline = "none"
         ta.style.resize = "none"
         ta.style.fontSize = "16px"
+        ta.setAttribute("autocorrect", "off")
+        ta.setAttribute("autocapitalize", "none")
+        ta.setAttribute("autocomplete", "off")
+        ta.setAttribute("spellcheck", "false")
       }
 
       if (local.autoFocus !== false) focusTerminal()
