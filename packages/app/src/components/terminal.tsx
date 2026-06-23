@@ -95,6 +95,16 @@ const terminalLineHeight = (container: HTMLDivElement, term: Term) => {
   }
   return container.clientHeight > 0 ? container.clientHeight / term.rows : 16
 }
+export const isMobilePlatform = (platform: Platform) => {
+  return (
+    platform.platform === "ios" ||
+    platform.platform === "android" ||
+    (platform.platform === "web" &&
+      typeof navigator === "object" &&
+      typeof navigator.userAgent === "string" &&
+      /iPhone|iPad|iPod|Android/i.test(navigator.userAgent))
+  )
+}
 const useTerminalUiBindings = (input: {
   container: HTMLDivElement
   platform: Platform
@@ -103,7 +113,7 @@ const useTerminalUiBindings = (input: {
   handlePointerDown: () => void
   handleLinkClick: (event: MouseEvent) => void
 }) => {
-  const isMobile = input.platform.platform === "ios" || input.platform.platform === "android"
+  const isMobile = isMobilePlatform(input.platform)
   let touchY: number | undefined
   let touchRemainder = 0
 
@@ -489,7 +499,7 @@ export const Terminal = (props: TerminalProps) => {
         handleLinkClick,
       })
 
-      const isMobile = platform.platform === "ios" || platform.platform === "android"
+      const isMobile = isMobilePlatform(platform)
       if (isMobile && t.textarea) {
         const ta = t.textarea
         ta.style.opacity = "0.01"
