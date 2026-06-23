@@ -80,6 +80,7 @@ import { showToast } from "@/utils/toast"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { pathKey } from "@/utils/path-key"
 import { displayName } from "@/pages/layout/helpers"
+import { isMobilePlatform } from "./terminal"
 
 export type PromptInputState = ReturnType<typeof usePrompt>
 
@@ -256,7 +257,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (deltaX < -50 && Math.abs(deltaY) < 25 && deltaTime < 300) {
       if (
         store.mode === "normal" &&
-        (platform.platform === "ios" || platform.platform === "android") &&
+        isMobilePlatform(platform) &&
         platform.startVoiceInput
       ) {
         ;(platform as { vibrate?: () => void }).vibrate?.()
@@ -276,7 +277,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const safeFocus = () => {
     if (!editorRef) return
-    const isMobile = platform.platform === "ios" || platform.platform === "android"
+    const isMobile = isMobilePlatform(platform)
     if (isMobile && document.activeElement !== editorRef) return
     editorRef.focus()
   }
@@ -655,7 +656,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const focusEditorEnd = () => {
     requestAnimationFrame(() => {
       if (editorRef) {
-        const isMobile = platform.platform === "ios" || platform.platform === "android"
+        const isMobile = isMobilePlatform(platform)
         if (!(isMobile && document.activeElement !== editorRef)) {
           editorRef.focus()
           const range = document.createRange()
@@ -678,7 +679,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const restoreFocus = () => {
     requestAnimationFrame(() => {
       if (editorRef) {
-        const isMobile = platform.platform === "ios" || platform.platform === "android"
+        const isMobile = isMobilePlatform(platform)
         if (!(isMobile && document.activeElement !== editorRef)) {
           const cursor = prompt.cursor() ?? promptLength(prompt.current())
           editorRef.focus()
@@ -1239,7 +1240,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         prompt.set(edit.prompt, promptLength(edit.prompt))
         requestAnimationFrame(() => {
           if (editorRef) {
-            const isMobile = platform.platform === "ios" || platform.platform === "android"
+            const isMobile = isMobilePlatform(platform)
             if (!(isMobile && document.activeElement !== editorRef)) {
               editorRef.focus()
               setCursorPosition(editorRef, promptLength(edit.prompt))
@@ -1680,7 +1681,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   const target = e.target
                   if (!(target instanceof HTMLElement)) return
                   if (target.closest('[data-action^="prompt-"]')) return
-                  const isMobile = platform.platform === "ios" || platform.platform === "android"
+                  const isMobile = isMobilePlatform(platform)
                   if (!isMobile) {
                     editorRef?.focus()
                   }
@@ -1870,7 +1871,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 ) {
                   return
                 }
-                const isMobile = platform.platform === "ios" || platform.platform === "android"
+                const isMobile = isMobilePlatform(platform)
                 if (!isMobile) {
                   editorRef?.focus()
                 }
@@ -1953,7 +1954,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Show
                     when={
                       store.mode === "normal" &&
-                      (platform.platform === "ios" || platform.platform === "android") &&
+                      isMobilePlatform(platform) &&
                       platform.startVoiceInput
                     }
                   >

@@ -42,6 +42,7 @@ import { useServerSDK } from "@/context/server-sdk"
 import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
+import { isMobilePlatform } from "@/components/terminal"
 import { type FollowupDraft, sendFollowupDraft } from "@/components/prompt-input/submit"
 import { createSessionComposerState, SessionComposerRegion } from "@/pages/session/composer"
 import {
@@ -331,7 +332,7 @@ export default function Page() {
   const turnDiffs = createMemo(() => list(turnDiffSource()))
   // UPSTREAM-DIVERGENCE: Mobile webviews can stall or terminate when a power-user session tries to
   // hydrate hundreds of file diffs. Keep this guard simple: above the cap, show a message instead.
-  const mobilePlatform = () => platform.platform === "ios" || platform.platform === "android"
+  const mobilePlatform = () => isMobilePlatform(platform)
   const setReviewLimit = (mode: ChangeMode, count: number) => {
     const limit = mobileReviewLimit(count, mobilePlatform())
     if (!limit) {
@@ -803,7 +804,7 @@ export default function Page() {
 
     if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
       if (composer.blocked() || isChildSession()) return
-      const isMobile = platform.platform === "ios" || platform.platform === "android"
+      const isMobile = isMobilePlatform(platform)
       if (!isMobile) {
         inputRef?.focus()
       }
@@ -859,7 +860,7 @@ export default function Page() {
 
   const focusInput = () => {
     if (isChildSession()) return
-    const isMobile = platform.platform === "ios" || platform.platform === "android"
+    const isMobile = isMobilePlatform(platform)
     if (isMobile && document.activeElement !== inputRef) return
     inputRef?.focus()
   }
@@ -1639,7 +1640,7 @@ export default function Page() {
       () => params.id,
       (id) => {
         if (!id) {
-          const isMobile = platform.platform === "ios" || platform.platform === "android"
+          const isMobile = isMobilePlatform(platform)
           if (!isMobile) {
             requestAnimationFrame(() => inputRef?.focus())
           }

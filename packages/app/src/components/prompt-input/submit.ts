@@ -20,6 +20,7 @@ import { Identifier } from "@/utils/id"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { buildRequestParts } from "./build-request-parts"
 import { setCursorPosition } from "./editor-dom"
+import { isMobilePlatform } from "../terminal"
 import { formatServerError } from "@/utils/server-errors"
 import { ScopedKey } from "@/utils/server-scope"
 
@@ -436,7 +437,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       requestAnimationFrame(() => {
         const editor = input.editor()
         if (!editor) return
-        const isMobile = platform.platform === "ios" || platform.platform === "android"
+        const isMobile = isMobilePlatform(platform)
         if (!(isMobile && document.activeElement !== editor)) {
           editor.focus()
         }
