@@ -565,17 +565,6 @@ function SessionHeaderV2Actions(props: { state: SessionHeaderV2ActionsState }) {
           <StatusPopoverV2 />
         </Tooltip>
       </Show>
-      <TooltipKeybind title={language.t("command.mcp.toggle")} keybind={command.keybind("mcp.toggle")}>
-        <IconButtonV2
-          type="button"
-          variant="ghost-muted"
-          size="large"
-          class="!w-9 shrink-0"
-          onClick={props.state.onMcpToggle}
-          aria-label={language.t("command.mcp.toggle")}
-          icon={<IconV2 name="mcp" />}
-        />
-      </TooltipKeybind>
       <Show when={props.state.termVisible}>
         <TooltipKeybind title={language.t("command.terminal.toggle")} keybind={command.keybind("terminal.toggle")}>
           <IconButtonV2

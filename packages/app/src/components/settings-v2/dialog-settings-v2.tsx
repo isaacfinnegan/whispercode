@@ -10,6 +10,7 @@ import { SettingsProvidersV2 } from "./providers"
 import { SettingsModelsV2 } from "./models"
 import "./settings-v2.css"
 import { SettingsServersV2 } from "./servers"
+import { SettingsMobileNotifications } from "../settings-mobile-notifications"
 
 export const DialogSettings: Component = () => {
   const language = useLanguage()
@@ -53,6 +54,16 @@ export const DialogSettings: Component = () => {
                     </TabsV2.Trigger>
                   </div>
                 </div>
+
+                <div class="flex flex-col gap-1.5">
+                  <TabsV2.SectionTitle>{language.t("settings.section.mobile")}</TabsV2.SectionTitle>
+                  <div class="flex flex-col gap-1.5 w-full">
+                    <TabsV2.Trigger value="mobile-notifications">
+                      <Icon name="settings-gear" />
+                      {language.t("settings.tab.phone")}
+                    </TabsV2.Trigger>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="settings-v2-nav-footer">
@@ -75,6 +86,9 @@ export const DialogSettings: Component = () => {
         </TabsV2.Content>
         <TabsV2.Content value="models" class="settings-v2-panel">
           <SettingsModelsV2 />
+        </TabsV2.Content>
+        <TabsV2.Content value="mobile-notifications" class="settings-v2-panel">
+          <SettingsMobileNotifications />
         </TabsV2.Content>
       </TabsV2>
     </Dialog>

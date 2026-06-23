@@ -119,7 +119,7 @@ const defaultSettings: Settings = {
     showNavigation: false,
     showSearch: false,
     showStatus: true,
-    showTerminal: false,
+    showTerminal: true,
     showReasoningSummaries: false,
     shellToolPartsExpanded: false,
     editToolPartsExpanded: false,
