@@ -36,4 +36,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.9.0")
     implementation(project(":tauri-android"))
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.lifecycle:lifecycle-process:2.8.2")
 }

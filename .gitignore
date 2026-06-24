@@ -37,6 +37,7 @@ packages/android/src-tauri/gen/*
 !packages/android/src-tauri/gen/android/
 packages/android/src-tauri/gen/android/*
 !packages/android/src-tauri/gen/android/app/
+!packages/android/src-tauri/gen/android/build.gradle.kts
 packages/android/src-tauri/gen/android/app/**/*
 !packages/android/src-tauri/gen/android/app/build.gradle.kts
 !packages/android/src-tauri/gen/android/app/src/
