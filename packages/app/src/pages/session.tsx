@@ -1194,10 +1194,6 @@ export default function Page() {
   const jumpThreshold = (el: HTMLDivElement) => Math.max(400, el.clientHeight)
   const distanceFromScrollBottom = (el: HTMLDivElement) => {
     const max = Math.max(0, el.scrollHeight - el.clientHeight)
-
-    // UPSTREAM-DIVERGENCE: Keep bottom detection aligned with reverseScrollTop above. Desktop reports
-    // the bottom of the reversed timeline at scrollTop ~= 0, while mobile keeps normal positive offsets.
-    if (!mobilePlatform()) return Math.abs(el.scrollTop)
     return Math.max(0, max - el.scrollTop)
   }
 
