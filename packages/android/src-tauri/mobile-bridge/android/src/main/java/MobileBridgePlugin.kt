@@ -28,6 +28,12 @@ import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
 import java.net.URL
+import android.net.Uri
+import android.provider.Settings
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import com.google.firebase.messaging.FirebaseMessaging
+import org.json.JSONObject
 import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -51,6 +57,24 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     private val main = Handler(Looper.getMainLooper())
     private val scanExecutor = Executors.newSingleThreadExecutor()
 
+    private lateinit var prefs: SecurePreferencesManager
+    private lateinit var networkStateListener: NetworkStateListener
+    private var isLoaded = false
+
+    companion object {
+        private const val TAG = "MobileBridgePush"
+        private const val PERMISSION_REQUEST_CODE = 4072
+        private var activeInstance: MobileBridgePlugin? = null
+
+        fun emitPushReceived(payload: JSObject) {
+            activeInstance?.let { instance ->
+                if (instance.isWebViewLoaded()) {
+                    instance.trigger("pushReceived", payload)
+                }
+            }
+        }
+    }
+
     private var recognizer: SpeechRecognizer? = null
     private var pendingStop: Invoke? = null
     private var stopTimeout: Runnable? = null
@@ -72,6 +96,17 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     override fun load(webView: WebView) {
         super.load(webView)
         setVoiceState("ready")
+        
+        prefs = SecurePreferencesManager(activity)
+        networkStateListener = NetworkStateListener(activity)
+        networkStateListener.startMonitoring()
+        
+        val app = activity.application
+        app.registerActivityLifecycleCallbacks(AppLifecycleTracker)
+        
+        activeInstance = this
+        isLoaded = true
+        NotificationTapHandler.setPluginInstance(this)
     }
 
     override fun onDestroy() {
@@ -91,7 +126,18 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         } catch (_: Throwable) {
         }
         recognizer = null
+
+        networkStateListener.stopMonitoring()
+        val app = activity.application
+        app.unregisterActivityLifecycleCallbacks(AppLifecycleTracker)
+        
+        if (activeInstance == this) {
+            activeInstance = null
+        }
+        isLoaded = false
     }
+
+    fun isWebViewLoaded(): Boolean = isLoaded
 
     @Command
     fun isWhisperReady(invoke: Invoke) {
@@ -534,4 +580,243 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     }
 
     override fun onEvent(eventType: Int, params: Bundle?) {}
+
+    @Command
+    fun getPushState(invoke: Invoke) {
+        val hasToken = prefs.getPendingToken() != null
+        val hasPerm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+
+        val state = JSObject().apply {
+            put("supported", true)
+            put("permission", if (hasPerm) "authorized" else "not-determined")
+            put("allowed", hasPerm)
+            put("registered", hasToken)
+            put("paired", prefs.getDeviceSecret() != null)
+            put("channel", prefs.getChannelId())
+            put("generic", false)
+            put("diag", JSObject().apply {
+                put("token", hasToken)
+                put("relay", prefs.getRelayUrl())
+                put("device", prefs.getDeviceId())
+            })
+        }
+        invoke.resolve(state)
+    }
+
+    @Command
+    fun requestPushPermission(invoke: Invoke) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasPerm = ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            if (!hasPerm) {
+                ActivityCompat.requestPermissions(
+                    activity,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    PERMISSION_REQUEST_CODE
+                )
+            }
+        }
+
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val token = task.result
+                prefs.savePendingToken(token)
+                TokenSyncWorker.schedule(activity, token)
+            }
+            getPushState(invoke)
+        }
+    }
+
+    @Command
+    fun beginPushPairing(invoke: Invoke) {
+        val appVersion = invoke.getString("version") ?: "1.0.0"
+        val token = prefs.getPendingToken() ?: return invoke.reject("missing_fcm_token")
+        val relay = prefs.getRelayUrl()
+
+        val payload = JSONObject().apply {
+            put("apns_token", token)
+            put("device_name", Build.MODEL)
+            put("app_version", appVersion)
+            put("apns_env", "production")
+        }
+
+        executeAsyncHttpRequest("$relay/v1/pair/start", "POST", payload) { response, error ->
+            if (error != null) {
+                invoke.reject("Pair start request failed: $error")
+            } else if (response != null) {
+                val resultObj = JSObject().apply {
+                    put("id", response.getString("id"))
+                    put("command", response.getString("command"))
+                    put("expires_at", response.getString("expires_at"))
+                }
+                invoke.resolve(resultObj)
+            } else {
+                invoke.reject("Empty response payload")
+            }
+        }
+    }
+
+    @Command
+    fun getPushPairing(invoke: Invoke) {
+        val pairId = invoke.getString("pair_id") ?: return invoke.reject("missing_pair_id")
+        val relay = prefs.getRelayUrl()
+
+        executeAsyncHttpRequest("$relay/v1/pair/$pairId", "GET", null) { response, error ->
+            if (error != null) {
+                invoke.reject("Pair lookup request failed: $error")
+            } else if (response != null) {
+                val status = response.getString("status")
+                val resultObj = JSObject().apply {
+                    put("status", status)
+                }
+
+                if (status == "active") {
+                    val channelId = response.getString("channel_id")
+                    val deviceId = response.getString("device_id")
+                    val deviceSecret = response.getString("device_secret")
+
+                    prefs.saveCredentials(channelId, deviceId, deviceSecret)
+                    
+                    resultObj.put("channel_id", channelId)
+                    resultObj.put("device_id", deviceId)
+                    resultObj.put("device_secret", deviceSecret)
+                    
+                    triggerPushStateChanged()
+                }
+                invoke.resolve(resultObj)
+            } else {
+                invoke.reject("Empty pairing status payload")
+            }
+        }
+    }
+
+    @Command
+    fun setPushCredentials(invoke: Invoke) {
+        val channel = invoke.getString("channel") ?: return invoke.reject("missing_channel")
+        val device = invoke.getString("device") ?: return invoke.reject("missing_device")
+        val secret = invoke.getString("secret") ?: return invoke.reject("missing_secret")
+
+        prefs.saveCredentials(channel, device, secret)
+        triggerPushStateChanged()
+        getPushState(invoke)
+    }
+
+    @Command
+    fun clearPushPairing(invoke: Invoke) {
+        val relay = prefs.getRelayUrl()
+        val deviceId = prefs.getDeviceId()
+        val deviceSecret = prefs.getDeviceSecret()
+
+        if (deviceId != null && deviceSecret != null) {
+            val headers = mapOf(
+                "X-Device-Id" to deviceId,
+                "X-Device-Secret" to deviceSecret
+            )
+            executeAsyncHttpRequest("$relay/v1/device", "DELETE", null, headers) { _, _ -> }
+        }
+
+        prefs.clearAll()
+        triggerPushStateChanged()
+        getPushState(invoke)
+    }
+
+    @Command
+    fun setPushRelayURL(invoke: Invoke) {
+        val url = invoke.getString("url")
+        prefs.saveRelayUrl(url)
+        getPushState(invoke)
+    }
+
+    @Command
+    fun openSystemSettings(invoke: Invoke) {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", activity.packageName, null)
+            }
+            activity.startActivity(intent)
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject("Failed to launch system settings: ${e.message}")
+        }
+    }
+
+    @Command
+    fun testPush(invoke: Invoke) {
+        val href = invoke.getString("href") ?: ""
+        val relay = prefs.getRelayUrl()
+        val channelId = prefs.getChannelId() ?: return invoke.resolve(false)
+
+        val payload = JSONObject().apply {
+            put("channel_id", channelId)
+            put("title", "Test Notification")
+            put("body", "This is a test notification from WhisperCode.")
+            put("href", href)
+        }
+
+        executeAsyncHttpRequest("$relay/v1/send", "POST", payload) { response, error ->
+            invoke.resolve(error == null)
+        }
+    }
+
+    @Command
+    fun setPushPreferences(invoke: Invoke) {
+        invoke.resolve()
+    }
+
+    private fun triggerPushStateChanged() {
+        if (isWebViewLoaded()) {
+            val state = JSObject().apply {
+                put("paired", prefs.getDeviceSecret() != null)
+                put("channel", prefs.getChannelId())
+            }
+            trigger("pushStateChanged", state)
+        }
+    }
+
+    private fun executeAsyncHttpRequest(
+        urlStr: String,
+        method: String,
+        payload: JSONObject?,
+        headers: Map<String, String>? = null,
+        callback: (JSONObject?, String?) -> Unit
+    ) {
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL(urlStr)
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = method
+                    connectTimeout = 10000
+                    readTimeout = 10000
+                    headers?.forEach { (key, value) -> setRequestProperty(key, value) }
+                    
+                    if (payload != null) {
+                        doOutput = true
+                        setRequestProperty("Content-Type", "application/json")
+                        outputStream.use { os ->
+                            val bytes = payload.toString().toByteArray(Charsets.UTF_8)
+                            os.write(bytes, 0, bytes.size)
+                        }
+                    }
+                }
+
+                val responseCode = connection.responseCode
+                if (responseCode in 200..299) {
+                    val body = connection.inputStream.bufferedReader().use { it.readText() }
+                    val json = if (body.trim().isNotEmpty()) JSONObject(body) else JSONObject()
+                    activity.runOnUiThread { callback(json, null) }
+                } else {
+                    val errorBody = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                    activity.runOnUiThread { callback(null, "HTTP $responseCode: $errorBody") }
+                }
+            } catch (e: Exception) {
+                activity.runOnUiThread { callback(null, e.message) }
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
+    }
 }
