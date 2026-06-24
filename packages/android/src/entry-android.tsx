@@ -1,7 +1,18 @@
 // @refresh reload
 import { render } from "solid-js/web"
 import { createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
-import { AppBaseProviders, AppInterface, PlatformProvider, ServerConnection, type Platform } from "@opencode-ai/app"
+import {
+  AppBaseProviders,
+  AppInterface,
+  PlatformProvider,
+  ServerConnection,
+  type Platform,
+  type PairInfo,
+  type PushState,
+  type PushPrefs,
+  type PushCred,
+  type PushDiag,
+} from "@opencode-ai/app"
 import { showToast } from "@opencode-ai/ui/toast"
 import { requestPermissions } from "@tauri-apps/api/core"
 import { impactFeedback, notificationFeedback } from "@tauri-apps/plugin-haptics"
@@ -102,8 +113,125 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 declare const __BUILD_NUMBER__: string
 
+const emptyPush: PushState = {
+  supported: false,
+  permission: "unsupported",
+  allowed: false,
+  registered: false,
+  paired: false,
+  generic: true,
+}
+
+const normalizePush = (value: unknown): PushState | null => {
+  if (!value || typeof value !== "object") return null
+  const permission = (value as { permission?: unknown }).permission
+  if (
+    permission !== "unsupported" &&
+    permission !== "not-determined" &&
+    permission !== "denied" &&
+    permission !== "authorized" &&
+    permission !== "provisional" &&
+    permission !== "ephemeral"
+  ) {
+    return null
+  }
+  return {
+    supported: (value as { supported?: unknown }).supported !== false,
+    permission,
+    allowed: (value as { allowed?: unknown }).allowed === true,
+    registered: (value as { registered?: unknown }).registered === true,
+    paired: (value as { paired?: unknown }).paired === true,
+    generic: (value as { generic?: unknown }).generic !== false,
+    channel:
+      typeof (value as { channel?: unknown }).channel === "string"
+        ? (value as { channel: string }).channel
+        : undefined,
+    diag: normalizeDiag((value as { diag?: unknown }).diag) ?? undefined,
+  }
+}
+
+const normalizeDiag = (value: unknown): PushDiag | null => {
+  if (!value || typeof value !== "object") return null
+  const pair = (value as { pairStatus?: unknown }).pairStatus
+  return {
+    token: (value as { token?: unknown }).token === true,
+    tokenPending: (value as { tokenPending?: unknown }).tokenPending === true,
+    relay: typeof (value as { relay?: unknown }).relay === "string" ? (value as { relay: string }).relay : undefined,
+    device:
+      typeof (value as { device?: unknown }).device === "string" ? (value as { device: string }).device : undefined,
+    pairID:
+      typeof (value as { pairID?: unknown }).pairID === "string" ? (value as { pairID: string }).pairID : undefined,
+    pairStatus:
+      pair === "pending" || pair === "claimed" || pair === "active" || pair === "expired" || pair === "failed"
+        ? pair
+        : undefined,
+    pairExpires:
+      typeof (value as { pairExpires?: unknown }).pairExpires === "string"
+        ? (value as { pairExpires: string }).pairExpires
+        : undefined,
+    lastCode:
+      typeof (value as { lastCode?: unknown }).lastCode === "string"
+        ? (value as { lastCode: string }).lastCode
+        : undefined,
+    lastError:
+      typeof (value as { lastError?: unknown }).lastError === "string"
+        ? (value as { lastError: string }).lastError
+        : undefined,
+  }
+}
+
+const normalizePair = (value: unknown): PairInfo | null => {
+  if (!value || typeof value !== "object") return null
+  const status = (value as { status?: unknown }).status
+  if (
+    status !== "pending" &&
+    status !== "claimed" &&
+    status !== "active" &&
+    status !== "expired" &&
+    status !== "failed"
+  ) {
+    return null
+  }
+  const id = typeof (value as { id?: unknown }).id === "string" ? (value as { id: string }).id : undefined
+  if (!id && status !== "active") return null
+  return {
+    id: id ?? "active",
+    status,
+    token: typeof (value as { token?: unknown }).token === "string" ? (value as { token: string }).token : undefined,
+    command:
+      typeof (value as { command?: unknown }).command === "string"
+        ? (value as { command: string }).command
+        : undefined,
+    expires:
+      typeof (value as { expires?: unknown }).expires === "string"
+        ? (value as { expires: string }).expires
+        : undefined,
+    channel:
+      typeof (value as { channel?: unknown }).channel === "string"
+        ? (value as { channel: string }).channel
+        : undefined,
+    device:
+      typeof (value as { device?: unknown }).device === "string"
+        ? (value as { device: string }).device
+        : undefined,
+    message:
+      typeof (value as { message?: unknown }).message === "string"
+        ? (value as { message: string }).message
+        : undefined,
+  }
+}
+
 const App = () => {
   const [voice, setVoice] = createSignal<VoiceStatus>({ state: "prewarming", ready: false })
+  const [push, setPush] = createSignal<PushState | undefined>()
+
+  const refreshPush = async () => {
+    const result = await bridge.sendAsync<PushState>("getPushState")
+    const next = normalizePush(result)
+    if (!next) return push() ?? emptyPush
+    setPush(next)
+    return next
+  }
 
   const emitTranscription = (text: string, isFinal?: boolean) => {
     if (!text) return
@@ -217,6 +345,49 @@ const App = () => {
     voiceStatus: voice,
     startVoiceInput,
     stopVoiceInput,
+    pushState: push,
+    getPushState: async () => refreshPush(),
+    requestPushPermission: async () => {
+      const result = await bridge.sendAsync<PushState>("requestPushPermission")
+      const next = normalizePush(result) ?? push() ?? emptyPush
+      setPush(next)
+      return next
+    },
+    openSystemSettings: async () => {
+      await bridge.sendAsync("openSystemSettings")
+    },
+    testPush: async (href?: string) => {
+      const result = await bridge.sendAsync<{ success: boolean }>("testPush", { href })
+      return result?.success ?? false
+    },
+    beginPushPairing: async () => {
+      const result = await bridge.sendAsync<PairInfo>("beginPushPairing", { version: pkg.version })
+      const next = normalizePair(result)
+      if (!next) throw new Error("Push pairing unavailable")
+      return next
+    },
+    getPushPairing: async (pairId?: string) => {
+      const result = await bridge.sendAsync<PairInfo>("getPushPairing", { pair_id: pairId })
+      return normalizePair(result) ?? undefined
+    },
+    setPushPreferences: async (prefs: PushPrefs) => {
+      await bridge.sendAsync("setPushPreferences", prefs)
+    },
+    setPushRelayURL: async (url?: string) => {
+      await bridge.sendAsync("setPushRelayURL", { url })
+    },
+    setPushCredentials: async (input: PushCred) => {
+      const result = await bridge.sendAsync<PushState>("setPushCredentials", input)
+      const next = normalizePush(result) ?? push() ?? emptyPush
+      setPush(next)
+      return next
+    },
+    clearPushPairing: async () => {
+      const result = await bridge.sendAsync<PushState>("clearPushPairing")
+      const next = normalizePush(result) ?? push() ?? emptyPush
+      setPush(next)
+      return next
+    },
     haptic: (style: "light" | "medium" | "heavy" | "success" | "warning" | "error") => {
       if (style === "success" || style === "warning" || style === "error") {
         void notificationFeedback(style).catch(() => undefined)
@@ -352,6 +523,7 @@ const App = () => {
   onMount(() => {
     document.documentElement.dataset.platform = "android"
     void refreshVoice()
+    void refreshPush()
 
     const handleClick = (event: MouseEvent) => {
       const link = (event.target as HTMLElement | null)?.closest("a.external-link") as HTMLAnchorElement | null
@@ -380,6 +552,18 @@ const App = () => {
       if (status.state === "error") showVoiceError(status.message)
     })
 
+    const stopPushState = bridge.on("pushStateChanged", (payload) => {
+      const next = normalizePush(payload)
+      if (next) setPush(next)
+    })
+
+    const stopPushOpened = bridge.on("pushOpened", (payload) => {
+      const { href } = (payload ?? {}) as { href?: string }
+      if (href) {
+        window.dispatchEvent(new CustomEvent("opencode:pushOpened", { detail: { href } }))
+      }
+    })
+
     document.addEventListener("click", handleClick)
     window.addEventListener("focus", onFocus)
     document.addEventListener("visibilitychange", onVisible)
@@ -389,6 +573,8 @@ const App = () => {
       document.removeEventListener("visibilitychange", onVisible)
       stopListening()
       stopVoiceState()
+      stopPushState()
+      stopPushOpened()
     })
   })
 

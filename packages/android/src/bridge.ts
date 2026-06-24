@@ -7,6 +7,16 @@ const commands = {
   scanNetwork: "scan_network",
   cancelScan: "cancel_scan",
   share: "share",
+  getPushState: "get_push_state",
+  requestPushPermission: "request_push_permission",
+  openSystemSettings: "open_system_settings",
+  testPush: "test_push",
+  beginPushPairing: "begin_push_pairing",
+  getPushPairing: "get_push_pairing",
+  setPushPreferences: "set_push_preferences",
+  setPushRelayURL: "set_push_relay_url",
+  setPushCredentials: "set_push_credentials",
+  clearPushPairing: "clear_push_pairing",
 } as const
 
 const resolve = (method: string) => {

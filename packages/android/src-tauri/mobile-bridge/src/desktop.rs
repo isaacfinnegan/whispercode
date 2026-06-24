@@ -48,4 +48,64 @@ impl<R: Runtime> MobileBridge<R> {
             "Mobile bridge is unavailable on this platform".to_string(),
         ))
     }
+
+    pub fn get_push_state(&self) -> crate::Result<serde_json::Value> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn request_push_permission(&self) -> crate::Result<serde_json::Value> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn open_system_settings(&self) -> crate::Result<()> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn test_push(&self, _href: Option<String>) -> crate::Result<serde_json::Value> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn begin_push_pairing(&self, _version: Option<String>) -> crate::Result<serde_json::Value> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn get_push_pairing(&self, _pair_id: Option<String>) -> crate::Result<serde_json::Value> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn set_push_preferences(&self, _payload: serde_json::Value) -> crate::Result<()> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn set_push_relay_url(&self, _url: Option<String>) -> crate::Result<()> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn set_push_credentials(&self, _channel: String, _device: String, _secret: String) -> crate::Result<serde_json::Value> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn clear_push_pairing(&self) -> crate::Result<serde_json::Value> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
 }

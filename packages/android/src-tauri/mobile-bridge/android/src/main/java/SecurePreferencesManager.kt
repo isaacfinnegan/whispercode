@@ -18,6 +18,7 @@ class SecurePreferencesManager(private val context: Context) {
         private const val KEY_SECRET = "push.secret"
         private const val KEY_RELAY_URL = "push.relay_url"
         private const val KEY_PENDING_TOKEN = "push.pending_token"
+        private const val KEY_PAIR_ID = "push.pair_id"
     }
 
     private var sharedPreferences: SharedPreferences? = null
@@ -96,6 +97,12 @@ class SecurePreferencesManager(private val context: Context) {
     }
 
     fun getPendingToken(): String? = sharedPreferences?.getString(KEY_PENDING_TOKEN, null)
+
+    fun savePairId(pairId: String?) {
+        sharedPreferences?.edit()?.putString(KEY_PAIR_ID, pairId)?.apply()
+    }
+
+    fun getPairId(): String? = sharedPreferences?.getString(KEY_PAIR_ID, null)
 
     fun clearAll() {
         sharedPreferences?.edit()?.clear()?.apply()

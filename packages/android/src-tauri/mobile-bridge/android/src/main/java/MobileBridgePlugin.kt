@@ -45,6 +45,33 @@ class ShareArgs {
     var url: String? = null
 }
 
+@InvokeArg
+class VersionArgs {
+    var version: String? = null
+}
+
+@InvokeArg
+class PairIdArgs {
+    var pair_id: String? = null
+}
+
+@InvokeArg
+class CredentialsArgs {
+    var channel: String? = null
+    var device: String? = null
+    var secret: String? = null
+}
+
+@InvokeArg
+class UrlArgs {
+    var url: String? = null
+}
+
+@InvokeArg
+class TestPushArgs {
+    var href: String? = null
+}
+
 private data class ScanEntry(val host: String, val port: Int, val url: String)
 private data class WifiAddressInfo(val address: String, val prefixLength: Int)
 
@@ -632,7 +659,8 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun beginPushPairing(invoke: Invoke) {
-        val appVersion = invoke.getString("version") ?: "1.0.0"
+        val args = invoke.parseArgs(VersionArgs::class.java)
+        val appVersion = args.version ?: "1.0.0"
         val token = prefs.getPendingToken() ?: return invoke.reject("missing_fcm_token")
         val relay = prefs.getRelayUrl()
 
@@ -647,8 +675,10 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
             if (error != null) {
                 invoke.reject("Pair start request failed: $error")
             } else if (response != null) {
+                val pairId = response.getString("id")
+                prefs.savePairId(pairId)
                 val resultObj = JSObject().apply {
-                    put("id", response.getString("id"))
+                    put("id", pairId)
                     put("command", response.getString("command"))
                     put("expires_at", response.getString("expires_at"))
                 }
@@ -661,7 +691,8 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun getPushPairing(invoke: Invoke) {
-        val pairId = invoke.getString("pair_id") ?: return invoke.reject("missing_pair_id")
+        val args = invoke.parseArgs(PairIdArgs::class.java)
+        val pairId = args.pair_id ?: prefs.getPairId() ?: return invoke.reject("missing_pair_id")
         val relay = prefs.getRelayUrl()
 
         executeAsyncHttpRequest("$relay/v1/pair/$pairId", "GET", null) { response, error ->
@@ -695,9 +726,10 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun setPushCredentials(invoke: Invoke) {
-        val channel = invoke.getString("channel") ?: return invoke.reject("missing_channel")
-        val device = invoke.getString("device") ?: return invoke.reject("missing_device")
-        val secret = invoke.getString("secret") ?: return invoke.reject("missing_secret")
+        val args = invoke.parseArgs(CredentialsArgs::class.java)
+        val channel = args.channel ?: return invoke.reject("missing_channel")
+        val device = args.device ?: return invoke.reject("missing_device")
+        val secret = args.secret ?: return invoke.reject("missing_secret")
 
         prefs.saveCredentials(channel, device, secret)
         triggerPushStateChanged()
@@ -725,7 +757,8 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun setPushRelayURL(invoke: Invoke) {
-        val url = invoke.getString("url")
+        val args = invoke.parseArgs(UrlArgs::class.java)
+        val url = args.url
         prefs.saveRelayUrl(url)
         getPushState(invoke)
     }
@@ -745,9 +778,10 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun testPush(invoke: Invoke) {
-        val href = invoke.getString("href") ?: ""
+        val args = invoke.parseArgs(TestPushArgs::class.java)
+        val href = args.href ?: ""
         val relay = prefs.getRelayUrl()
-        val channelId = prefs.getChannelId() ?: return invoke.resolve(false)
+        val channelId = prefs.getChannelId() ?: return invoke.resolve(JSObject().put("success", false))
 
         val payload = JSONObject().apply {
             put("channel_id", channelId)
@@ -757,7 +791,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         }
 
         executeAsyncHttpRequest("$relay/v1/send", "POST", payload) { response, error ->
-            invoke.resolve(error == null)
+            invoke.resolve(JSObject().put("success", error == null))
         }
     }
 

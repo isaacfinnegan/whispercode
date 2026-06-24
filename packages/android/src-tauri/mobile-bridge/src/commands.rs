@@ -35,3 +35,58 @@ pub(crate) async fn share<R: Runtime>(
 ) -> Result<bool> {
     app.mobile_bridge().share(text, url)
 }
+
+#[command]
+pub(crate) async fn get_push_state<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value> {
+    app.mobile_bridge().get_push_state()
+}
+
+#[command]
+pub(crate) async fn request_push_permission<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value> {
+    app.mobile_bridge().request_push_permission()
+}
+
+#[command]
+pub(crate) async fn open_system_settings<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.mobile_bridge().open_system_settings()
+}
+
+#[command]
+pub(crate) async fn test_push<R: Runtime>(app: AppHandle<R>, href: Option<String>) -> Result<serde_json::Value> {
+    app.mobile_bridge().test_push(href)
+}
+
+#[command]
+pub(crate) async fn begin_push_pairing<R: Runtime>(app: AppHandle<R>, version: Option<String>) -> Result<serde_json::Value> {
+    app.mobile_bridge().begin_push_pairing(version)
+}
+
+#[command]
+pub(crate) async fn get_push_pairing<R: Runtime>(app: AppHandle<R>, pair_id: Option<String>) -> Result<serde_json::Value> {
+    app.mobile_bridge().get_push_pairing(pair_id)
+}
+
+#[command]
+pub(crate) async fn set_push_preferences<R: Runtime>(app: AppHandle<R>, payload: serde_json::Value) -> Result<()> {
+    app.mobile_bridge().set_push_preferences(payload)
+}
+
+#[command]
+pub(crate) async fn set_push_relay_url<R: Runtime>(app: AppHandle<R>, url: Option<String>) -> Result<()> {
+    app.mobile_bridge().set_push_relay_url(url)
+}
+
+#[command]
+pub(crate) async fn set_push_credentials<R: Runtime>(
+    app: AppHandle<R>,
+    channel: String,
+    device: String,
+    secret: String,
+) -> Result<serde_json::Value> {
+    app.mobile_bridge().set_push_credentials(channel, device, secret)
+}
+
+#[command]
+pub(crate) async fn clear_push_pairing<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value> {
+    app.mobile_bridge().clear_push_pairing()
+}
