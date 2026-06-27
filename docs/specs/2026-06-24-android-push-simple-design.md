@@ -27,6 +27,7 @@ To enable FCM, the Android project (`packages/android/src-tauri/gen/android`) re
 ### 2.1 Dependencies Configuration
 
 #### [MODIFY] `packages/android/src-tauri/gen/android/build.gradle.kts`
+
 The root project build configuration must include the Google Services classpath dependency:
 
 ```kotlin
@@ -38,6 +39,7 @@ buildscript {
 ```
 
 #### [MODIFY] `packages/android/src-tauri/gen/android/app/build.gradle.kts`
+
 The application module must apply the Google Services plugin and implement the Firebase Bill of Materials (BOM) and FCM libraries:
 
 ```kotlin
@@ -56,9 +58,11 @@ dependencies {
 ```
 
 ### 2.2 Google Services Config File
+
 Developers must download `google-services.json` from the Firebase Console and place it at `/packages/android/src-tauri/gen/android/app/google-services.json`.
 
 ### 2.3 Android Manifest Declarations
+
 We configure the notification channel and the background messaging receiver in `/packages/android/src-tauri/gen/android/app/src/main/AndroidManifest.xml`:
 
 ```xml
@@ -91,6 +95,7 @@ We configure the notification channel and the background messaging receiver in `
 The native plugin `/packages/android/src-tauri/mobile-bridge/android/src/main/java/MobileBridgePlugin.kt` must implement the push management methods.
 
 ### 3.1 Preferences and Storage
+
 To store pairing credentials securely on Android, `EncryptedSharedPreferences` or standard `SharedPreferences` is used. We define a helper class or method inside the plugin:
 
 ```kotlin
@@ -108,6 +113,7 @@ private const val KEY_PAIR_EXPIRES = "push.pair_expires"
 ### 3.2 Command Implementations
 
 #### getPushState
+
 Returns the current registration and pairing status.
 
 ```kotlin
@@ -137,6 +143,7 @@ fun getPushState(invoke: Invoke) {
 ```
 
 #### requestPushPermission
+
 Requests the runtime notification permission on API level 33+ (Android 13) and fetches the FCM registration token.
 
 ```kotlin
@@ -161,6 +168,7 @@ fun requestPushPermission(invoke: Invoke) {
 ```
 
 #### beginPushPairing
+
 Calls `/v1/pair/start` on the Push Relay with the FCM registration token.
 
 ```kotlin
@@ -191,6 +199,7 @@ fun beginPushPairing(invoke: Invoke) {
 ```
 
 #### getPushPairing
+
 Polls `/v1/pair/{id}` on the Relay to check if the host has claimed this device.
 
 ```kotlin
@@ -220,6 +229,7 @@ fun getPushPairing(invoke: Invoke) {
 ```
 
 #### setPushCredentials
+
 Explicitly sets the credentials (channel, device, secret).
 
 ```kotlin
@@ -235,6 +245,7 @@ fun setPushCredentials(invoke: Invoke) {
 ```
 
 #### clearPushPairing
+
 Calls `/v1/device` `DELETE` on the relay and purges local credentials.
 
 ```kotlin
@@ -275,7 +286,7 @@ const platform: Platform = {
   platform: "android",
   os: "android",
   version: pkg.version,
-  
+
   // Existing fields ...
 
   pushState: push,
@@ -316,7 +327,7 @@ const platform: Platform = {
     const result = await bridge.sendAsync<PushState>("clearPushPairing")
     setPush(result)
     return result
-  }
+  },
 }
 
 // Inside onMount
@@ -349,6 +360,7 @@ onMount(() => {
 ## 5. End-to-End Pairing & Delivery Flow
 
 ### 5.1 Simple Pairing Flow
+
 1. **User requests pairing:** Frontend triggers `platform.requestPushPermission()`.
 2. **Permission Check:** Android requests runtime permission `POST_NOTIFICATIONS` (API 33+).
 3. **Token Generation:** Firebase SDK requests an FCM Registration Token.
@@ -358,8 +370,9 @@ onMount(() => {
 7. **Polling Completion:** The mobile app polls `/v1/pair/{id}` via `getPushPairing()`. Once pairing is claimed/active, the app receives the `channel_id`, `device_id`, and `device_secret` credentials.
 
 ### 5.2 Notification Display Flow
-* **App In Foreground:** The Custom `WhisperFirebaseMessagingService` receives the FCM payload. If the user is active, the app suppresses visual notification display (or shows it only if forced) and fires a direct event or local notification to keep the UI in sync.
-* **App In Background:** Firebase SDK/OS displays the notification tray alert. The payload contains `data` fields: `title`, `body`, and `href`.
-* **Deep Linking / Notification Click:**
-  * When a user taps the notification, the system launches or resumes `MainActivity` with an Intent carrying the `href` string.
-  * In `MainActivity.onCreate` / `onNewIntent`, the Kotlin layer extracts the `href` parameter, caches it, and transmits it via `bridge.trigger("pushOpened", ...)` once the WebView is loaded.
+
+- **App In Foreground:** The Custom `WhisperFirebaseMessagingService` receives the FCM payload. If the user is active, the app suppresses visual notification display (or shows it only if forced) and fires a direct event or local notification to keep the UI in sync.
+- **App In Background:** Firebase SDK/OS displays the notification tray alert. The payload contains `data` fields: `title`, `body`, and `href`.
+- **Deep Linking / Notification Click:**
+  - When a user taps the notification, the system launches or resumes `MainActivity` with an Intent carrying the `href` string.
+  - In `MainActivity.onCreate` / `onNewIntent`, the Kotlin layer extracts the `href` parameter, caches it, and transmits it via `bridge.trigger("pushOpened", ...)` once the WebView is loaded.

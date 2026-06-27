@@ -143,9 +143,7 @@ const normalizePush = (value: unknown): PushState | null => {
     paired: (value as { paired?: unknown }).paired === true,
     generic: (value as { generic?: unknown }).generic !== false,
     channel:
-      typeof (value as { channel?: unknown }).channel === "string"
-        ? (value as { channel: string }).channel
-        : undefined,
+      typeof (value as { channel?: unknown }).channel === "string" ? (value as { channel: string }).channel : undefined,
     diag: normalizeDiag((value as { diag?: unknown }).diag) ?? undefined,
   }
 }
@@ -199,25 +197,15 @@ const normalizePair = (value: unknown): PairInfo | null => {
     status,
     token: typeof (value as { token?: unknown }).token === "string" ? (value as { token: string }).token : undefined,
     command:
-      typeof (value as { command?: unknown }).command === "string"
-        ? (value as { command: string }).command
-        : undefined,
+      typeof (value as { command?: unknown }).command === "string" ? (value as { command: string }).command : undefined,
     expires:
-      typeof (value as { expires?: unknown }).expires === "string"
-        ? (value as { expires: string }).expires
-        : undefined,
+      typeof (value as { expires?: unknown }).expires === "string" ? (value as { expires: string }).expires : undefined,
     channel:
-      typeof (value as { channel?: unknown }).channel === "string"
-        ? (value as { channel: string }).channel
-        : undefined,
+      typeof (value as { channel?: unknown }).channel === "string" ? (value as { channel: string }).channel : undefined,
     device:
-      typeof (value as { device?: unknown }).device === "string"
-        ? (value as { device: string }).device
-        : undefined,
+      typeof (value as { device?: unknown }).device === "string" ? (value as { device: string }).device : undefined,
     message:
-      typeof (value as { message?: unknown }).message === "string"
-        ? (value as { message: string }).message
-        : undefined,
+      typeof (value as { message?: unknown }).message === "string" ? (value as { message: string }).message : undefined,
   }
 }
 

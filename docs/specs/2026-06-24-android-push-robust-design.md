@@ -17,20 +17,21 @@ graph TD
     subgraph Native [Android OS Native Layer]
         BP <-->|Secure Operations| SEC[SecurePreferencesManager]
         SEC <-->|Credentials / MasterKey| KS[(Android KeyStore)]
-        
+
         FCM[WhisperFirebaseMessagingService] -->|Receive Notification| CHK{WebView Running?}
         CHK -->|Yes| BP
         CHK -->|No| NOT[Local Notification Tray]
-        
+
         FCM -->|Token Refresh| WORK[WorkManager Scheduler]
         WORK -->|Queue Sync Job| SYNC[TokenSyncWorker]
         SYNC -->|PUT /v1/device| RELAY[Push Relay Server]
-        
+
         NET[NetworkStateListener] -->|Trigger Sync| WORK
     end
 ```
 
 ### 1.1 Webview-Independent Push Processing
+
 When a push notification is delivered to the device, the SolidJS/WebView layer may not be running (the app might be backgrounded or force-killed by the OS). The system must handle notification display and decryption entirely in native Kotlin code. When the user taps the notification, the native layer boots or restores the WebView and passes the payload forward.
 
 ---
@@ -40,6 +41,7 @@ When a push notification is delivered to the device, the SolidJS/WebView layer m
 To secure the pairing credentials (`channel_id`, `device_id`, and `device_secret`) against extraction, Android's `EncryptedSharedPreferences` is used. This provides hardware-backed AES-256 encryption using keys managed in the Android KeyStore.
 
 ### 2.1 Dependencies Configuration
+
 The `androidx.security:security-crypto` library must be added to the plugin's `build.gradle` or app module's dependencies:
 
 ```kotlin
@@ -49,6 +51,7 @@ dependencies {
 ```
 
 ### 2.2 SecurePreferencesManager Implementation
+
 This helper manages secure reading, writing, and KeyStore corruption recovery.
 
 ```kotlin
@@ -66,7 +69,7 @@ class SecurePreferencesManager(private val context: Context) {
     companion object {
         private const val TAG = "SecurePrefs"
         private const val SECURE_FILE_NAME = "whisper_secure_prefs"
-        
+
         private const val KEY_CHANNEL = "push.channel"
         private const val KEY_DEVICE = "push.device"
         private const val KEY_SECRET = "push.secret"
@@ -108,13 +111,13 @@ class SecurePreferencesManager(private val context: Context) {
             // Delete KeyStore entry
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             keyStore.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
-            
+
             // Delete the preferences file
             val sharedPrefsFile = File(context.filesDir.parent, "shared_prefs/$SECURE_FILE_NAME.xml")
             if (sharedPrefsFile.exists()) {
                 sharedPrefsFile.delete()
             }
-            
+
             // Attempt to re-initialize clean preferences
             val masterKey = MasterKey.Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -199,7 +202,7 @@ class WhisperFirebaseMessagingService : FirebaseMessagingService() {
         val title = payload["title"] ?: "New Message"
         val body = payload["body"] ?: ""
         val href = payload["href"]
-        
+
         Log.d(TAG, "Notification received: title=$title, body=$body, href=$href")
 
         val prefs = SecurePreferencesManager(applicationContext)
@@ -283,12 +286,13 @@ class WhisperFirebaseMessagingService : FirebaseMessagingService() {
 
     private fun decryptPayload(encryptedData: String, secret: String): String? {
         // Implement decryption scheme matched to the Relay Server's AES output format
-        return null 
+        return null
     }
 }
 ```
 
 ### 3.2 Deep Link Forwarding to WebView
+
 When `MainActivity` is activated via a notification tap, the deep link `href` is extracted. To handle cases where the WebView has not finished loading, the native code caches the `href` until the frontend explicitly registers its listener.
 
 ```kotlin
@@ -351,6 +355,7 @@ override fun onNewIntent(intent: Intent?) {
 Token sync operations can fail due to network drops, DNS failures, or server-side rate limits. We use `WorkManager` for guaranteed background execution with exponential backoff retries.
 
 ### 4.1 TokenSyncWorker Implementation
+
 This worker runs background synchronization requests to the Push Relay server.
 
 ```kotlin
@@ -456,6 +461,7 @@ class TokenSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
 ```
 
 ### 4.2 Foreground Network Connectivity Observer
+
 When the application is in the foreground, waiting for a periodic background sync worker creates latency. We register a `NetworkCallback` to instantly invoke pending synchronizations.
 
 ```kotlin
@@ -686,11 +692,11 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity) {
 
                     // Atomically persist pairing configuration
                     prefs.saveCredentials(channelId, deviceId, deviceSecret)
-                    
+
                     resultObj.put("channel_id", channelId)
                     resultObj.put("device_id", deviceId)
                     resultObj.put("device_secret", deviceSecret)
-                    
+
                     // Trigger state sync downstream
                     triggerPushStateChanged()
                 }
@@ -782,7 +788,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity) {
                     connectTimeout = 10000
                     readTimeout = 10000
                     headers?.forEach { (key, value) -> setRequestProperty(key, value) }
-                    
+
                     if (payload != null) {
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")

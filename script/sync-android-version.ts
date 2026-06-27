@@ -27,12 +27,12 @@ try {
     console.log(`Syncing Android version: ${androidVersion} -> ${expectedAndroidVersion}`)
     androidPkg.version = expectedAndroidVersion
     await Bun.write(androidPkgPath, JSON.stringify(androidPkg, null, 2) + "\n")
-    
+
     // Also run bun install to update lockfile
     console.log("Running bun install to update lockfile...")
     const env = { ...process.env, PATH: `${process.env.PATH}:/Users/isaac/.bun/bin` }
     execSync("bun install", { stdio: "inherit", env })
-    
+
     // Try to auto-commit the version sync
     try {
       execSync("git add packages/android/package.json bun.lock", { stdio: "inherit", env })

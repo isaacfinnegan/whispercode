@@ -11,7 +11,7 @@ import { useLanguage } from "@/context/language"
 import type { Platform } from "@/context/platform"
 import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
-import { useServer } from "@/context/server"
+import { useServerSDK } from "@/context/server-sdk"
 import { terminalFontFamily, useSettings } from "@/context/settings"
 import type { LocalPTY } from "@/context/terminal"
 import { disposeIfDisposable, getHoveredLinkText, setOptionIfSupported } from "@/utils/runtime-adapters"
@@ -252,13 +252,15 @@ export const Terminal = (props: TerminalProps) => {
   const settings = useSettings()
   const theme = useTheme()
   const language = useLanguage()
-  const server = useServer()
+  // Terminal captures its connection for the PTY lifetime, so callers must key it per server/session.
+  const connection = useServerSDK()().server
   const directory = sdk().directory
   const client = sdk().client
   const url = sdk().url
-  const auth = server.current?.http
+  const auth = connection.http
   const username = auth?.username ?? "opencode"
   const password = auth?.password ?? ""
+  const authToken = connection.type === "http" ? connection.authToken : false
   const sameOrigin = new URL(url, location.href).origin === location.origin
   let container!: HTMLDivElement
   const [local, others] = splitProps(props, ["pty", "class", "classList", "autoFocus", "onConnect", "onConnectError"])
@@ -654,7 +656,7 @@ export const Terminal = (props: TerminalProps) => {
             sameOrigin,
             username,
             password,
-            authToken: server.current?.type === "http" ? server.current.authToken : false,
+            authToken,
           }),
         )
         socket.binaryType = "arraybuffer"
