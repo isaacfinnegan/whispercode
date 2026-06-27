@@ -22,6 +22,27 @@ if [ ! -d "$JAVA_HOME" ]; then
   exit 1
 fi
 
+echo "==> Building CLI..."
+bun run --cwd "$SCRIPT_DIR/../../packages/opencode" build
+
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+if [ "$ARCH" = "x86_64" ]; then
+  ARCH="x64"
+fi
+
+CLI_BIN="$SCRIPT_DIR/../../packages/opencode/dist/opencode-${OS}-${ARCH}/bin/opencode"
+
+if [ -f "$CLI_BIN" ]; then
+  echo "==> Installing CLI to ~/.opencode/bin/..."
+  mkdir -p "$HOME/.opencode/bin"
+  cp "$CLI_BIN" "$HOME/.opencode/bin/opencode"
+  echo "==> Installed CLI: $($HOME/.opencode/bin/opencode --version)"
+else
+  echo "ERROR: CLI binary not found at $CLI_BIN"
+  exit 1
+fi
+
 echo "==> Building frontend..."
 bun run build
 
