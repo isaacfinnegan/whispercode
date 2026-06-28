@@ -2,11 +2,20 @@ import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Effect, Stream } from "effect"
 import { HttpBody, HttpClient, HttpClientRequest, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { createHash } from "node:crypto"
+import nodePath from "node:path"
 import { ProxyUtil } from "../proxy-util"
 
 let embeddedUIPromise: Promise<Record<string, string> | null> | undefined
 
-export const UI_UPSTREAM = new URL("https://app.opencode.ai")
+export const getUIUpstream = () => {
+  try {
+    return new URL(process.env.OPENCODE_UI_UPSTREAM || "https://app.opencode.ai")
+  } catch {
+    return new URL("https://app.opencode.ai")
+  }
+}
+
+export const UI_UPSTREAM = getUIUpstream()
 
 export const csp = (hash = "") =>
   `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'${hash ? ` 'sha256-${hash}'` : ""}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src * data:`
@@ -38,7 +47,7 @@ function proxyResponseHeaders(headers: Record<string, string>) {
 }
 
 export function upstreamURL(path: string) {
-  return new URL(path, UI_UPSTREAM).toString()
+  return new URL(path, getUIUpstream()).toString()
 }
 
 export function embeddedUI(disableEmbeddedWebUi: boolean) {
@@ -81,13 +90,35 @@ export function serveUIEffect(
 ) {
   return Effect.gen(function* () {
     const embeddedWebUI = yield* Effect.promise(() => embeddedUI(services.disableEmbeddedWebUi))
-    const path = new URL(request.url, "http://localhost").pathname
+    const requestPath = new URL(request.url, "http://localhost").pathname
 
-    if (embeddedWebUI) return yield* serveEmbeddedUIEffect(path, services.fs, embeddedWebUI)
+    if (embeddedWebUI) return yield* serveEmbeddedUIEffect(requestPath, services.fs, embeddedWebUI)
 
+    // Check if local dev assets exist in packages/app/dist or custom path
+    const isTest = process.env.NODE_ENV === "test"
+    const localDistPath =
+      process.env.OPENCODE_LOCAL_DIST_PATH ||
+      (!isTest && nodePath.resolve(import.meta.dirname, "../../../../packages/app/dist"))
+
+    const hasLocalDist =
+      localDistPath && (yield* services.fs.existsSafe(nodePath.join(localDistPath, "index.html")))
+
+    if (hasLocalDist) {
+      const filePath = nodePath.join(localDistPath, requestPath.replace(/^\//, ""))
+      const exists = yield* services.fs.existsSafe(filePath)
+      const isFile = exists && (yield* services.fs.isFile(filePath).pipe(Effect.catch(() => Effect.succeed(false))))
+      const targetFile = isFile ? filePath : nodePath.join(localDistPath, "index.html")
+
+      const body = yield* services.fs.readFile(targetFile).pipe(
+        Effect.catch(() => services.fs.readFile(nodePath.join(localDistPath, "index.html"))),
+      )
+      return embeddedUIResponse(targetFile, body)
+    }
+
+    const upstream = getUIUpstream()
     const response = yield* services.client.execute(
-      HttpClientRequest.make(request.method)(upstreamURL(path), {
-        headers: ProxyUtil.headers(request.headers, { host: UI_UPSTREAM.host }),
+      HttpClientRequest.make(request.method)(upstreamURL(requestPath), {
+        headers: ProxyUtil.headers(request.headers, { host: upstream.host }),
         body: requestBody(request),
       }),
     )
