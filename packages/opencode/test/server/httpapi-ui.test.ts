@@ -450,4 +450,94 @@ describe("HttpApi UI fallback", () => {
       expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:3000")
     }),
   )
+
+  it.live("respects custom OPENCODE_UI_UPSTREAM proxy target", () =>
+    Effect.gen(function* () {
+      let proxiedUrl: string | undefined
+      const originalUpstream = process.env.OPENCODE_UI_UPSTREAM
+      process.env.OPENCODE_UI_UPSTREAM = "https://custom.opencode-dev.ai"
+
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          if (originalUpstream) {
+            process.env.OPENCODE_UI_UPSTREAM = originalUpstream
+          } else {
+            delete process.env.OPENCODE_UI_UPSTREAM
+          }
+        }),
+      )
+
+      const response = yield* uiApp({
+        disableEmbeddedWebUi: true,
+        client: httpClient(
+          new Response("<html>custom</html>", { headers: { "content-type": "text/html" } }),
+          (request) => {
+            proxiedUrl = request.url
+          },
+        ),
+      }).request("/")
+
+      expect(response.status).toBe(200)
+      expect(yield* responseText(response)).toBe("<html>custom</html>")
+      expect(proxiedUrl).toBe("https://custom.opencode-dev.ai/")
+    }),
+  )
+
+  it.live("falls back to local dist assets if index.html exists", () =>
+    Effect.gen(function* () {
+      const fs = yield* FSUtil.Service
+      const nodePath = require("node:path")
+
+      // Create a temporary directory structure for testing local dist fallback
+      const tempDist = yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const dir = `/tmp/opencode-test-dist-${Math.random().toString(36).slice(2)}`
+          return dir
+        }),
+        (dir) => fs.remove(dir, { recursive: true }).pipe(Effect.orDie),
+      )
+
+      yield* fs.makeDirectory(tempDist, { recursive: true })
+      yield* fs.writeFileString(nodePath.join(tempDist, "index.html"), "<html>local html</html>")
+      yield* fs.writeFileString(nodePath.join(tempDist, "script.js"), "console.log('local js')")
+
+      const originalDist = process.env.OPENCODE_LOCAL_DIST_PATH
+      process.env.OPENCODE_LOCAL_DIST_PATH = tempDist
+
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          if (originalDist) {
+            process.env.OPENCODE_LOCAL_DIST_PATH = originalDist
+          } else {
+            delete process.env.OPENCODE_LOCAL_DIST_PATH
+          }
+        }),
+      )
+
+      const appInstance = uiApp({
+        disableEmbeddedWebUi: true,
+      })
+
+      // Request root '/'
+      const response = yield* appInstance.request("/")
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("text/html")
+      expect(yield* responseText(response)).toBe("<html>local html</html>")
+
+      // Request '/script.js'
+      const responseJs = yield* appInstance.request("/script.js")
+
+      expect(responseJs.status).toBe(200)
+      expect(responseJs.headers.get("content-type")).toContain("text/javascript")
+      expect(yield* responseText(responseJs)).toBe("console.log('local js')")
+
+      // Request a non-existent path should fallback to index.html
+      const responseRoute = yield* appInstance.request("/settings")
+
+      expect(responseRoute.status).toBe(200)
+      expect(responseRoute.headers.get("content-type")).toContain("text/html")
+      expect(yield* responseText(responseRoute)).toBe("<html>local html</html>")
+    }),
+  )
 })
