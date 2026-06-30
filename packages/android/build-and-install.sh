@@ -23,7 +23,7 @@ if [ ! -d "$JAVA_HOME" ]; then
 fi
 
 echo "==> Building CLI..."
-bun run --cwd "$SCRIPT_DIR/../../packages/opencode" build
+bun run --cwd "$SCRIPT_DIR/../../packages/opencode" build --single
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
