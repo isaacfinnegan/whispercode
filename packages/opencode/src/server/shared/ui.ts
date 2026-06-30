@@ -116,6 +116,12 @@ export function serveUIEffect(
     }
 
     const upstream = getUIUpstream()
+    if (requestPath === "/" || requestPath === "/index.html") {
+      yield* Effect.logWarning(
+        `Local Web UI assets not found in ${localDistPath || "packages/app/dist"}. Proxying UI to ${upstream.origin}. ` +
+          `To serve local assets, run 'bun run --cwd packages/app build'.`,
+      )
+    }
     const response = yield* services.client.execute(
       HttpClientRequest.make(request.method)(upstreamURL(requestPath), {
         headers: ProxyUtil.headers(request.headers, { host: upstream.host }),
