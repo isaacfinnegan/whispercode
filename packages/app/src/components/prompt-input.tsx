@@ -82,6 +82,7 @@ import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { pathKey } from "@/utils/path-key"
 import { displayName } from "@/pages/layout/helpers"
 import { isMobilePlatform } from "./terminal"
+import { appendTranscription } from "./prompt-input/transcription"
 import type { ReferenceInfo } from "@opencode-ai/sdk/v2/client"
 
 export type PromptInputState = ReturnType<typeof usePrompt>
@@ -717,9 +718,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (detail.isFinal === false) return
       if (!editorRef) return
 
-      editorRef.focus()
-      setCursorPosition(editorRef, promptLength(prompt.current()))
-      addPart({ type: "text", content: detail.text, start: 0, end: 0 })
+      // UPSTREAM-DIVERGENCE
+      const isMobile = isMobilePlatform(platform)
+      if (isMobile) {
+        const nextPrompt = appendTranscription(prompt.current(), detail.text)
+        prompt.set(nextPrompt, promptLength(nextPrompt))
+        queueScroll()
+      } else {
+        editorRef.focus()
+        setCursorPosition(editorRef, promptLength(prompt.current()))
+        addPart({ type: "text", content: detail.text, start: 0, end: 0 })
+      }
     }
 
     window.addEventListener("opencode:transcription", handleTranscription)
