@@ -115,3 +115,5 @@ export function Dialog(props: DialogProps) {
     </div>
   )
 }
+
+export const DialogV2 = Dialog
