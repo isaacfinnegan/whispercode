@@ -98,7 +98,7 @@ export function serveUIEffect(
     const isTest = process.env.NODE_ENV === "test"
     const localDistPath =
       process.env.OPENCODE_LOCAL_DIST_PATH ||
-      (!isTest && nodePath.resolve(import.meta.dirname, "../../../../packages/app/dist"))
+      (!isTest && nodePath.resolve(import.meta.dirname, "../../../../app/dist"))
 
     const hasLocalDist =
       localDistPath && (yield* services.fs.existsSafe(nodePath.join(localDistPath, "index.html")))

@@ -1,4 +1,5 @@
 import { sampledChecksum } from "@opencode-ai/core/util/encode"
+import { Markdown } from "./markdown"
 import {
   areFilesEqual,
   areOptionsEqual,
@@ -1204,9 +1205,87 @@ function DiffViewer<T>(props: DiffFileProps<T>) {
 // Public API
 // ---------------------------------------------------------------------------
 
+function PlanViewer<T>(props: TextFileProps<T>) {
+  const [viewMode, setViewMode] = createSignal<"visual" | "code">("visual")
+
+  const text = () => {
+    const value = props.file.contents as unknown
+    if (typeof value === "string") return value
+    if (Array.isArray(value)) return value.join("\n")
+    if (value == null) return ""
+    return String(value)
+  }
+
+  const taskCount = () => {
+    const t = text()
+    const matches = t.match(/-\s*\[[ xX]\]/g)
+    return matches ? matches.length : 0
+  }
+
+  const completedCount = () => {
+    const t = text()
+    const matches = t.match(/-\s*\[[xX]\]/g)
+    return matches ? matches.length : 0
+  }
+
+  const progressPercent = () => {
+    const total = taskCount()
+    if (total === 0) return 0
+    return Math.round((completedCount() / total) * 100)
+  }
+
+  return (
+    <Show when={viewMode() === "visual"} fallback={TextViewer(props)}>
+      <div class="plan-viewer-container" data-component="plan-viewer">
+        <div class="plan-viewer-header">
+          <div class="plan-viewer-progress-info">
+            <Show when={taskCount() > 0} fallback={<div class="plan-viewer-no-tasks">No tasks defined in plan file</div>}>
+              <div class="plan-viewer-progress-label">
+                {completedCount()} of {taskCount()} tasks completed ({progressPercent()}%)
+              </div>
+              <div class="plan-viewer-progress-bar-container">
+                <div class="plan-viewer-progress-bar-fill" style={{ width: `${progressPercent()}%` }} />
+              </div>
+            </Show>
+          </div>
+          <div class="plan-viewer-toggle-group">
+            <button
+              type="button"
+              class={`plan-viewer-toggle-button ${viewMode() === "visual" ? "active" : ""}`}
+              onClick={() => setViewMode("visual")}
+            >
+              Visual Plan
+            </button>
+            <button
+              type="button"
+              class={`plan-viewer-toggle-button ${viewMode() === "code" ? "active" : ""}`}
+              onClick={() => setViewMode("code")}
+            >
+              Raw Code
+            </button>
+          </div>
+        </div>
+        <div class="plan-viewer-content" data-plan-preview="true">
+          <Markdown text={text()} class="select-text prose max-w-none" />
+        </div>
+      </div>
+    </Show>
+  )
+}
+
+const isPlanFile = (path: string | undefined): boolean => {
+  if (!path) return false
+  return path.endsWith(".md") && (path.includes("docs/plans/") || path.includes("/plans/"))
+}
+
 export function File<T>(props: FileProps<T>) {
   if (props.mode === "text") {
-    return <FileMedia media={props.media} fallback={() => TextViewer(props)} />
+    return (
+      <FileMedia
+        media={props.media}
+        fallback={() => (isPlanFile(props.file.name) ? PlanViewer(props) : TextViewer(props))}
+      />
+    )
   }
 
   return <FileMedia media={props.media} fallback={() => DiffViewer(props)} />
