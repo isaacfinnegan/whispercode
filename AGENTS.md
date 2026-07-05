@@ -32,7 +32,6 @@ You are a Swarm Developer Agent tasked with building, testing, and debugging And
 - `gradlew`
 - `./gradlew`
 - `java`
-- `bun`
 
 ### Blocked Commands (DO NOT USE)
 
