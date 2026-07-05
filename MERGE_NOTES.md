@@ -75,6 +75,22 @@ To prevent unexpected virtual keyboard popups on mobile touch browsers, programm
   - _Change:_ Binds to port `0` (dynamic port allocation) when port `4096` is already occupied, instead of looping up to port 65535.
 - **`packages/server/src/handlers/provider.ts`**:
   - _Change:_ Blocks provider catalog requests until `PluginBoot` completes loading, preventing startup errors.
+- **`packages/opencode/src/server/shared/ui.ts`**:
+  - _Change:_ Corrected the local web UI fallback directory path resolution from `../../../../packages/app/dist` to `../../../../app/dist` to resolve the double `packages/packages` path mismatch. This allows the local backend server to correctly serve local app assets (including local settings and terminal button features) when present, rather than fallback proxying production UI.
+
+---
+
+### C. Session UI (`packages/session-ui`)
+
+To enhance plan readability, WhisperCode introduces a formatted checklist preview for markdown plan files:
+
+- **`packages/session-ui/src/components/file.tsx`**:
+  - _Change:_ Added `PlanViewer` and `isPlanFile` helper to intercept text files ending in `.md` and containing `docs/plans/` or `/plans/`. Rather than rendering the raw markdown text inside `TextViewer`, the file is rendered using `PlanViewer` by default.
+  - _Change:_ Added a toggle header allowing users to switch between the "Visual Plan" checklist mode (which leverages the custom `@opencode-ai/session-ui/markdown` component) and the "Raw Code" view mode. It computes task completion metrics dynamically via regex on checklist patterns (`- [ ]` / `- [x]`) and displays a visual progress bar.
+- **`packages/session-ui/src/components/file.css`**:
+  - _Change:_ Added container layout, progress bar, header, and toggle button styles for the custom PlanViewer.
+- **`packages/session-ui/src/components/markdown.css`**:
+  - _Change:_ Added special checklist styling targeted under `[data-plan-preview="true"]` to format Markdown task list items as interactive cards. Completed items (`:has(input[type="checkbox"]:checked)`) are rendered with lower opacity and a line-through effect.
 
 ---
 

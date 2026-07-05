@@ -1,0 +1,31 @@
+diff --git a/packages/app/src/index.css b/packages/app/src/index.css
+index bc6866f976..6274ed788b 100644
+--- a/packages/app/src/index.css
++++ b/packages/app/src/index.css
+@@ -24,6 +24,11 @@
+   }
+ }
+ 
++#root {
++  padding-top: env(safe-area-inset-top, 0px);
++  padding-bottom: env(safe-area-inset-bottom, 0px);
++}
++
+ @layer components {
+   [data-component="getting-started"] {
+     container-type: inline-size;
+diff --git a/packages/app/src/pages/layout-new.tsx b/packages/app/src/pages/layout-new.tsx
+index 329b7c56b0..2c7f253790 100644
+--- a/packages/app/src/pages/layout-new.tsx
++++ b/packages/app/src/pages/layout-new.tsx
+@@ -27,10 +27,6 @@ export default function NewLayout(props: ParentProps) {
+   return (
+     <div
+       class="relative bg-v2-background-bg-deep flex-1 min-h-0 min-w-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text"
+-      style={{
+-        "padding-top": "env(safe-area-inset-top, 0px)",
+-        "padding-bottom": "env(safe-area-inset-bottom, 0px)",
+-      }}
+     >
+       <Titlebar update={update} />
+       <main class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-strict">

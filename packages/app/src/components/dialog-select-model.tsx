@@ -296,7 +296,10 @@ export function ModelSelectorPopoverV2(props: {
       setStore({ open: true, active: initialActive() })
       setTimeout(() =>
         requestAnimationFrame(() => {
-          searchRef?.focus()
+          const platform = document.documentElement.dataset.platform
+          if (platform !== "ios" && platform !== "android") {
+            searchRef?.focus()
+          }
           activeItem()?.scrollIntoView({ block: "nearest" })
         }),
       )
