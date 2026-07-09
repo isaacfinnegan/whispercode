@@ -20,6 +20,7 @@ Scope: applies to the whole repo unless a deeper `AGENTS.md` exists.
 - `bun dev` is the local equivalent of `opencode`; for CLI or TUI work use `bun dev .` or `bun dev <dir>`
 - If API or SDK surface changes, run `./script/generate.ts`
 - To regenerate the JS SDK, run `./packages/sdk/js/script/build.ts`
+- When asked to build and install, prefer executing the shell script at `packages/android/build-and-install.sh`
 
 ## Respect Deeper Guides
 
