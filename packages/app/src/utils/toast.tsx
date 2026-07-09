@@ -14,11 +14,26 @@ export function ToastRegion(props: { v2: boolean }) {
 }
 
 export function showToast(options: ToastOptions | string) {
-  if (!v2) return showLegacyToast(options)
+  if (!v2) {
+    if (typeof options !== "string" && options.variant === "error") {
+      return showLegacyToast({
+        ...options,
+        persistent: false,
+        duration: options.duration ?? 5000,
+      })
+    }
+    return showLegacyToast(options)
+  }
   if (typeof options === "string") return showToastV2(options)
+
+  const isError = options.variant === "error"
+  const duration = isError ? (options.duration ?? 5000) : options.duration
+  const persistent = isError ? false : options.persistent
 
   return showToastV2({
     ...options,
+    duration,
+    persistent,
     icon: resolveIcon(options.icon, options.variant),
     actions: options.actions?.map((action) => ({
       ...action,
