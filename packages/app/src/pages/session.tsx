@@ -657,13 +657,13 @@ export default function Page() {
   const activeReviewLimit = createMemo<ReviewLimit | undefined>(() => {
     if (!mobilePlatform()) return
 
-    if (store.changes === "turn") {
+    if (reviewMode() === "turn") {
       const limit = mobileReviewLimit(diffCount(turnDiffSource()), true)
       if (limit) return { mode: "turn", ...limit }
     }
 
     const limit = store.reviewLimit
-    if (limit?.mode === store.changes) return limit
+    if (limit?.mode === reviewMode()) return limit
   })
   const nogit = createMemo(() => !!sync().project && sync().project?.vcs !== "git")
   const changesOptions = createMemo<ChangeMode[]>(() => {
@@ -835,7 +835,7 @@ export default function Page() {
   }
 
   createEffect(
-    on([sessionKey, wantsReview, () => store.changes] as const, ([, wants, changes]) => {
+    on([sessionKey, wantsReview, reviewMode] as const, ([, wants, changes]) => {
       if (!wants) return
       if (changes !== "git" && changes !== "branch") return
       refreshVcs()
@@ -1562,7 +1562,7 @@ export default function Page() {
     if (!id) return
 
     if (!wantsReview()) return
-    if (mobilePlatform() && store.changes !== "turn") return
+    if (mobilePlatform() && reviewMode() !== "turn") return
     if (mobilePlatform() && activeReviewLimit()) return
     if (sync().data.session_diff[id] !== undefined) return
     if (sync().status === "loading") return
@@ -1579,7 +1579,7 @@ export default function Page() {
         diffFrame = undefined
         diffTimer = undefined
         if (!wants) return
-        if (mobilePlatform() && store.changes !== "turn") return
+        if (mobilePlatform() && reviewMode() !== "turn") return
         if (mobilePlatform() && activeReviewLimit()) return
 
         const id = params.id

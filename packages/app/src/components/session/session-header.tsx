@@ -183,7 +183,10 @@ export function SessionHeader() {
     return LINUX_APPS
   })
 
-  const fileManager = createMemo(() => fileManagerApp(os()))
+  const fileManager = createMemo(() => {
+    const value = os()
+    return fileManagerApp(value === "ios" || value === "android" ? "unknown" : value)
+  })
 
   createEffect(() => {
     if (platform.platform !== "desktop") return
