@@ -18,10 +18,16 @@ try {
     process.exit(1)
   }
 
-  // Extract whispercode suffix from current android version
-  const suffixMatch = androidVersion.match(/(-whispercode-\d+)/)
-  const suffix = suffixMatch ? suffixMatch[1] : "-whispercode-672"
-  const expectedAndroidVersion = `${appVersion}${suffix}`
+  // Dynamically compute commits ahead of upstream/dev to keep in sync with CLI builds
+  let commitsAhead = 0;
+  try {
+    const commitsStr = execSync("git rev-list --count HEAD ^upstream/dev", { encoding: "utf8" });
+    commitsAhead = parseInt(commitsStr.trim(), 10) || 0;
+  } catch (e) {
+    const suffixMatch = androidVersion.match(/-whispercode-(\d+)/);
+    commitsAhead = suffixMatch ? parseInt(suffixMatch[1], 10) : 672;
+  }
+  const expectedAndroidVersion = `${appVersion}-whispercode-${commitsAhead}`
 
   if (androidVersion !== expectedAndroidVersion) {
     console.log(`Syncing Android version: ${androidVersion} -> ${expectedAndroidVersion}`)

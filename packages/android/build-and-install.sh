@@ -43,6 +43,9 @@ else
   exit 1
 fi
 
+echo "==> Syncing Android version to match CLI version..."
+(cd "$SCRIPT_DIR/../.." && bun run script/sync-android-version.ts)
+
 echo "==> Building frontend..."
 bun run build
 
