@@ -11,6 +11,7 @@
 ---
 
 ### Step 1: Import dependencies in `basic-tool.tsx`
+
 - [ ] Read the current imports at the top of `packages/ui/src/components/basic-tool.tsx`.
 - [ ] Add imports for the `Icon` and `Spinner` components:
   ```typescript
@@ -19,6 +20,7 @@
   ```
 
 ### Step 2: Render the Icon / Spinner inside BasicTool
+
 - [ ] Locate the `trigger` JSX element definition inside `packages/ui/src/components/basic-tool.tsx`:
   ```typescript
   const trigger = () => (
@@ -55,4 +57,5 @@
   ```
 
 ### Step 3: Run type checking and validation
+
 - [ ] Run `bun typecheck` to verify that there are no TypeScript compile errors in the UI package.

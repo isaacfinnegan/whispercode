@@ -21,6 +21,7 @@ The `onOpenAutoFocus` handler currently only prevents default if an `[autofocus]
 Modify `onOpenAutoFocus` in `packages/ui/src/components/dialog.tsx` (lines 34-44):
 
 Replace:
+
 ```tsx
           onOpenAutoFocus={(e) => {
             const target = e.currentTarget as HTMLElement | null
@@ -36,6 +37,7 @@ Replace:
 ```
 
 With:
+
 ```tsx
           onOpenAutoFocus={(e) => {
             const platform = document.documentElement.dataset.platform
@@ -65,6 +67,7 @@ Same change as Dialog v1.
 Modify `onOpenAutoFocus` in `packages/ui/src/v2/components/dialog-v2.tsx` (lines 52-62):
 
 Replace:
+
 ```tsx
           onOpenAutoFocus={(e) => {
             const target = e.currentTarget as HTMLElement | null
@@ -80,6 +83,7 @@ Replace:
 ```
 
 With:
+
 ```tsx
           onOpenAutoFocus={(e) => {
             const platform = document.documentElement.dataset.platform
@@ -109,6 +113,7 @@ We need to add `onOpenAutoFocus` on `<Kobalte.Content>` to prevent Kobalte from 
 Modify `<Kobalte.Content>` in `packages/ui/src/components/select.tsx` (around line 185):
 
 Replace:
+
 ```tsx
         <Kobalte.Content
           classList={{
@@ -121,6 +126,7 @@ Replace:
 ```
 
 With:
+
 ```tsx
         <Kobalte.Content
           classList={{
@@ -151,11 +157,13 @@ Same change for SelectV2 dropdown container.
 Modify `<Kobalte.Content>` in `packages/ui/src/v2/components/select-v2.tsx` (around line 202):
 
 Replace:
+
 ```tsx
         <Kobalte.Content data-component="menu-v2-content" data-slot="select-v2-content">
 ```
 
 With:
+
 ```tsx
         <Kobalte.Content
           data-component="menu-v2-content"
@@ -182,6 +190,7 @@ The popover has no `onOpenAutoFocus` handler on its `<Kobalte.Content>`, meaning
 Modify `<Kobalte.Content>` in `packages/app/src/components/dialog-select-model.tsx` (around line 143):
 
 Replace:
+
 ```tsx
       <Kobalte.Portal>
         <Kobalte.Content
@@ -190,6 +199,7 @@ Replace:
 ```
 
 With:
+
 ```tsx
       <Kobalte.Portal>
         <Kobalte.Content
@@ -216,6 +226,7 @@ Ensure the shared UI `Popover` component also prevents mobile autofocus.
 Modify `<Kobalte.Content>` in `packages/ui/src/components/popover.tsx` (around line 105):
 
 Replace:
+
 ```tsx
   const content = () => (
     <Kobalte.Content
@@ -230,6 +241,7 @@ Replace:
 ```
 
 With:
+
 ```tsx
   const content = () => (
     <Kobalte.Content
@@ -262,6 +274,7 @@ Ensure the share session popover does not focus the readonly copyable url on mob
 Modify `<KobaltePopover.Content>` in `packages/app/src/pages/session/message-timeline.tsx` (around line 1492):
 
 Replace:
+
 ```tsx
                         <KobaltePopover.Portal>
                           <KobaltePopover.Content
@@ -271,6 +284,7 @@ Replace:
 ```
 
 With:
+
 ```tsx
                         <KobaltePopover.Portal>
                           <KobaltePopover.Content

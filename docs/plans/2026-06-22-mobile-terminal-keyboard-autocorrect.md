@@ -13,6 +13,7 @@
 ### Task 1: Write failing unit tests for `isMobilePlatform`
 
 **Files:**
+
 - Modify: `packages/app/src/components/terminal-touch.test.ts`
 
 - [ ] **Step 1: Write the failing tests**
@@ -82,7 +83,8 @@ describe("isMobilePlatform", () => {
   test("returns false for web platform with desktop user agent", () => {
     if (globalThis.navigator) {
       Object.defineProperty(globalThis.navigator, "userAgent", {
-        value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        value:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         configurable: true,
       })
     }
@@ -92,7 +94,8 @@ describe("isMobilePlatform", () => {
   test("returns true for web platform with iOS user agent", () => {
     if (globalThis.navigator) {
       Object.defineProperty(globalThis.navigator, "userAgent", {
-        value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        value:
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
         configurable: true,
       })
     }
@@ -102,7 +105,8 @@ describe("isMobilePlatform", () => {
   test("returns true for web platform with Android user agent", () => {
     if (globalThis.navigator) {
       Object.defineProperty(globalThis.navigator, "userAgent", {
-        value: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        value:
+          "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
         configurable: true,
       })
     }
@@ -128,6 +132,7 @@ git commit -m "test: add unit tests for isMobilePlatform check"
 ### Task 2: Implement `isMobilePlatform` helper and update components
 
 **Files:**
+
 - Modify: `packages/app/src/components/terminal.tsx`
 
 - [ ] **Step 1: Implement `isMobilePlatform`**
@@ -152,13 +157,13 @@ export const isMobilePlatform = (platform: Platform) => {
 Replace line 106 (inside `useTerminalUiBindings`):
 
 ```typescript
-  const isMobile = input.platform.platform === "ios" || input.platform.platform === "android"
+const isMobile = input.platform.platform === "ios" || input.platform.platform === "android"
 ```
 
 With:
 
 ```typescript
-  const isMobile = isMobilePlatform(input.platform)
+const isMobile = isMobilePlatform(input.platform)
 ```
 
 - [ ] **Step 3: Update `Terminal` component to use the helper**
@@ -166,13 +171,13 @@ With:
 Replace line 492 (inside `Terminal`'s `onMount`):
 
 ```typescript
-      const isMobile = platform.platform === "ios" || platform.platform === "android"
+const isMobile = platform.platform === "ios" || platform.platform === "android"
 ```
 
 With:
 
 ```typescript
-      const isMobile = isMobilePlatform(platform)
+const isMobile = isMobilePlatform(platform)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -192,6 +197,7 @@ git commit -m "fix(terminal): detect mobile browser environment to apply styling
 ### Task 3: Comprehensive verification
 
 **Files:**
+
 - Verify: Entire app test suite
 
 - [ ] **Step 1: Run full unit test suite**

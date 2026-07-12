@@ -15,14 +15,8 @@ export function appendTranscription(currentPrompt: Prompt, text: string): Prompt
       ...lastPart,
       content: lastContent + separator + text,
     }
-    return [
-      ...currentPrompt.slice(0, lastPartIndex),
-      updatedLastPart,
-    ]
+    return [...currentPrompt.slice(0, lastPartIndex), updatedLastPart]
   }
 
-  return [
-    ...currentPrompt,
-    { type: "text", content: text, start: 0, end: text.length },
-  ]
+  return [...currentPrompt, { type: "text", content: text, start: 0, end: text.length }]
 }

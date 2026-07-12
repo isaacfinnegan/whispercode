@@ -13,6 +13,7 @@
 ### Task 1: Expose Advanced Section in general settings component
 
 **Files:**
+
 - Modify: `packages/app/src/components/settings-general.tsx`
 
 - [ ] **Step 1: Read `settings-general.tsx` to locate the `<AdvancedSection />` render block**
@@ -24,15 +25,17 @@ Ensure we locate the exact lines wrapping the `<AdvancedSection />` tag.
 Update `packages/app/src/components/settings-general.tsx`:
 
 Replace:
+
 ```tsx
-        <Show when={desktop()}>
-          <AdvancedSection />
-        </Show>
+<Show when={desktop()}>
+  <AdvancedSection />
+</Show>
 ```
 
 With:
+
 ```tsx
-        <AdvancedSection />
+<AdvancedSection />
 ```
 
 - [ ] **Step 3: Run typecheck inside `packages/app` package directory**
@@ -43,6 +46,7 @@ Expected: PASS with no compilation errors.
 - [ ] **Step 4: Commit the change**
 
 Run:
+
 ```bash
 git add packages/app/src/components/settings-general.tsx
 git commit -m "feat(app): expose advanced settings section on all platforms"

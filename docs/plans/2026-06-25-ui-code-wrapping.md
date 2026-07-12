@@ -18,6 +18,7 @@
 - [ ] Task 2: Implement CSS styles for code block wrapping.
   - Locate `packages/ui/src/components/markdown.css`.
   - Modify the `pre` style rule at line 211 to include wrapping and word break behavior:
+
     ```css
     pre {
       margin-top: 12px;

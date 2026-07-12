@@ -13,6 +13,7 @@
 ### Task 1: Update settings descriptions in translation files
 
 **Files:**
+
 - Modify: `packages/app/src/i18n/en.ts`
 - Modify: `packages/app/src/i18n/uk.ts`
 
@@ -24,12 +25,14 @@ Read: `packages/app/src/i18n/uk.ts` starting from line 765 to 780.
 - [ ] **Step 2: Update the translation keys to refer to the "title bar" rather than the "desktop title bar"**
 
 In `packages/app/src/i18n/en.ts`, update:
+
 ```typescript
   "settings.general.row.showNavigation.description": "Show the back and forward buttons in the title bar",
   "settings.general.row.showTerminal.description": "Show the terminal button in the title bar",
 ```
 
 In `packages/app/src/i18n/uk.ts`, update:
+
 ```typescript
   "settings.general.row.showNavigation.description": "Показувати кнопки назад і вперед у заголовку",
   "settings.general.row.showTerminal.description": "Показувати кнопку термінала в заголовку",
@@ -52,6 +55,7 @@ rtk git commit -m "i18n: generalize showNavigation and showTerminal setting desc
 ### Task 2: Implement settings-driven terminal visibility in SessionHeader
 
 **Files:**
+
 - Modify: `packages/app/src/components/session/session-header.tsx`
 
 - [ ] **Step 1: Read session-header.tsx to locate the term memo and classic terminal toggle button**
@@ -61,6 +65,7 @@ Read: `packages/app/src/components/session/session-header.tsx` lines 160-170 and
 - [ ] **Step 2: Modify the term memo to respect showTerminal setting unconditionally**
 
 In `packages/app/src/components/session/session-header.tsx`, update:
+
 ```typescript
 <<<<
   const term = createMemo(() => (isDesktopV2() ? settings.general.showTerminal() : true))
@@ -72,6 +77,7 @@ In `packages/app/src/components/session/session-header.tsx`, update:
 - [ ] **Step 3: Wrap the classic terminal toggle button in a Show conditional**
 
 In `packages/app/src/components/session/session-header.tsx`, find the terminal button in the fallback (classic) actions component and wrap it:
+
 ```typescript
 <<<<
                     <TooltipKeybind

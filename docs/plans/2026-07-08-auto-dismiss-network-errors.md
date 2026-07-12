@@ -13,11 +13,13 @@
 ### Task 1: Create Toast Unit Test File (TDD Failing Test)
 
 **Files:**
+
 - Create: `packages/app/src/utils/toast.test.ts`
 
 - [ ] **Step 1: Write the unit test file containing tests for legacy and V2 error toast duration/persistence overrides**
 
 Create `packages/app/src/utils/toast.test.ts` with the following content:
+
 ```typescript
 import { beforeAll, describe, expect, mock, test } from "bun:test"
 import { showToast, setV2Toast } from "./toast"
@@ -92,11 +94,13 @@ git commit -m "test: add failing toast wrapper unit tests for auto-dismiss error
 ### Task 2: Implement Auto-Dismiss Behavior in `showToast`
 
 **Files:**
+
 - Modify: `packages/app/src/utils/toast.tsx`
 
 - [ ] **Step 1: Update `showToast` implementation to intercept `variant: "error"` and override persistent/duration**
 
 Modify `packages/app/src/utils/toast.tsx`:
+
 ```tsx
 import { Icon, type IconProps } from "@opencode-ai/ui/icon"
 import { Toast, showToast as showLegacyToast, type ToastOptions, type ToastVariant } from "@opencode-ai/ui/toast"
@@ -166,6 +170,7 @@ git commit -m "feat: intercept error variant toasts in showToast to force auto-d
 ### Task 3: Full Workspace Verification
 
 **Files:**
+
 - None (verification stage)
 
 - [ ] **Step 1: Run full unit test suite in `packages/app`**

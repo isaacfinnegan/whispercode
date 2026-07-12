@@ -13,6 +13,7 @@
 ### Task 1: Gradle Dependencies Setup
 
 **Files:**
+
 - Modify: `packages/android/src-tauri/gen/android/build.gradle.kts`
 - Modify: `packages/android/src-tauri/gen/android/app/build.gradle.kts`
 - Modify: `packages/android/src-tauri/mobile-bridge/android/build.gradle.kts`
@@ -25,6 +26,7 @@ Expected: SUCCESS
 - [ ] **Step 2: Add Google Services classpath in root gradle buildscript**
 
 Modify `/Users/isaac/Projects/whispercode/packages/android/src-tauri/gen/android/build.gradle.kts` to add the classpath dependency:
+
 ```kotlin
     dependencies {
         classpath("com.android.tools.build:gradle:8.11.0")
@@ -36,7 +38,9 @@ Modify `/Users/isaac/Projects/whispercode/packages/android/src-tauri/gen/android
 - [ ] **Step 3: Apply Google Services plugin and import FCM dependencies in app-level build file**
 
 Modify `/Users/isaac/Projects/whispercode/packages/android/src-tauri/gen/android/app/build.gradle.kts`:
+
 - Add `id("com.google.gms.google-services")` to the `plugins` block:
+
 ```kotlin
 plugins {
     id("com.android.application")
@@ -45,7 +49,9 @@ plugins {
     id("com.google.gms.google-services")
 }
 ```
+
 - Add the Firebase Bill of Materials (BOM) and messaging dependency to the `dependencies` block:
+
 ```kotlin
 dependencies {
     implementation("androidx.webkit:webkit:1.14.0")
@@ -53,11 +59,11 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
-    
+
     // Firebase Cloud Messaging dependencies
     implementation(platform("com.google.firebase:firebase-bom:33.1.1"))
     implementation("com.google.firebase:firebase-messaging-ktx")
-    
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
@@ -67,6 +73,7 @@ dependencies {
 - [ ] **Step 4: Configure Jetpack Security, WorkManager, and lifecycle libraries in mobile-bridge gradle build file**
 
 Modify `/Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/build.gradle.kts` to add security, work manager, and application lifecycle process libraries to `dependencies`:
+
 ```kotlin
 dependencies {
     implementation("androidx.core:core-ktx:1.9.0")
@@ -94,11 +101,13 @@ rtk git commit -m "build(android): configure firebase, keystore, and workmanager
 ### Task 2: Android Manifest Configuration
 
 **Files:**
+
 - Modify: `packages/android/src-tauri/gen/android/app/src/main/AndroidManifest.xml`
 
 - [ ] **Step 1: Declare post notifications permission and FCM background service**
 
 Modify `/Users/isaac/Projects/whispercode/packages/android/src-tauri/gen/android/app/src/main/AndroidManifest.xml` under `<manifest>` to request POST_NOTIFICATIONS, and register the messaging service inside `<application>`:
+
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -113,7 +122,7 @@ Modify `/Users/isaac/Projects/whispercode/packages/android/src-tauri/gen/android
         android:label="@string/app_name"
         android:theme="@style/Theme.opencode_android"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
-        
+
         <!-- Custom Firebase Messaging Service -->
         <service
             android:name="ai.opencode.mobilebridge.WhisperFirebaseMessagingService"
@@ -173,6 +182,7 @@ rtk git commit -m "config(android): declare push permissions and WhisperFirebase
 ### Task 3: Secure Preferences and App Lifecycle Helpers
 
 **Files:**
+
 - Create: `packages/android/src-tauri/mobile-bridge/android/src/main/java/SecurePreferencesManager.kt`
 - Create: `packages/android/src-tauri/mobile-bridge/android/src/main/java/AppLifecycleTracker.kt`
 - Create: `packages/android/src-tauri/mobile-bridge/android/src/main/java/NotificationTapHandler.kt`
@@ -180,6 +190,7 @@ rtk git commit -m "config(android): declare push permissions and WhisperFirebase
 - [ ] **Step 1: Implement KeyStore-backed Encrypted SharedPreferences manager**
 
 Create `/Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/java/SecurePreferencesManager.kt`:
+
 ```kotlin
 package ai.opencode.mobilebridge
 
@@ -195,7 +206,7 @@ class SecurePreferencesManager(private val context: Context) {
     companion object {
         private const val TAG = "SecurePrefs"
         private const val SECURE_FILE_NAME = "whisper_secure_prefs"
-        
+
         private const val KEY_CHANNEL = "push.channel"
         private const val KEY_DEVICE = "push.device"
         private const val KEY_SECRET = "push.secret"
@@ -232,12 +243,12 @@ class SecurePreferencesManager(private val context: Context) {
         try {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             keyStore.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
-            
+
             val sharedPrefsFile = File(context.filesDir.parent, "shared_prefs/$SECURE_FILE_NAME.xml")
             if (sharedPrefsFile.exists()) {
                 sharedPrefsFile.delete()
             }
-            
+
             val masterKey = MasterKey.Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
@@ -289,6 +300,7 @@ class SecurePreferencesManager(private val context: Context) {
 - [ ] **Step 2: Implement activity lifecycle callbacks for app foreground tracking**
 
 Create `/Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/java/AppLifecycleTracker.kt`:
+
 ```kotlin
 package ai.opencode.mobilebridge
 
@@ -320,6 +332,7 @@ object AppLifecycleTracker : Application.ActivityLifecycleCallbacks {
 - [ ] **Step 3: Implement cached intent handler for tapped notifications**
 
 Create `/Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/java/NotificationTapHandler.kt`:
+
 ```kotlin
 package ai.opencode.mobilebridge
 
@@ -374,6 +387,7 @@ rtk git commit -m "feat(android): add secure storage and lifecycle tracking help
 ### Task 4: Background Service & Worker Infrastructure
 
 **Files:**
+
 - Create: `packages/android/src-tauri/mobile-bridge/android/src/main/java/WhisperFirebaseMessagingService.kt`
 - Create: `packages/android/src-tauri/mobile-bridge/android/src/main/java/TokenSyncWorker.kt`
 - Create: `packages/android/src-tauri/mobile-bridge/android/src/main/java/NetworkStateListener.kt`
@@ -381,6 +395,7 @@ rtk git commit -m "feat(android): add secure storage and lifecycle tracking help
 - [ ] **Step 1: Implement background token synchronization worker using WorkManager**
 
 Create `/Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/java/TokenSyncWorker.kt`:
+
 ```kotlin
 package ai.opencode.mobilebridge
 
@@ -484,6 +499,7 @@ class TokenSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
 - [ ] **Step 2: Implement connectivity manager observer for fast syncs**
 
 Create `/Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/java/NetworkStateListener.kt`:
+
 ```kotlin
 package ai.opencode.mobilebridge
 
@@ -540,6 +556,7 @@ class NetworkStateListener(private val context: Context) {
 - [ ] **Step 3: Implement custom FirebaseMessagingService for background deliveries**
 
 Create `/Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/java/WhisperFirebaseMessagingService.kt`:
+
 ```kotlin
 package ai.opencode.mobilebridge
 
@@ -567,7 +584,7 @@ class WhisperFirebaseMessagingService : FirebaseMessagingService() {
         val title = payload["title"] ?: "New Message"
         val body = payload["body"] ?: ""
         val href = payload["href"]
-        
+
         Log.d(TAG, "Notification received: title=$title, body=$body, href=$href")
 
         val prefs = SecurePreferencesManager(applicationContext)
@@ -651,11 +668,13 @@ rtk git commit -m "feat(android): add background messaging services and connecti
 ### Task 5: MainActivity Hooks Integration
 
 **Files:**
+
 - Modify: `packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/whispercode/MainActivity.kt`
 
 - [ ] **Step 1: Wire deep linking intent hooks in MainActivity**
 
 Modify `/Users/isaac/Projects/whispercode/packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/whispercode/MainActivity.kt` to import `android.content.Intent` and `ai.opencode.mobilebridge.NotificationTapHandler`, and hook `NotificationTapHandler.handleIntent` inside `onCreate` and `onNewIntent`:
+
 ```kotlin
 package com.devgriffin.whispercode
 
@@ -674,7 +693,7 @@ import ai.opencode.mobilebridge.NotificationTapHandler
 class MainActivity : TauriActivity() {
   private val handler = Handler(Looper.getMainLooper())
   private var currentWebView: WebView? = null
-  
+
   private val themePoller = object : Runnable {
     override fun run() {
       currentWebView?.let { webView ->
@@ -702,12 +721,12 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
     currentWebView = webView
-    
+
     val originalClient = webView.webViewClient
     if (originalClient != null) {
       webView.webViewClient = DelegatingWebViewClient(originalClient)
     }
-    
+
     handler.post(themePoller)
   }
 
@@ -743,12 +762,15 @@ rtk git commit -m "feat(android): wire deep linking intent hooks in MainActivity
 ### Task 6: Native Plugin Commands Integration
 
 **Files:**
+
 - Modify: `packages/android/src-tauri/mobile-bridge/android/src/main/java/MobileBridgePlugin.kt`
 
 - [ ] **Step 1: Declare push endpoints and management methods inside MobileBridgePlugin**
 
 Modify `/Users/isaac/Projects/whispercode/packages/android/src-tauri/mobile-bridge/android/src/main/java/MobileBridgePlugin.kt` to add support for FCM push notification commands, KeyStore configuration management, and pairing hooks:
+
 - Add necessary Kotlin imports to the top:
+
 ```kotlin
 import android.net.Uri
 import android.provider.Settings
@@ -757,7 +779,9 @@ import androidx.core.app.ActivityCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONObject
 ```
+
 - Define push properties and active instance tracking inside the `MobileBridgePlugin` class:
+
 ```kotlin
     private lateinit var prefs: SecurePreferencesManager
     private lateinit var networkStateListener: NetworkStateListener
@@ -777,25 +801,29 @@ import org.json.JSONObject
         }
     }
 ```
+
 - Hook helper initialization inside `load`:
+
 ```kotlin
     override fun load(webView: WebView) {
         super.load(webView)
         setVoiceState("ready")
-        
+
         prefs = SecurePreferencesManager(activity)
         networkStateListener = NetworkStateListener(activity)
         networkStateListener.startMonitoring()
-        
+
         val app = activity.application
         app.registerActivityLifecycleCallbacks(AppLifecycleTracker)
-        
+
         activeInstance = this
         isLoaded = true
         NotificationTapHandler.setPluginInstance(this)
     }
 ```
+
 - Hook cleanups inside `onDestroy`:
+
 ```kotlin
     override fun onDestroy() {
         super.onDestroy()
@@ -818,18 +846,22 @@ import org.json.JSONObject
         networkStateListener.stopMonitoring()
         val app = activity.application
         app.unregisterActivityLifecycleCallbacks(AppLifecycleTracker)
-        
+
         if (activeInstance == this) {
             activeInstance = null
         }
         isLoaded = false
     }
 ```
+
 - Add the utility indicator `isWebViewLoaded()`:
+
 ```kotlin
     fun isWebViewLoaded(): Boolean = isLoaded
 ```
+
 - Implement tauri commands at the bottom of the class:
+
 ```kotlin
     @Command
     fun getPushState(invoke: Invoke) {
@@ -929,11 +961,11 @@ import org.json.JSONObject
                     val deviceSecret = response.getString("device_secret")
 
                     prefs.saveCredentials(channelId, deviceId, deviceSecret)
-                    
+
                     resultObj.put("channel_id", channelId)
                     resultObj.put("device_id", deviceId)
                     resultObj.put("device_secret", deviceSecret)
-                    
+
                     triggerPushStateChanged()
                 }
                 invoke.resolve(resultObj)
@@ -1042,7 +1074,7 @@ import org.json.JSONObject
                     connectTimeout = 10000
                     readTimeout = 10000
                     headers?.forEach { (key, value) -> setRequestProperty(key, value) }
-                    
+
                     if (payload != null) {
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")
@@ -1083,26 +1115,33 @@ rtk git commit -m "feat(android): implement push command handlers inside MobileB
 ### Task 7: SolidJS App Bridge & Platform Mapping
 
 **Files:**
+
 - Modify: `packages/android/src/entry-android.tsx`
 
 - [ ] **Step 1: Map native push methods to Platform provider in entry-android.tsx**
 
 Modify `packages/android/src/entry-android.tsx` to handle push notification statuses and pairing events downstream:
+
 - Import required push typings from `@opencode-ai/app`:
+
 ```typescript
 import { type PairInfo, type PushState, type PushPrefs, type PushCred } from "@opencode-ai/app"
 ```
-- Define push state signals inside the `App` component:
-```typescript
-  const [push, setPush] = createSignal<PushState | undefined>()
 
-  const refreshPush = async () => {
-    const result = await bridge.sendAsync<PushState>("getPushState")
-    setPush(result)
-    return result
-  }
+- Define push state signals inside the `App` component:
+
+```typescript
+const [push, setPush] = createSignal<PushState | undefined>()
+
+const refreshPush = async () => {
+  const result = await bridge.sendAsync<PushState>("getPushState")
+  setPush(result)
+  return result
+}
 ```
+
 - Add the push interfaces to the local `platform: Platform` configuration object:
+
 ```typescript
     pushState: push,
     getPushState: async () => refreshPush(),
@@ -1144,64 +1183,66 @@ import { type PairInfo, type PushState, type PushPrefs, type PushCred } from "@o
       return result
     },
 ```
+
 - Bind native state changes and tapped link hooks inside `onMount`:
+
 ```typescript
-  onMount(() => {
-    document.documentElement.dataset.platform = "android"
-    void refreshVoice()
-    void refreshPush()
+onMount(() => {
+  document.documentElement.dataset.platform = "android"
+  void refreshVoice()
+  void refreshPush()
 
-    const handleClick = (event: MouseEvent) => {
-      const link = (event.target as HTMLElement | null)?.closest("a.external-link") as HTMLAnchorElement | null
-      if (!link?.href) return
-      event.preventDefault()
-      platform.openLink(link.href)
-    }
+  const handleClick = (event: MouseEvent) => {
+    const link = (event.target as HTMLElement | null)?.closest("a.external-link") as HTMLAnchorElement | null
+    if (!link?.href) return
+    event.preventDefault()
+    platform.openLink(link.href)
+  }
 
-    const onFocus = () => emitResume()
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return
-      emitResume()
-    }
+  const onFocus = () => emitResume()
+  const onVisible = () => {
+    if (document.visibilityState !== "visible") return
+    emitResume()
+  }
 
-    const stopListening = bridge.on("transcription", (payload) => {
-      if (!payload || typeof payload !== "object") return
-      const detail = payload as { text?: string; isFinal?: boolean }
-      if (typeof detail.text !== "string") return
-      emitTranscription(detail.text, detail.isFinal)
-    })
-
-    const stopVoiceState = bridge.on("voiceState", (payload) => {
-      const status = normalizeStatus(payload)
-      if (!status) return
-      setVoice(status)
-      if (status.state === "error") showVoiceError(status.message)
-    })
-
-    const stopPushState = bridge.on("pushStateChanged", (payload) => {
-      setPush(payload as PushState)
-    })
-
-    const stopPushOpened = bridge.on("pushOpened", (payload) => {
-      const { href } = payload as { href?: string }
-      if (href) {
-        window.dispatchEvent(new CustomEvent("opencode:pushOpened", { detail: { href } }))
-      }
-    })
-
-    document.addEventListener("click", handleClick)
-    window.addEventListener("focus", onFocus)
-    document.addEventListener("visibilitychange", onVisible)
-    onCleanup(() => {
-      document.removeEventListener("click", handleClick)
-      window.removeEventListener("focus", onFocus)
-      document.removeEventListener("visibilitychange", onVisible)
-      stopListening()
-      stopVoiceState()
-      stopPushState()
-      stopPushOpened()
-    })
+  const stopListening = bridge.on("transcription", (payload) => {
+    if (!payload || typeof payload !== "object") return
+    const detail = payload as { text?: string; isFinal?: boolean }
+    if (typeof detail.text !== "string") return
+    emitTranscription(detail.text, detail.isFinal)
   })
+
+  const stopVoiceState = bridge.on("voiceState", (payload) => {
+    const status = normalizeStatus(payload)
+    if (!status) return
+    setVoice(status)
+    if (status.state === "error") showVoiceError(status.message)
+  })
+
+  const stopPushState = bridge.on("pushStateChanged", (payload) => {
+    setPush(payload as PushState)
+  })
+
+  const stopPushOpened = bridge.on("pushOpened", (payload) => {
+    const { href } = payload as { href?: string }
+    if (href) {
+      window.dispatchEvent(new CustomEvent("opencode:pushOpened", { detail: { href } }))
+    }
+  })
+
+  document.addEventListener("click", handleClick)
+  window.addEventListener("focus", onFocus)
+  document.addEventListener("visibilitychange", onVisible)
+  onCleanup(() => {
+    document.removeEventListener("click", handleClick)
+    window.removeEventListener("focus", onFocus)
+    document.removeEventListener("visibilitychange", onVisible)
+    stopListening()
+    stopVoiceState()
+    stopPushState()
+    stopPushOpened()
+  })
+})
 ```
 
 - [ ] **Step 2: Commit**

@@ -19,13 +19,13 @@ try {
   }
 
   // Dynamically compute commits ahead of upstream/dev to keep in sync with CLI builds
-  let commitsAhead = 0;
+  let commitsAhead = 0
   try {
-    const commitsStr = execSync("git rev-list --count HEAD ^upstream/dev", { encoding: "utf8" });
-    commitsAhead = parseInt(commitsStr.trim(), 10) || 0;
+    const commitsStr = execSync("git rev-list --count HEAD ^upstream/dev", { encoding: "utf8" })
+    commitsAhead = parseInt(commitsStr.trim(), 10) || 0
   } catch (e) {
-    const suffixMatch = androidVersion.match(/-whispercode-(\d+)/);
-    commitsAhead = suffixMatch ? parseInt(suffixMatch[1], 10) : 672;
+    const suffixMatch = androidVersion.match(/-whispercode-(\d+)/)
+    commitsAhead = suffixMatch ? parseInt(suffixMatch[1], 10) : 672
   }
   const expectedAndroidVersion = `${appVersion}-whispercode-${commitsAhead}`
 

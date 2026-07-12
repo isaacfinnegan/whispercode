@@ -13,6 +13,7 @@
 ### Task 1: Modify HelpButton to Return Null
 
 **Files:**
+
 - Modify: `packages/app/src/components/help-button.tsx`
 
 - [ ] **Step 1: Write a test or verify the current state**

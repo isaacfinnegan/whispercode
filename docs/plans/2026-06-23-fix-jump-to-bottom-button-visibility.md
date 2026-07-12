@@ -13,6 +13,7 @@
 ### Task 1: Update distanceFromScrollBottom in session.tsx
 
 **Files:**
+
 - Modify: `packages/app/src/pages/session.tsx:1195-1203`
 
 - [ ] **Step 1: Verify typecheck baseline**
@@ -23,11 +24,12 @@ Expected: SUCCESS
 - [ ] **Step 2: Update distanceFromScrollBottom calculation**
 
 Modify `packages/app/src/pages/session.tsx` to compute the scroll bottom offset uniformly across all platforms:
+
 ```typescript
-  const distanceFromScrollBottom = (el: HTMLDivElement) => {
-    const max = Math.max(0, el.scrollHeight - el.clientHeight)
-    return Math.max(0, max - el.scrollTop)
-  }
+const distanceFromScrollBottom = (el: HTMLDivElement) => {
+  const max = Math.max(0, el.scrollHeight - el.clientHeight)
+  return Math.max(0, max - el.scrollTop)
+}
 ```
 
 - [ ] **Step 3: Run typescript check to verify changes**

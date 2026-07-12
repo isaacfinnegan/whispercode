@@ -13,6 +13,7 @@
 ### Task 1: Update onSubmit Handler in session.tsx
 
 **Files:**
+
 - Modify: `packages/app/src/pages/session.tsx`
 
 - [ ] **Step 1: Verify typecheck passes before modification**

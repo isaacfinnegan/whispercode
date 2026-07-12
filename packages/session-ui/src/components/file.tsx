@@ -1246,7 +1246,10 @@ function PlanViewer<T>(props: TextFileProps<T>) {
       <div class="plan-viewer-container" data-component="plan-viewer">
         <div class="plan-viewer-header">
           <div class="plan-viewer-progress-info">
-            <Show when={taskCount() > 0} fallback={<div class="plan-viewer-no-tasks">No tasks defined in plan file</div>}>
+            <Show
+              when={taskCount() > 0}
+              fallback={<div class="plan-viewer-no-tasks">No tasks defined in plan file</div>}
+            >
               <div class="plan-viewer-progress-label">
                 {completedCount()} of {taskCount()} tasks completed ({progressPercent()}%)
               </div>

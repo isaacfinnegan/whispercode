@@ -13,6 +13,7 @@
 ### Task 1: Enable cleartext traffic in `build.gradle.kts` for all build types
 
 **Files:**
+
 - Modify: `packages/android/src-tauri/gen/android/app/build.gradle.kts:27`
 
 - [ ] **Step 1: Change `defaultConfig` to allow cleartext traffic**
@@ -34,11 +35,13 @@ This ensures both debug and release builds allow cleartext HTTP connections. The
 - [ ] **Step 2: Verify the file is correct**
 
 Run:
+
 ```bash
 grep -n 'usesCleartextTraffic' packages/android/src-tauri/gen/android/app/build.gradle.kts
 ```
 
 Expected output:
+
 ```
 27:        manifestPlaceholders["usesCleartextTraffic"] = "true"
 44:            manifestPlaceholders["usesCleartextTraffic"] = "true"
@@ -51,6 +54,7 @@ Both lines should now be `"true"`.
 ### Task 2: Unignore the customized `build.gradle.kts` so it is tracked by git
 
 **Files:**
+
 - Modify: `.gitignore:36`
 
 - [ ] **Step 1: Add a negation rule after the `gen/` ignore**
@@ -69,6 +73,7 @@ Git negation rules require each parent directory in an ignored tree to be indivi
 - [ ] **Step 2: Verify git now sees the file**
 
 Run:
+
 ```bash
 git status packages/android/src-tauri/gen/android/app/build.gradle.kts
 ```
@@ -78,6 +83,7 @@ Expected: The file should appear as an untracked (new) file, not be silently ign
 - [ ] **Step 3: Stage and verify only the intended file is picked up**
 
 Run:
+
 ```bash
 git add packages/android/src-tauri/gen/android/app/build.gradle.kts
 git status
@@ -90,6 +96,7 @@ Expected: Only `build.gradle.kts` from the `gen/` tree is staged. No other gener
 ### Task 3: Add `try/catch` fallback for HTTP fetch in `entry-android.tsx`
 
 **Files:**
+
 - Modify: `packages/android/src/entry-android.tsx:302-306`
 
 - [ ] **Step 1: Wrap the `http:` branch in a try/catch with WebView fallback**
@@ -120,6 +127,7 @@ This ensures that if `tauriFetch` fails for an HTTP request (e.g. due to a netwo
 - [ ] **Step 2: Verify the file typechecks**
 
 Run:
+
 ```bash
 cd packages/android && bun typecheck
 ```
@@ -133,12 +141,14 @@ Expected: Clean exit with no errors.
 - [ ] **Step 1: Review the diff**
 
 Run:
+
 ```bash
 git diff
 git diff --cached
 ```
 
 Verify exactly three changes:
+
 1. `.gitignore` — negation rules for `build.gradle.kts`
 2. `packages/android/src-tauri/gen/android/app/build.gradle.kts` — `usesCleartextTraffic` changed to `"true"` in `defaultConfig`
 3. `packages/android/src/entry-android.tsx` — `http:` branch wrapped in `try/catch`

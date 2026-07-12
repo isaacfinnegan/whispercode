@@ -13,6 +13,7 @@
 ### Task 1: Update session.tsx to use isMobilePlatform
 
 **Files:**
+
 - Modify: `packages/app/src/pages/session.tsx`
 
 - [ ] **Step 1: Import isMobilePlatform**
@@ -30,6 +31,7 @@ Run typecheck: `bun run --cwd packages/app typecheck`
 ### Task 2: Update prompt-input.tsx to use isMobilePlatform
 
 **Files:**
+
 - Modify: `packages/app/src/components/prompt-input.tsx`
 
 - [ ] **Step 1: Import isMobilePlatform**
@@ -47,6 +49,7 @@ Run typecheck: `bun run --cwd packages/app typecheck`
 ### Task 3: Update submit.ts to use isMobilePlatform
 
 **Files:**
+
 - Modify: `packages/app/src/components/prompt-input/submit.ts`
 
 - [ ] **Step 1: Import isMobilePlatform**

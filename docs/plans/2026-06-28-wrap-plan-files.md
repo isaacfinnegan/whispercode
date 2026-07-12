@@ -13,13 +13,14 @@
 ### Task 1: Update Write Tool Component
 
 **Files:**
+
 - Modify: `packages/session-ui/src/components/message-part.tsx:2055-2113`
 
 - [ ] **Step 1: Inspect the write tool code**
-Confirm the lines around `packages/session-ui/src/components/message-part.tsx` where the `write` tool registry is defined.
+      Confirm the lines around `packages/session-ui/src/components/message-part.tsx` where the `write` tool registry is defined.
 
 - [ ] **Step 2: Modify the write tool to conditionally wrap plan/markdown files**
-Update `packages/session-ui/src/components/message-part.tsx` to dynamically determine the `overflow` option.
+      Update `packages/session-ui/src/components/message-part.tsx` to dynamically determine the `overflow` option.
 
 ```tsx
 ToolRegistry.register({
@@ -88,19 +89,20 @@ ToolRegistry.register({
 ```
 
 - [ ] **Step 3: Run the local test suite**
-Run: `export PATH="/Users/isaac/.bun/bin:$PATH" && rtk bun run --cwd packages/session-ui test`
-Expected: Passes all tests.
+      Run: `export PATH="/Users/isaac/.bun/bin:$PATH" && rtk bun run --cwd packages/session-ui test`
+      Expected: Passes all tests.
 
 - [ ] **Step 4: Run typecheck**
-Run: `export PATH="/Users/isaac/.bun/bin:$PATH" && rtk bun run --cwd packages/session-ui typecheck && rtk bun run typecheck`
-Expected: Build and typechecks finish with exit code 0.
+      Run: `export PATH="/Users/isaac/.bun/bin:$PATH" && rtk bun run --cwd packages/session-ui typecheck && rtk bun run typecheck`
+      Expected: Build and typechecks finish with exit code 0.
 
 - [ ] **Step 5: Run package app tests**
-Run: `export PATH="/Users/isaac/.bun/bin:$PATH" && rtk bun run --cwd packages/app test:unit`
-Expected: Passes all unit tests.
+      Run: `export PATH="/Users/isaac/.bun/bin:$PATH" && rtk bun run --cwd packages/app test:unit`
+      Expected: Passes all unit tests.
 
 - [ ] **Step 6: Commit changes**
-Run:
+      Run:
+
 ```bash
 rtk git add packages/session-ui/src/components/message-part.tsx
 rtk git commit -m "feat(session-ui): conditionally line wrap markdown and plan files in write tool"

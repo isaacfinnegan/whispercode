@@ -443,4 +443,3 @@ body:not([data-new-layout]) [data-component="markdown"] {
   background-color: var(--background-base, #ffffff);
   border-color: var(--border-weak-base, #e5e5e5);
 }
-

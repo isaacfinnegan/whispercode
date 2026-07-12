@@ -13,6 +13,7 @@
 ### Task 1: Create merge branch and run git merge
 
 **Files:**
+
 - Create branch: `dev-merge-upstream`
 
 - [ ] **Step 1: Check out a new branch to isolate the merge**
@@ -39,6 +40,7 @@ We keep the merge in a conflicted state while we resolve file-by-file in the nex
 ### Task 2: Resolve conflicts in AGENTS.md, script/publish.ts, and package/dependency files
 
 **Files:**
+
 - Modify: `AGENTS.md`
 - Modify: `packages/app/package.json`
 - Modify: `script/publish.ts`
@@ -51,6 +53,7 @@ Open `AGENTS.md`. Keep all custom WhisperCode sections (such as Bun and Rust PAT
 - [ ] **Step 2: Resolve packages/app/package.json conflicts**
 
 Open `packages/app/package.json`. Make sure that:
+
 1. `"ghostty-web"` dependency is pinned exactly to `"github:anomalyco/ghostty-web#20bd361"`.
 2. Clean up any duplicated packages or duplicate keys.
 
@@ -73,6 +76,7 @@ Expected: Verification script runs without error or shows only source-level conf
 ### Task 3: Resolve code conflicts in app, page, and component files
 
 **Files:**
+
 - Modify: `packages/app/src/app.tsx`
 - Modify: `packages/app/src/components/help-button.tsx`
 - Modify: `packages/app/src/components/prompt-input.tsx`
@@ -89,14 +93,17 @@ Open `packages/app/src/components/help-button.tsx`. Following the fork guideline
 - [ ] **Step 2: Resolve session-header.tsx conflict**
 
 Open `packages/app/src/components/session/session-header.tsx`. Ensure we retain our settings-driven terminal visibility logic:
+
 ```typescript
-  const term = createMemo(() => settings.general.showTerminal())
+const term = createMemo(() => settings.general.showTerminal())
 ```
+
 Ensure the terminal toggle button remains wrapped in `<Show when={term()}>` in the fallback (classic) actions component, and the status/mobile refresh icons are preserved.
 
 - [ ] **Step 3: Resolve app.tsx, prompt-input.tsx, layout.tsx, new-session.tsx, session.tsx, and session-composer-region.tsx conflicts**
 
 Open each file and resolve conflicts, ensuring that:
+
 1. SolidJS components use `createStore` instead of multiple `createSignal` calls.
 2. Platform checks (such as `platform.platform === "ios"` or `"android"`) and mobile-specific routing are kept intact.
 3. Mobile layout designs and horizontal/vertical spacing for mobile are preserved.
@@ -111,6 +118,7 @@ Expected: PASS
 ### Task 4: Resolve conflicts in core/context files
 
 **Files:**
+
 - Modify: `packages/app/src/context/directory-sync.ts`
 - Modify: `packages/app/src/context/global-sync/bootstrap.test.ts`
 - Modify: `packages/app/src/context/notification.tsx`
@@ -140,6 +148,7 @@ Expected: PASS with 0 failures
 ### Task 5: Finalize merge, regenerate SDK, build, and commit
 
 **Files:**
+
 - Modify: None (build artifacts only)
 
 - [ ] **Step 1: Run code generation script**

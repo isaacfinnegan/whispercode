@@ -13,6 +13,7 @@
 ### Task 1: Write Failing Tests for Custom Proxy Target and Local Dist Fallback
 
 **Files:**
+
 - Modify: `packages/opencode/test/server/httpapi-ui.test.ts`
 - Test: `packages/opencode/test/server/httpapi-ui.test.ts`
 
@@ -21,127 +22,112 @@
 Add the following two tests at the end of the `describe("HttpApi UI fallback", ...)` block in `packages/opencode/test/server/httpapi-ui.test.ts`:
 
 ```typescript
-  it.live("respects custom OPENCODE_UI_UPSTREAM proxy target", () =>
-    Effect.gen(function* () {
-      let proxiedUrl: string | undefined
-      const originalUpstream = process.env.OPENCODE_UI_UPSTREAM
-      process.env.OPENCODE_UI_UPSTREAM = "https://custom.opencode-dev.ai"
+it.live("respects custom OPENCODE_UI_UPSTREAM proxy target", () =>
+  Effect.gen(function* () {
+    let proxiedUrl: string | undefined
+    const originalUpstream = process.env.OPENCODE_UI_UPSTREAM
+    process.env.OPENCODE_UI_UPSTREAM = "https://custom.opencode-dev.ai"
 
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          if (originalUpstream) {
-            process.env.OPENCODE_UI_UPSTREAM = originalUpstream
-          } else {
-            delete process.env.OPENCODE_UI_UPSTREAM
-          }
-        }),
-      )
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        if (originalUpstream) {
+          process.env.OPENCODE_UI_UPSTREAM = originalUpstream
+        } else {
+          delete process.env.OPENCODE_UI_UPSTREAM
+        }
+      }),
+    )
 
-      const response = yield* uiApp({
-        disableEmbeddedWebUi: true,
-        client: httpClient(
-          new Response("<html>custom</html>", { headers: { "content-type": "text/html" } }),
-          (request) => {
-            proxiedUrl = request.url
-          },
-        ),
-      }).request("/")
+    const response = yield* uiApp({
+      disableEmbeddedWebUi: true,
+      client: httpClient(
+        new Response("<html>custom</html>", { headers: { "content-type": "text/html" } }),
+        (request) => {
+          proxiedUrl = request.url
+        },
+      ),
+    }).request("/")
 
-      expect(response.status).toBe(200)
-      expect(yield* responseText(response)).toBe("<html>custom</html>")
-      expect(proxiedUrl).toBe("https://custom.opencode-dev.ai/")
-    }),
-  )
+    expect(response.status).toBe(200)
+    expect(yield* responseText(response)).toBe("<html>custom</html>")
+    expect(proxiedUrl).toBe("https://custom.opencode-dev.ai/")
+  }),
+)
 
-  it.live("falls back to local dist assets if index.html exists", () =>
-    Effect.gen(function* () {
-      const fs = yield* FSUtil.Service
-      const nodePath = require("node:path")
+it.live("falls back to local dist assets if index.html exists", () =>
+  Effect.gen(function* () {
+    const fs = yield* FSUtil.Service
+    const nodePath = require("node:path")
 
-      // Create a temporary directory structure for testing local dist fallback
-      const tempDist = yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          const dir = `/tmp/opencode-test-dist-${Math.random().toString(36).slice(2)}`
-          return dir
-        }),
-        (dir) => fs.remove(dir, { recursive: true }).pipe(Effect.orDie),
-      )
+    // Create a temporary directory structure for testing local dist fallback
+    const tempDist = yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const dir = `/tmp/opencode-test-dist-${Math.random().toString(36).slice(2)}`
+        return dir
+      }),
+      (dir) => fs.remove(dir, { recursive: true }).pipe(Effect.orDie),
+    )
 
-      yield* fs.makeDirectory(tempDist, { recursive: true })
-      yield* fs.writeFileString(nodePath.join(tempDist, "index.html"), "<html>local html</html>")
-      yield* fs.writeFileString(nodePath.join(tempDist, "script.js"), "console.log('local js')")
+    yield* fs.makeDirectory(tempDist, { recursive: true })
+    yield* fs.writeFileString(nodePath.join(tempDist, "index.html"), "<html>local html</html>")
+    yield* fs.writeFileString(nodePath.join(tempDist, "script.js"), "console.log('local js')")
 
-      const originalDist = process.env.OPENCODE_LOCAL_DIST_PATH
-      process.env.OPENCODE_LOCAL_DIST_PATH = tempDist
+    const originalDist = process.env.OPENCODE_LOCAL_DIST_PATH
+    process.env.OPENCODE_LOCAL_DIST_PATH = tempDist
 
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          if (originalDist) {
-            process.env.OPENCODE_LOCAL_DIST_PATH = originalDist
-          } else {
-            delete process.env.OPENCODE_LOCAL_DIST_PATH
-          }
-        }),
-      )
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        if (originalDist) {
+          process.env.OPENCODE_LOCAL_DIST_PATH = originalDist
+        } else {
+          delete process.env.OPENCODE_LOCAL_DIST_PATH
+        }
+      }),
+    )
 
-      // Request root '/'
-      const response = yield* serveUIEffect(HttpServerRequest.fromWeb(new Request("http://localhost/")), {
-        fs,
-        client: HttpClient.HttpClient,
-        disableEmbeddedWebUi: true,
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            RuntimeFlags.layer({ disableEmbeddedWebUi: true }),
-            HttpClient.layer,
-          ),
-        ),
-        Effect.map(HttpServerResponse.toWeb),
-      )
+    // Request root '/'
+    const response = yield* serveUIEffect(HttpServerRequest.fromWeb(new Request("http://localhost/")), {
+      fs,
+      client: HttpClient.HttpClient,
+      disableEmbeddedWebUi: true,
+    }).pipe(
+      Effect.provide(Layer.mergeAll(RuntimeFlags.layer({ disableEmbeddedWebUi: true }), HttpClient.layer)),
+      Effect.map(HttpServerResponse.toWeb),
+    )
 
-      expect(response.status).toBe(200)
-      expect(response.headers.get("content-type")).toContain("text/html")
-      expect(yield* responseText(response)).toBe("<html>local html</html>")
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("text/html")
+    expect(yield* responseText(response)).toBe("<html>local html</html>")
 
-      // Request '/script.js'
-      const responseJs = yield* serveUIEffect(HttpServerRequest.fromWeb(new Request("http://localhost/script.js")), {
-        fs,
-        client: HttpClient.HttpClient,
-        disableEmbeddedWebUi: true,
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            RuntimeFlags.layer({ disableEmbeddedWebUi: true }),
-            HttpClient.layer,
-          ),
-        ),
-        Effect.map(HttpServerResponse.toWeb),
-      )
+    // Request '/script.js'
+    const responseJs = yield* serveUIEffect(HttpServerRequest.fromWeb(new Request("http://localhost/script.js")), {
+      fs,
+      client: HttpClient.HttpClient,
+      disableEmbeddedWebUi: true,
+    }).pipe(
+      Effect.provide(Layer.mergeAll(RuntimeFlags.layer({ disableEmbeddedWebUi: true }), HttpClient.layer)),
+      Effect.map(HttpServerResponse.toWeb),
+    )
 
-      expect(responseJs.status).toBe(200)
-      expect(responseJs.headers.get("content-type")).toContain("text/javascript")
-      expect(yield* responseText(responseJs)).toBe("console.log('local js')")
+    expect(responseJs.status).toBe(200)
+    expect(responseJs.headers.get("content-type")).toContain("text/javascript")
+    expect(yield* responseText(responseJs)).toBe("console.log('local js')")
 
-      // Request a non-existent path should fallback to index.html
-      const responseRoute = yield* serveUIEffect(HttpServerRequest.fromWeb(new Request("http://localhost/settings")), {
-        fs,
-        client: HttpClient.HttpClient,
-        disableEmbeddedWebUi: true,
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            RuntimeFlags.layer({ disableEmbeddedWebUi: true }),
-            HttpClient.layer,
-          ),
-        ),
-        Effect.map(HttpServerResponse.toWeb),
-      )
+    // Request a non-existent path should fallback to index.html
+    const responseRoute = yield* serveUIEffect(HttpServerRequest.fromWeb(new Request("http://localhost/settings")), {
+      fs,
+      client: HttpClient.HttpClient,
+      disableEmbeddedWebUi: true,
+    }).pipe(
+      Effect.provide(Layer.mergeAll(RuntimeFlags.layer({ disableEmbeddedWebUi: true }), HttpClient.layer)),
+      Effect.map(HttpServerResponse.toWeb),
+    )
 
-      expect(responseRoute.status).toBe(200)
-      expect(responseRoute.headers.get("content-type")).toContain("text/html")
-      expect(yield* responseText(responseRoute)).toBe("<html>local html</html>")
-    }),
-  )
+    expect(responseRoute.status).toBe(200)
+    expect(responseRoute.headers.get("content-type")).toContain("text/html")
+    expect(yield* responseText(responseRoute)).toBe("<html>local html</html>")
+  }),
+)
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -161,6 +147,7 @@ rtk git commit -m "test: add failing tests for custom proxy target and local dis
 ### Task 2: Implement Dynamic Upstream and Local File Fallback
 
 **Files:**
+
 - Modify: `packages/opencode/src/server/shared/ui.ts`
 - Test: `packages/opencode/test/server/httpapi-ui.test.ts`
 
@@ -267,8 +254,7 @@ export function serveUIEffect(
 
     // Check if local dev assets exist in packages/app/dist or custom path
     const localDistPath =
-      process.env.OPENCODE_LOCAL_DIST_PATH ||
-      nodePath.resolve(import.meta.dirname, "../../../../app/dist")
+      process.env.OPENCODE_LOCAL_DIST_PATH || nodePath.resolve(import.meta.dirname, "../../../../app/dist")
     const hasLocalDist = yield* services.fs.existsSafe(nodePath.join(localDistPath, "index.html"))
 
     if (hasLocalDist) {
@@ -276,9 +262,9 @@ export function serveUIEffect(
       const isFile = yield* services.fs.isFile(filePath)
       const targetFile = isFile ? filePath : nodePath.join(localDistPath, "index.html")
 
-      const body = yield* services.fs.readFile(targetFile).pipe(
-        Effect.catchAll(() => services.fs.readFile(nodePath.join(localDistPath, "index.html"))),
-      )
+      const body = yield* services.fs
+        .readFile(targetFile)
+        .pipe(Effect.catchAll(() => services.fs.readFile(nodePath.join(localDistPath, "index.html"))))
       return embeddedUIResponse(targetFile, body)
     }
 

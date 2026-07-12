@@ -13,6 +13,7 @@
 ### Task 1: Merge Upstream Changes & Update Dependencies
 
 **Files:**
+
 - Modify: `packages/app/package.json`
 - Modify: `packages/push-relay/package.json`
 - Modify: `packages/push/package.json`
@@ -25,9 +26,11 @@ Expected: Merged files from upstream, potential conflicts staged or ready to be 
 - [ ] **Step 2: Update workspace dependency names in packages/app/package.json**
 
 Replace the old `@opencode-ai/shared` import with the new core dependency:
+
 ```json
 "@opencode-ai/core": "workspace:*",
 ```
+
 Ensure `@opencode-ai/shared` is removed from dependencies list in all package json files.
 
 - [ ] **Step 3: Run package installation**
@@ -47,12 +50,14 @@ git commit -m "chore: align dependency structure with upstream core packages"
 ### Task 2: Reconcile Shared Dependency Imports
 
 **Files:**
+
 - Modify: `packages/app/src/context/push-pair.tsx`
 - Modify: `packages/app/src/context/push-relay.tsx`
 
 - [ ] **Step 1: Update imports in push-pair.tsx**
 
 Check lines containing `@opencode-ai/shared` and change them to `@opencode-ai/core`:
+
 ```typescript
 import { Sync } from "@opencode-ai/core/sync"
 ```
@@ -60,10 +65,13 @@ import { Sync } from "@opencode-ai/core/sync"
 - [ ] **Step 2: Update imports in push-relay.tsx**
 
 Update imports from:
+
 ```typescript
 import { Push } from "@opencode-ai/shared/push"
 ```
+
 to:
+
 ```typescript
 import { Push } from "@opencode-ai/core/push"
 ```
@@ -85,11 +93,13 @@ git commit -m "refactor: update mobile context imports to use @opencode-ai/core"
 ### Task 3: Restore Global Providers & App Bootstrapping
 
 **Files:**
+
 - Modify: `packages/app/src/app.tsx`
 
 - [ ] **Step 1: Re-insert Push notification providers in the global Reactivity/Context tree**
 
 Wrap the `<Layout>` element with `<PushRelayProvider>` and `<PushPairProvider>`:
+
 ```typescript
 import { PushRelayProvider } from "@/context/push-relay"
 import { PushPairProvider } from "@/context/push-pair"
@@ -119,11 +129,13 @@ git commit -m "feat(app): restore mobile push providers in app wrapper"
 ### Task 4: Reconcile Layout Context & Push Event Handling
 
 **Files:**
+
 - Modify: `packages/app/src/pages/layout.tsx`
 
 - [ ] **Step 1: Migrate workspace workspaceKey references to pathKey**
 
 Upstream replaced `workspaceKey` with `pathKey`. Update imports and logic in layout:
+
 ```typescript
 import { pathKey } from "@/utils/path-key"
 ```
@@ -131,6 +143,7 @@ import { pathKey } from "@/utils/path-key"
 - [ ] **Step 2: Re-port push message-handling and channel listeners inside onMount**
 
 Ensure the mobile notification routing registration block is present:
+
 ```typescript
 onMount(() => {
   if (platform.pushState) {
@@ -157,12 +170,14 @@ git commit -m "feat(layout): migrate to pathKey and restore mobile layout push s
 ### Task 5: Port Settings and Dialogs to v2 UI Panels
 
 **Files:**
+
 - Modify: `packages/app/src/components/settings-v2/general.tsx`
 - Modify: `packages/app/src/components/dialog-settings.tsx`
 
 - [ ] **Step 1: Re-integrate Voice Speech Locale options into settings-v2/general.tsx**
 
 Inside general.tsx settings page, add the option picker for speech input:
+
 ```typescript
 const [speechLocale, setSpeechLocale] = createSignal("")
 // Render picker linked to platform.getSpeechLocales() and platform.setSpeechLocale()
@@ -171,6 +186,7 @@ const [speechLocale, setSpeechLocale] = createSignal("")
 - [ ] **Step 2: Restore Mobile Notification Settings tab inside dialog-settings.tsx**
 
 Ensure the mobile notification settings block is loaded inside the new dialog categories:
+
 ```typescript
 import { SettingsMobileNotifications } from "@/components/settings-mobile-notifications"
 
@@ -199,11 +215,13 @@ git commit -m "feat(settings): migrate voice and push settings to settings-v2 di
 ### Task 6: Final Header Actions & Platform Verification
 
 **Files:**
+
 - Modify: `packages/app/src/components/session/session-header.tsx`
 
 - [ ] **Step 1: Re-port the platform manual refresh button**
 
 Add the restart action button back to the header:
+
 ```typescript
 <button onClick={() => platform.restart()}>Refresh</button>
 ```

@@ -13,30 +13,36 @@
 ## Technical Options Analysis
 
 ### Option 1: UI Markdown Code Block Wrapping (CSS)
+
 Apply CSS properties to the `<pre>` and `<code>` blocks rendered inside the chat messages to force them to wrap within their container.
+
 - **Implementation:** Modify `packages/ui/src/components/markdown.css`.
 - **CSS rules:**
   ```css
   [data-component="markdown"] pre {
     white-space: pre-wrap !important; /* Preserves spaces/tabs, wraps lines automatically */
-    word-break: break-word;           /* Breaks words at logical boundaries */
-    overflow-wrap: break-word;        /* Standard word break fallback */
+    word-break: break-word; /* Breaks words at logical boundaries */
+    overflow-wrap: break-word; /* Standard word break fallback */
   }
   ```
 
 ### Option 2: CLI/Terminal Column Synchronization (PTY)
+
 Ensure the terminal layout dynamically resizes the PTY process columns when the terminal container width changes.
+
 - **Implementation:** Utilize the `FitAddon` already loaded in `packages/app/src/components/terminal.tsx` to handle window resize and fit the PTY column size to the container.
 - **Verification:** Ensure `fitAddon.fit()` is called on mount, on container resize, and when zoom levels change.
 
 ### Option 3: Pre-wrapping CLI Script Output (Node/Bun)
+
 For CLI scripts printing long blocks of text or code to the console:
+
 - **Implementation:** Query `process.stdout.columns` to get terminal width, and wrap lines dynamically using wrapping libraries like `wrap-ansi`.
 - **Example:**
   ```typescript
-  import wrapAnsi from 'wrap-ansi';
-  const width = process.stdout.columns || 80;
-  console.log(wrapAnsi(longText, width, { hard: true }));
+  import wrapAnsi from "wrap-ansi"
+  const width = process.stdout.columns || 80
+  console.log(wrapAnsi(longText, width, { hard: true }))
   ```
 
 ---

@@ -26,5 +26,5 @@
   - Trace `settings.appearance.terminalFont` in settings context: `packages/app/src/context/settings.tsx`.
   - Verify default value `"JetBrainsMono Nerd Font Mono"` and its fallback stack.
   - Locate terminal shell options loading and updates via server config update in `packages/app/src/components/settings-v2/general.tsx`.
-  - Document default toggle terminal keybind `"ctrl+\`"` mapped to action `"terminal.toggle"`.
+  - Document default toggle terminal keybind `"ctrl+\`"`mapped to action`"terminal.toggle"`.
   - Verify scrollback size parameter (`scrollback: 10_000`) in `packages/app/src/components/terminal.tsx`.

@@ -13,6 +13,7 @@
 ### Task 1: Create Git Branch
 
 **Files:**
+
 - Modify: None
 
 - [ ] **Step 1: Create a new branch for the feature**
@@ -32,6 +33,7 @@ Skip commit for branch creation.
 ### Task 2: Align VS Code Extension version in sdks/vscode/package.json
 
 **Files:**
+
 - Modify: `sdks/vscode/package.json`
 
 - [ ] **Step 1: Write verification script to assert the current version is 1.17.3**
@@ -42,13 +44,17 @@ Expected: Command exits successfully with code 0
 - [ ] **Step 2: Update VS Code package version to 1.17.7**
 
 Replace:
+
 ```json
   "version": "1.17.3",
 ```
+
 with:
+
 ```json
   "version": "1.17.7",
 ```
+
 in `sdks/vscode/package.json`.
 
 - [ ] **Step 3: Run verification script to assert the updated version is 1.17.7**
@@ -64,6 +70,7 @@ Expected: Commit successful
 ### Task 3: Align Android package version in packages/android/package.json
 
 **Files:**
+
 - Modify: `packages/android/package.json`
 
 - [ ] **Step 1: Write verification script to assert the current version is 1.17.3-whispercode-672**
@@ -74,13 +81,17 @@ Expected: Command exits successfully with code 0
 - [ ] **Step 2: Update Android package version to 1.17.7-whispercode-672**
 
 Replace:
+
 ```json
   "version": "1.17.3-whispercode-672",
 ```
+
 with:
+
 ```json
   "version": "1.17.7-whispercode-672",
 ```
+
 in `packages/android/package.json`.
 
 - [ ] **Step 3: Run verification script to assert the updated version is 1.17.7-whispercode-672**
@@ -96,6 +107,7 @@ Expected: Commit successful
 ### Task 4: Regenerate lockfile bun.lock
 
 **Files:**
+
 - Modify: `bun.lock`
 
 - [ ] **Step 1: Verify current lockfile contains the old versions**
@@ -121,6 +133,7 @@ Expected: Commit successful
 ### Task 5: Verify VS Code SDK package compiles successfully
 
 **Files:**
+
 - Modify: None
 - Test: None
 
@@ -136,6 +149,7 @@ Skip commit since no files were modified.
 ### Task 6: Verify Android package compiles successfully
 
 **Files:**
+
 - Modify: None
 - Test: None
 

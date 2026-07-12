@@ -13,6 +13,7 @@
 ### Task 1: Add Tauri HTTP Plugin Dependencies
 
 **Files:**
+
 - Modify: `packages/android/package.json`
 - Modify: `packages/android/src-tauri/Cargo.toml`
 - Modify: `packages/android/src-tauri/src/lib.rs`
@@ -20,6 +21,7 @@
 - [ ] **Step 1: Add JS dependency in packages/android/package.json**
 
 Add `@tauri-apps/plugin-http` to the dependencies:
+
 ```json
 "@tauri-apps/plugin-http": "~2.0.0"
 ```
@@ -27,6 +29,7 @@ Add `@tauri-apps/plugin-http` to the dependencies:
 - [ ] **Step 2: Add Rust dependency in Cargo.toml**
 
 Add `tauri-plugin-http` to the dependencies block in `packages/android/src-tauri/Cargo.toml`:
+
 ```toml
 tauri-plugin-http = "2"
 ```
@@ -34,6 +37,7 @@ tauri-plugin-http = "2"
 - [ ] **Step 3: Register the plugin in packages/android/src-tauri/src/lib.rs**
 
 Add the plugin initializer inside `run()`:
+
 ```rust
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -66,6 +70,7 @@ git commit -m "chore(android): add tauri-plugin-http dependencies"
 ### Task 2: Configure Native HTTP Plugin Permissions
 
 **Files:**
+
 - Modify: `packages/android/src-tauri/capabilities/default.json` (or the active Tauri capability config)
 
 - [ ] **Step 1: Locate capabilities config**
@@ -75,6 +80,7 @@ Verify which capability configuration file is active. Typically it is located in
 - [ ] **Step 2: Whitelist HTTP permissions**
 
 Add the http network request permissions to the `permissions` array:
+
 ```json
 "permissions": [
   "http:default"
@@ -93,11 +99,13 @@ git commit -m "chore(android): grant http plugin default capability permissions"
 ### Task 3: Expose Native Fetch in Android Platform
 
 **Files:**
+
 - Modify: `packages/android/src/entry-android.tsx`
 
 - [ ] **Step 1: Replace custom fetch interceptor with native plugin fetch**
 
 Import `fetch` from the native plugin and bind it to `platform.fetch`:
+
 ```typescript
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 
@@ -132,6 +140,7 @@ git commit -m "feat(android): route platform fetch through tauri native http plu
 ### Task 4: Recompile and Verify
 
 **Files:**
+
 - Output: `packages/android/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
 
 - [ ] **Step 1: Compile the new build**

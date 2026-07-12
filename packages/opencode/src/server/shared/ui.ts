@@ -97,11 +97,9 @@ export function serveUIEffect(
     // Check if local dev assets exist in packages/app/dist or custom path
     const isTest = process.env.NODE_ENV === "test"
     const localDistPath =
-      process.env.OPENCODE_LOCAL_DIST_PATH ||
-      (!isTest && nodePath.resolve(import.meta.dirname, "../../../../app/dist"))
+      process.env.OPENCODE_LOCAL_DIST_PATH || (!isTest && nodePath.resolve(import.meta.dirname, "../../../../app/dist"))
 
-    const hasLocalDist =
-      localDistPath && (yield* services.fs.existsSafe(nodePath.join(localDistPath, "index.html")))
+    const hasLocalDist = localDistPath && (yield* services.fs.existsSafe(nodePath.join(localDistPath, "index.html")))
 
     if (hasLocalDist) {
       const filePath = nodePath.join(localDistPath, requestPath.replace(/^\//, ""))
@@ -109,9 +107,9 @@ export function serveUIEffect(
       const isFile = exists && (yield* services.fs.isFile(filePath).pipe(Effect.catch(() => Effect.succeed(false))))
       const targetFile = isFile ? filePath : nodePath.join(localDistPath, "index.html")
 
-      const body = yield* services.fs.readFile(targetFile).pipe(
-        Effect.catch(() => services.fs.readFile(nodePath.join(localDistPath, "index.html"))),
-      )
+      const body = yield* services.fs
+        .readFile(targetFile)
+        .pipe(Effect.catch(() => services.fs.readFile(nodePath.join(localDistPath, "index.html"))))
       return embeddedUIResponse(targetFile, body)
     }
 

@@ -196,6 +196,7 @@ onOpenChange={(open) => {
 ### Task 5: Guard line comment autofocus on mobile (v1 + v2)
 
 **Files:**
+
 - `packages/ui/src/components/line-comment.tsx`
 - `packages/ui/src/v2/components/line-comment-v2.tsx`
 
@@ -264,7 +265,8 @@ if (open) requestAnimationFrame(() => projectSearchRef?.focus())
 With:
 
 ```tsx
-if (open && platform.platform !== "ios" && platform.platform !== "android") requestAnimationFrame(() => projectSearchRef?.focus())
+if (open && platform.platform !== "ios" && platform.platform !== "android")
+  requestAnimationFrame(() => projectSearchRef?.focus())
 ```
 
 ---
@@ -399,27 +401,29 @@ scroll-view.tsx) to detect mobile without importing app-level context."
 
 ## Summary of changes
 
-| # | File | Focus site | Guard type |
-|---|------|-----------|------------|
-| 1 | `ui/components/dialog.tsx` | `onOpenAutoFocus` → `[autofocus].focus()` | Skip focus on mobile |
-| 2 | `ui/v2/components/dialog-v2.tsx` | `onOpenAutoFocus` → `[autofocus].focus()` | Skip focus on mobile |
-| 3a | `ui/components/list.tsx` | `onPointerDown` → `input.focus()` | Skip focus on mobile |
-| 3b | `ui/components/list.tsx` | `autofocus={searchProps().autofocus}` | Force `false` on mobile |
-| 3c | `ui/components/list.tsx` | Clear button → `inputRef.focus()` | Skip focus on mobile |
-| 4 | `ui/components/select.tsx` | `onOpenChange` → `searchRef.focus()` | Skip focus on mobile |
-| 5a | `ui/components/line-comment.tsx` | `onMount` → `focus()` | Skip focus on mobile |
-| 5b | `ui/v2/components/line-comment-v2.tsx` | `onMount` → `textareaRef.focus()` | Skip focus on mobile |
-| 6 | `app/components/prompt-input.tsx` | Project picker → `projectSearchRef.focus()` | Skip focus on mobile |
-| 7a | `app/pages/.../session-question-dock.tsx` | `focusCustom` ref → `el.focus()` | Skip focus on mobile |
-| 7b | `app/pages/.../session-question-dock.tsx` | `onMouseDown` → `input.focus()` | Skip focus on mobile |
-| 8 | `app/pages/layout/inline-editor.tsx` | Ref callback → `el.focus()` | Skip focus on mobile |
+| #   | File                                      | Focus site                                  | Guard type              |
+| --- | ----------------------------------------- | ------------------------------------------- | ----------------------- |
+| 1   | `ui/components/dialog.tsx`                | `onOpenAutoFocus` → `[autofocus].focus()`   | Skip focus on mobile    |
+| 2   | `ui/v2/components/dialog-v2.tsx`          | `onOpenAutoFocus` → `[autofocus].focus()`   | Skip focus on mobile    |
+| 3a  | `ui/components/list.tsx`                  | `onPointerDown` → `input.focus()`           | Skip focus on mobile    |
+| 3b  | `ui/components/list.tsx`                  | `autofocus={searchProps().autofocus}`       | Force `false` on mobile |
+| 3c  | `ui/components/list.tsx`                  | Clear button → `inputRef.focus()`           | Skip focus on mobile    |
+| 4   | `ui/components/select.tsx`                | `onOpenChange` → `searchRef.focus()`        | Skip focus on mobile    |
+| 5a  | `ui/components/line-comment.tsx`          | `onMount` → `focus()`                       | Skip focus on mobile    |
+| 5b  | `ui/v2/components/line-comment-v2.tsx`    | `onMount` → `textareaRef.focus()`           | Skip focus on mobile    |
+| 6   | `app/components/prompt-input.tsx`         | Project picker → `projectSearchRef.focus()` | Skip focus on mobile    |
+| 7a  | `app/pages/.../session-question-dock.tsx` | `focusCustom` ref → `el.focus()`            | Skip focus on mobile    |
+| 7b  | `app/pages/.../session-question-dock.tsx` | `onMouseDown` → `input.focus()`             | Skip focus on mobile    |
+| 8   | `app/pages/layout/inline-editor.tsx`      | Ref callback → `el.focus()`                 | Skip focus on mobile    |
 
 **Already guarded (no changes needed):**
+
 - `prompt-input.tsx` — `safeFocus()`, `focusEditorEnd()`, `restoreFocus()`, `onMouseDown` wrappers
 - `session.tsx` — `handleKeyDown`, `focusInput`, route-change effect
 - `new-session.tsx` — `onMount`
 
 **Excluded (not auto-focus, user-initiated only):**
+
 - `home.tsx` search — focus triggered by parent via keybind (not reachable on mobile)
 - Android `onboarding.tsx` — no autofocus attributes
 - Hidden `<input type="file">` — triggered by `.click()`, not `.focus()`

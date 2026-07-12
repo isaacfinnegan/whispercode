@@ -13,6 +13,7 @@
 ### Task 1: Update Gitignore to track MainActivity.kt
 
 **Files:**
+
 - Modify: `.gitignore`
 
 - [ ] **Step 1: Add exception pattern for MainActivity.kt in `.gitignore`**
@@ -31,6 +32,7 @@ Expected: `packages/android/src-tauri/gen/android/app/src/main/java/com/devgriff
 - [ ] **Step 3: Commit the .gitignore modification**
 
 Run:
+
 ```bash
 git add .gitignore
 git commit -m "chore(android): un-ignore MainActivity.kt to track custom status bar changes"
@@ -41,6 +43,7 @@ git commit -m "chore(android): un-ignore MainActivity.kt to track custom status 
 ### Task 2: Implement Dynamic Status Bar Icons and SSL Bypass in MainActivity.kt
 
 **Files:**
+
 - Modify: `packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/whispercode/MainActivity.kt`
 
 - [ ] **Step 1: Write custom MainActivity implementation**
@@ -63,7 +66,7 @@ import android.os.Looper
 class MainActivity : TauriActivity() {
   private val handler = Handler(Looper.getMainLooper())
   private var currentWebView: WebView? = null
-  
+
   private val themePoller = object : Runnable {
     override fun run() {
       currentWebView?.let { webView ->
@@ -85,12 +88,12 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
     currentWebView = webView
-    
+
     val originalClient = webView.webViewClient
     if (originalClient != null) {
       webView.webViewClient = DelegatingWebViewClient(originalClient)
     }
-    
+
     handler.post(themePoller)
   }
 
@@ -152,6 +155,7 @@ If Java is not available on the local machine, perform a manual code inspection 
 - [ ] **Step 3: Commit the MainActivity changes**
 
 Run:
+
 ```bash
 git add packages/android/src-tauri/gen/android/app/src/main/java/com/devgriffin/whispercode/MainActivity.kt
 git commit -m "fix(android): resolve status bar light/dark icons dynamically"

@@ -13,7 +13,8 @@
 ## Phase 1: Style Definitions
 
 - [ ] **Task 1.1: Add plan viewer container and toggle control styles**
-  Append the following CSS declarations to `packages/session-ui/src/components/file.css`:
+      Append the following CSS declarations to `packages/session-ui/src/components/file.css`:
+
   ```css
   /* Plan Viewer Layout */
   .plan-viewer-container {
@@ -108,7 +109,8 @@
   ```
 
 - [ ] **Task 1.2: Add markdown checklist card styles**
-  Append the following checklist styles to `packages/session-ui/src/components/markdown.css`:
+      Append the following checklist styles to `packages/session-ui/src/components/markdown.css`:
+
   ```css
   /* Custom checklist styling for Visual Plan preview */
   [data-plan-preview="true"] ul {
@@ -181,7 +183,7 @@
 ## Phase 2: Component Implementation
 
 - [ ] **Task 2.1: Add Markdown imports and helper functions to `packages/session-ui/src/components/file.tsx`**
-  Modify imports and helper scopes at `packages/session-ui/src/components/file.tsx`:
+      Modify imports and helper scopes at `packages/session-ui/src/components/file.tsx`:
   - Add import for `Markdown` from `./markdown`:
     ```typescript
     import { Markdown } from "./markdown"
@@ -195,7 +197,8 @@
     ```
 
 - [ ] **Task 2.2: Implement `PlanViewer` component in `packages/session-ui/src/components/file.tsx`**
-  Add the `PlanViewer` helper component above the `File` export:
+      Add the `PlanViewer` helper component above the `File` export:
+
   ```typescript
   function PlanViewer<T>(props: TextFileProps<T>) {
     const [viewMode, setViewMode] = createSignal<"visual" | "code">("visual")
@@ -267,7 +270,8 @@
   ```
 
 - [ ] **Task 2.3: Integrate `PlanViewer` inside the `File` component export**
-  Update the `File` component logic at the bottom of `packages/session-ui/src/components/file.tsx`:
+      Update the `File` component logic at the bottom of `packages/session-ui/src/components/file.tsx`:
+
   ```typescript
   export function File<T>(props: FileProps<T>) {
     if (props.mode === "text") {
@@ -284,7 +288,8 @@
 ## Phase 3: Documentation and Verification
 
 - [ ] **Task 3.1: Document implementation in `MERGE_NOTES.md`**
-  Append a subsection under `### C. Session UI (packages/session-ui)` to details fork changes:
+      Append a subsection under `### C. Session UI (packages/session-ui)` to details fork changes:
+
   ```markdown
   ### C. Session UI (`packages/session-ui`)
 
@@ -296,7 +301,7 @@
   ```
 
 - [ ] **Task 3.2: Verify type checks and test suite**
-  Run:
+      Run:
   ```bash
   export PATH="/Users/isaac/bin:/Users/isaac/.bun/bin:$PATH"
   bun run --cwd packages/session-ui typecheck

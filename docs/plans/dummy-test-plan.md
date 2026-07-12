@@ -11,4 +11,5 @@ This is a test plan to verify the formatted visual plan preview feature.
 - [ ] Run build and verify on physical/virtual test devices
 
 ## Notes & Reference
+
 We can easily toggle back to the raw source code view via the header buttons.

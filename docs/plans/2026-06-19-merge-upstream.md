@@ -13,24 +13,29 @@
 ### Task 1: Initialize Integration Branch and Start Rebase
 
 **Files:**
+
 - Modify: Git repository state (HEAD)
 
 - [ ] **Step 1: Check out and reset the integration branch**
 
 Reset `merge-upstream` to the latest `dev` tip so it includes the two recent commits `934f13aed3` and `b73d7c9946`.
 Run:
+
 ```bash
 rtk git checkout merge-upstream
 rtk git reset --hard dev
 ```
+
 Expected: Branch 'merge-upstream' reset to HEAD of dev.
 
 - [ ] **Step 2: Initiate rebase onto upstream/dev**
 
 Run:
+
 ```bash
 rtk git rebase upstream/dev
 ```
+
 Expected: Rebase begins and pauses at the first conflict (usually `prompt-input.tsx` or `platform.tsx` from the first custom commits).
 
 ---
@@ -38,6 +43,7 @@ Expected: Rebase begins and pauses at the first conflict (usually `prompt-input.
 ### Task 2: Resolve Rebase Conflicts (Commits 1-75)
 
 **Files:**
+
 - Modify: Conflicted files in the workspace (commit-by-commit)
 
 - [ ] **Step 1: Resolve conflicts up to "add refresh gesture to main chat window"**
@@ -57,6 +63,7 @@ For `packages/app/src/pages/session/timeline/message-timeline.tsx`, update the p
 - [ ] **Step 3: Resolve conflicts up to "add beam for quick testflight testing"**
 
 For `packages/app/src/context/sync.tsx` (where `status()` method was refactored), checkout HEAD version of `sync.tsx` and define the `status()` method inside `packages/app/src/context/directory-sync.ts` in the `session` object:
+
 ```typescript
       async status() {
         const [, setStore] = serverSync.child(directory)
@@ -90,23 +97,28 @@ For `packages/app/src/i18n/en.ts`, merge English translation keys.
 ### Task 3: Resolve Remaining Rebase Conflicts and Complete Rebase
 
 **Files:**
+
 - Modify: Conflicted files in the workspace (commits 76-166)
 
 - [ ] **Step 1: Continue rebase and identify new conflicts**
 
 Run:
+
 ```bash
 rtk git rebase --continue
 ```
+
 Resolve any conflicts in the remaining commits by keeping local Android/iOS features while adopting upstream modifications.
 Ensure `bun.lock` conflicts are resolved by restoring HEAD and running `bun install`.
 
 - [ ] **Step 2: Complete the rebase**
 
 Run:
+
 ```bash
 rtk git rebase --continue
 ```
+
 Expected: Rebase completes successfully, and HEAD is at the rebased branch tip.
 
 ---
@@ -114,30 +126,37 @@ Expected: Rebase completes successfully, and HEAD is at the rebased branch tip.
 ### Task 4: Run Typechecks and Regenerate the JS SDK
 
 **Files:**
+
 - Modify: `packages/sdk/js/src/v2/gen/sdk.gen.ts`, `packages/sdk/js/src/v2/gen/types.gen.ts`
 
 - [ ] **Step 1: Regenerate JavaScript SDK**
 
 Run from workspace root:
+
 ```bash
 ./packages/sdk/js/script/build.ts
 ```
+
 Expected: Generated SDK types and clients updated successfully.
 
 - [ ] **Step 2: Run typechecks in packages/opencode**
 
 Run:
+
 ```bash
 cd packages/opencode && bun typecheck
 ```
+
 Expected: CLI/server package passes typecheck.
 
 - [ ] **Step 3: Run typechecks in packages/app**
 
 Run:
+
 ```bash
 cd packages/app && bun typecheck
 ```
+
 Expected: App package passes typecheck.
 
 ---
@@ -145,20 +164,24 @@ Expected: App package passes typecheck.
 ### Task 5: Run E2E Tests, Compile debug Android app, and Share
 
 **Files:**
+
 - Create: `app-universal-debug.apk`
 
 - [ ] **Step 1: Run Playwright E2E tests**
 
 Run:
+
 ```bash
 cd packages/app && bun run test:e2e
 ```
+
 Expected: E2E tests pass.
 
 - [ ] **Step 2: Build Android debug APK**
 
 Build the debug APK using the local Java and Android SDK paths.
 Run from workspace root:
+
 ```bash
 cd packages/android
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
@@ -167,15 +190,18 @@ export NDK_HOME="$ANDROID_HOME/ndk/30.0.14904198"
 export PATH="/Users/isaac/.bun/bin:/Users/isaac/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:/opt/homebrew/bin:$PATH"
 bun run tauri android build --apk --debug --target aarch64 --split-per-abi
 ```
+
 Expected: Build finishes, producing the debug APK.
 
 - [ ] **Step 3: Copy APK to root and push to phone via Tailscale**
 
 Run from workspace root:
+
 ```bash
 cp packages/android/src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk app-universal-debug.apk
 /usr/local/bin/tailscale file cp app-universal-debug.apk "pixel-10-pro-fold:"
 ```
+
 Expected: `app-universal-debug.apk` is pushed to `pixel-10-pro-fold` device successfully.
 
 ---
@@ -183,28 +209,35 @@ Expected: `app-universal-debug.apk` is pushed to `pixel-10-pro-fold` device succ
 ### Task 6: Finalize Merge on dev Branch
 
 **Files:**
+
 - Modify: Git repository state (dev branch HEAD)
 
 - [ ] **Step 1: Check out dev branch**
 
 Run:
+
 ```bash
 rtk git checkout dev
 ```
+
 Expected: Switched to branch 'dev'.
 
 - [ ] **Step 2: Fast-forward dev to merge-upstream**
 
 Run:
+
 ```bash
 rtk git merge merge-upstream
 ```
+
 Expected: dev branch fast-forwards to the fully rebased tip.
 
 - [ ] **Step 3: Delete integration branch**
 
 Run:
+
 ```bash
 rtk git branch -d merge-upstream
 ```
+
 Expected: Branch 'merge-upstream' deleted.

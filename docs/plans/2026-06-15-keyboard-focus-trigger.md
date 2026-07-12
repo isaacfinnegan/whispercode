@@ -13,15 +13,19 @@
 ### Task 1: Update New Session Page Mount Guard
 
 **Files:**
+
 - Modify: `packages/app/src/pages/new-session.tsx`
 
 - [ ] **Step 1: Import platform context and retrieve platform object**
 
 Modify imports in `packages/app/src/pages/new-session.tsx` to include `usePlatform`:
+
 ```typescript
 import { usePlatform } from "@/context/platform"
 ```
+
 And instantiate it inside `NewSessionPage`:
+
 ```typescript
 export default function NewSessionPage() {
   const platform = usePlatform()
@@ -31,13 +35,14 @@ export default function NewSessionPage() {
 - [ ] **Step 2: Add isMobile check to onMount focus callback**
 
 Modify the `onMount` handler around line 48 to only execute focus programmatically when not on mobile:
+
 ```typescript
-  onMount(() => {
-    const isMobile = platform.platform === "ios" || platform.platform === "android"
-    if (!isMobile) {
-      requestAnimationFrame(() => inputRef?.focus())
-    }
-  })
+onMount(() => {
+  const isMobile = platform.platform === "ios" || platform.platform === "android"
+  if (!isMobile) {
+    requestAnimationFrame(() => inputRef?.focus())
+  }
+})
 ```
 
 - [ ] **Step 3: Run typecheck to verify changes**
@@ -57,50 +62,54 @@ git commit -m "feat(app): guard draft session mount auto-focus on mobile"
 ### Task 2: Update Session Page Focus Calls
 
 **Files:**
+
 - Modify: `packages/app/src/pages/session.tsx`
 
 - [ ] **Step 1: Guard global keydown handler programmatic focus**
 
 Modify the keydown listener around line 854:
+
 ```typescript
-    if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
-      if (composer.blocked() || isChildSession()) return
-      const isMobile = platform.platform === "ios" || platform.platform === "android"
-      if (!isMobile) {
-        inputRef?.focus()
-      }
-    }
+if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
+  if (composer.blocked() || isChildSession()) return
+  const isMobile = platform.platform === "ios" || platform.platform === "android"
+  if (!isMobile) {
+    inputRef?.focus()
+  }
+}
 ```
 
 - [ ] **Step 2: Guard focusInput helper**
 
 Modify the `focusInput` function around line 907:
+
 ```typescript
-  const focusInput = () => {
-    if (isChildSession()) return
-    const isMobile = platform.platform === "ios" || platform.platform === "android"
-    if (isMobile && document.activeElement !== inputRef) return
-    inputRef?.focus()
-  }
+const focusInput = () => {
+  if (isChildSession()) return
+  const isMobile = platform.platform === "ios" || platform.platform === "android"
+  if (isMobile && document.activeElement !== inputRef) return
+  inputRef?.focus()
+}
 ```
 
 - [ ] **Step 3: Guard route change auto-focus**
 
 Modify the `createEffect` tracking `params.id` around line 1639:
+
 ```typescript
-  createEffect(
-    on(
-      () => params.id,
-      (id) => {
-        if (!id) {
-          const isMobile = platform.platform === "ios" || platform.platform === "android"
-          if (!isMobile) {
-            requestAnimationFrame(() => inputRef?.focus())
-          }
+createEffect(
+  on(
+    () => params.id,
+    (id) => {
+      if (!id) {
+        const isMobile = platform.platform === "ios" || platform.platform === "android"
+        if (!isMobile) {
+          requestAnimationFrame(() => inputRef?.focus())
         }
-      },
-    ),
-  )
+      }
+    },
+  ),
+)
 ```
 
 - [ ] **Step 4: Run typecheck to verify changes**
@@ -120,11 +129,13 @@ git commit -m "feat(app): guard session keydown, routing, and command focus on m
 ### Task 3: Update Prompt Input Wrapper Event Handlers
 
 **Files:**
+
 - Modify: `packages/app/src/components/prompt-input.tsx`
 
 - [ ] **Step 1: Guard normal layout prompt-input wrapper onMouseDown**
 
 Modify the outer wrapper's `onMouseDown` handler around line 1658:
+
 ```typescript
               <div
                 class="relative min-h-[52px]"
@@ -143,6 +154,7 @@ Modify the outer wrapper's `onMouseDown` handler around line 1658:
 - [ ] **Step 2: Guard alternative layout prompt-input wrapper onMouseDown**
 
 Modify the other wrapper's `onMouseDown` handler around line 1840:
+
 ```typescript
             <div
               class="relative"

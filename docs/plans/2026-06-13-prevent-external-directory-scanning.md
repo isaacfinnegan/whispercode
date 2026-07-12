@@ -13,11 +13,13 @@
 ### Task 1: Prioritize Current Directory in Directory Picker (Frontend Usability)
 
 **Files:**
+
 - Modify: `packages/app/src/components/dialog-select-directory.tsx`
 
 - [ ] **Step 1: Edit packages/app/src/components/dialog-select-directory.tsx**
-  
+
   Locate the `start` memo definition and prioritize `directory` over `home`:
+
   ```typescript
   const start = createMemo(
     () => sync.data.path.directory || sync.data.path.home || fallbackPath()?.directory || fallbackPath()?.home,
@@ -25,8 +27,9 @@
   ```
 
 - [ ] **Step 2: Run typecheck**
-  
+
   Run typescript checks in the `packages/app` directory to verify there are no compilation errors:
+
   ```bash
   export PATH="$HOME/.bun/bin:$PATH" && bun run typecheck
   ```
@@ -36,11 +39,13 @@
 ### Task 2: Verify and Commit
 
 **Files:**
+
 - None
 
 - [ ] **Step 1: Commit the changes**
-  
+
   Stage the file, inspect git diff, and commit the changes using the conventional commit format:
+
   ```bash
   git add packages/app/src/components/dialog-select-directory.tsx
   git commit -m "fix(app): prioritize launch directory over home in directory picker"

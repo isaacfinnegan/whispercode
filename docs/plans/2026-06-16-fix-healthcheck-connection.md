@@ -13,6 +13,7 @@
 ### Task 1: Update Root `.gitignore` to Track `build.gradle.kts`
 
 **Files:**
+
 - Modify: `.gitignore`
 
 - [ ] **Step 1: Verify `build.gradle.kts` is currently ignored**
@@ -23,10 +24,13 @@ Expected: Output showing it is ignored by `.gitignore:36:packages/android/src-ta
 - [ ] **Step 2: Modify `.gitignore` to unignore the specific file**
 
 Modify `.gitignore` at line 36. Replace:
+
 ```gitignore
 packages/android/src-tauri/gen/
 ```
+
 with:
+
 ```gitignore
 packages/android/src-tauri/gen/*
 !packages/android/src-tauri/gen/android/
@@ -44,6 +48,7 @@ Expected: Empty/no output (exit code 1) meaning the file is no longer ignored.
 - [ ] **Step 4: Commit**
 
 Run:
+
 ```bash
 git add .gitignore
 git commit -m "chore(android): update gitignore to track build.gradle.kts"
@@ -54,21 +59,26 @@ git commit -m "chore(android): update gitignore to track build.gradle.kts"
 ### Task 2: Configure `usesCleartextTraffic` in `build.gradle.kts`
 
 **Files:**
+
 - Modify: `packages/android/src-tauri/gen/android/app/build.gradle.kts`
 
 - [ ] **Step 1: Check existing `usesCleartextTraffic` settings**
 
 Inspect `packages/android/src-tauri/gen/android/app/build.gradle.kts` lines 27 and 44:
+
 - Line 27: `manifestPlaceholders["usesCleartextTraffic"] = "false"`
 - Line 44: `manifestPlaceholders["usesCleartextTraffic"] = "true"`
 
 - [ ] **Step 2: Update `defaultConfig` to allow cleartext traffic in release builds**
 
 Modify `packages/android/src-tauri/gen/android/app/build.gradle.kts` at line 27. Replace:
+
 ```kotlin
         manifestPlaceholders["usesCleartextTraffic"] = "false"
 ```
+
 with:
+
 ```kotlin
         manifestPlaceholders["usesCleartextTraffic"] = "true"
 ```
@@ -81,6 +91,7 @@ Expected: Diff shows `usesCleartextTraffic` is changed from `"false"` to `"true"
 - [ ] **Step 4: Commit**
 
 Run:
+
 ```bash
 git add packages/android/src-tauri/gen/android/app/build.gradle.kts
 git commit -m "fix(android): enable usesCleartextTraffic for release builds"
@@ -91,48 +102,53 @@ git commit -m "fix(android): enable usesCleartextTraffic for release builds"
 ### Task 3: Wrap `http:` Fetch Case with `try/catch` Fallback in `entry-android.tsx`
 
 **Files:**
+
 - Modify: `packages/android/src/entry-android.tsx`
 
 - [ ] **Step 1: Check the current implementation**
 
 Verify `packages/android/src/entry-android.tsx` lines 302-317:
+
 ```typescript
-      try {
-        const parsedUrl = new URL(urlStr)
-        if (parsedUrl.protocol === "http:") {
-          return await tauriFetch(makeRequest())
-        }
-        if (parsedUrl.protocol === "https:") {
-          try {
-            return await tauriFetch(makeRequest())
-          } catch (e) {
-            console.warn("[entry-android] HTTPS tauriFetch failed, falling back to WebView fetch:", e)
-            return await globalThis.fetch(makeRequest())
-          }
-        }
-      } catch (e) {
-        console.error("[entry-android] fetch routing error:", e)
-      }
+try {
+  const parsedUrl = new URL(urlStr)
+  if (parsedUrl.protocol === "http:") {
+    return await tauriFetch(makeRequest())
+  }
+  if (parsedUrl.protocol === "https:") {
+    try {
+      return await tauriFetch(makeRequest())
+    } catch (e) {
+      console.warn("[entry-android] HTTPS tauriFetch failed, falling back to WebView fetch:", e)
+      return await globalThis.fetch(makeRequest())
+    }
+  }
+} catch (e) {
+  console.error("[entry-android] fetch routing error:", e)
+}
 ```
 
 - [ ] **Step 2: Add try/catch fallback to the `http:` branch**
 
 Modify `packages/android/src/entry-android.tsx` at lines 304-306. Replace:
+
 ```typescript
-        if (parsedUrl.protocol === "http:") {
-          return await tauriFetch(makeRequest())
-        }
+if (parsedUrl.protocol === "http:") {
+  return await tauriFetch(makeRequest())
+}
 ```
+
 with:
+
 ```typescript
-        if (parsedUrl.protocol === "http:") {
-          try {
-            return await tauriFetch(makeRequest())
-          } catch (e) {
-            console.warn("[entry-android] HTTP tauriFetch failed, falling back to WebView fetch:", e)
-            return await globalThis.fetch(makeRequest())
-          }
-        }
+if (parsedUrl.protocol === "http:") {
+  try {
+    return await tauriFetch(makeRequest())
+  } catch (e) {
+    console.warn("[entry-android] HTTP tauriFetch failed, falling back to WebView fetch:", e)
+    return await globalThis.fetch(makeRequest())
+  }
+}
 ```
 
 - [ ] **Step 3: Verify type checking**
@@ -148,6 +164,7 @@ Expected: Vite build succeeds.
 - [ ] **Step 5: Commit**
 
 Run:
+
 ```bash
 git add packages/android/src/entry-android.tsx
 git commit -m "fix(android): wrap http fetch in try/catch with webview fallback"

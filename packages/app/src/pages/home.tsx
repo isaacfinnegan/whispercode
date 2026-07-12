@@ -1041,7 +1041,7 @@ function HomeProjectRow(props: {
       fileManagerApp(
         platform.platform === "desktop" && platform.os && platform.os !== "ios" && platform.os !== "android"
           ? platform.os
-          : "unknown"
+          : "unknown",
       ).actionLabel,
     )
   const revealInFileManager = () => {
