@@ -17,7 +17,7 @@ test("session settings use the remote server context", async ({ page }) => {
 
   await page.goto(`/server/${base64Encode(serverB)}/session/${sessionB.id}`)
   await expect(page.getByText(sessionB.title).first()).toBeVisible()
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+," : "Control+,")
+  await openSettings(page)
 
   const dialog = page.locator(".settings-v2-dialog")
   const autoAccept = dialog.locator('[data-action="settings-auto-accept-permissions"]')
@@ -58,7 +58,7 @@ test("auto-accept responds for an unfocused server session", async ({ page }) =>
   const hrefB = `/server/${base64Encode(serverB)}/session/${sessionB.id}`
   await page.goto(`/server/${base64Encode(serverA)}/session/${sessionA.id}`)
   await expect(page.getByText(sessionA.title).first()).toBeVisible()
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+," : "Control+,")
+  await openSettings(page)
   const autoAccept = page.locator(".settings-v2-dialog").locator('[data-action="settings-auto-accept-permissions"]')
   await autoAccept.locator('[data-slot="switch-control"]').click()
   await expect(autoAccept.getByRole("switch")).toBeChecked()
@@ -147,6 +147,11 @@ type PermissionResponse = {
   sessionID: string
   permissionID: string
   body: unknown
+}
+
+async function openSettings(page: Page) {
+  const mac = await page.evaluate(() => /(Mac|iPod|iPhone|iPad)/.test(navigator.platform))
+  await page.keyboard.press(mac ? "Meta+," : "Control+,")
 }
 
 async function configureServers(page: Page, tabs: { type: "session"; server: string; sessionId: string }[] = []) {

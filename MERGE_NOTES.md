@@ -85,3 +85,4 @@ To minimize conflicts with upstream files, developers and agentic assistants mus
 1.  **Keep files rather than deleting**: For upstream files that are unused or replaced (e.g. `packages/app/src/components/help-button.tsx`), do not delete them from the disk. Instead, stub them out (e.g., have the component `return null`) to prevent git from flagging conflicts or attempting tree-deletions on merge.
 2.  **Discard non-English Translations**: During a merge, discard conflicting non-English `README.*.md` translation files and retain the WhisperCode-specific English documentation.
 3.  **Run Version Sync**: Post-merge, always run `bun run script/sync-android-version.ts` to ensure build versions are synchronized.
+4.  **Match Browser Keybindings in E2E Tests**: Playwright's `Desktop Chrome` profile may emulate a different OS than the Node host. Choose `Meta` versus `Control` from `navigator.platform` in the browser, not `process.platform`, when invoking `mod` shortcuts.
