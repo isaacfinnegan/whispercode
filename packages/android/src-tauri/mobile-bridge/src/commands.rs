@@ -42,6 +42,11 @@ pub(crate) async fn get_push_state<R: Runtime>(app: AppHandle<R>) -> Result<serd
 }
 
 #[command]
+pub(crate) async fn push_listeners_ready<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.mobile_bridge().push_listeners_ready()
+}
+
+#[command]
 pub(crate) async fn request_push_permission<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value> {
     app.mobile_bridge().request_push_permission()
 }

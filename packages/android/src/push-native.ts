@@ -31,6 +31,17 @@ export const normalizePush = (value: unknown): PushState | null => {
   }
 }
 
+export const initializeNativePush = async (
+  ready: Promise<unknown>,
+  send: (method: string) => Promise<unknown>,
+  setPush: (state: PushState) => void,
+) => {
+  await ready
+  await send("pushListenersReady")
+  const next = normalizePush(await send("getPushState"))
+  if (next) setPush(next)
+}
+
 export const normalizeDiag = (value: unknown): PushDiag | null => {
   if (!value || typeof value !== "object") return null
   const input = value as Record<string, unknown>

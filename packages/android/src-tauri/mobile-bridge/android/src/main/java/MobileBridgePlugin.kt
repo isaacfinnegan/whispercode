@@ -159,13 +159,14 @@ private data class PushPermissionRequest(
         Permission(strings = [Manifest.permission.POST_NOTIFICATIONS], alias = "notifications"),
     ]
 )
-class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), RecognitionListener {
+class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), RecognitionListener, PushOpenedPlugin {
     private val main = Handler(Looper.getMainLooper())
     private val scanExecutor = Executors.newSingleThreadExecutor()
 
     private lateinit var prefs: SecurePreferencesManager
     private lateinit var networkStateListener: NetworkStateListener
     private var isLoaded = false
+    private var pushListenersReady = false
 
     companion object {
         private const val TAG = "MobileBridgePush"
@@ -210,6 +211,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     override fun load(webView: WebView) {
         super.load(webView)
         pushDestroyed = false
+        pushListenersReady = false
         setVoiceState("ready")
         
         prefs = SecurePreferencesManager(activity)
@@ -227,6 +229,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     override fun onDestroy() {
         super.onDestroy()
         NotificationTapHandler.clearPluginInstance(this)
+        pushListenersReady = false
         pushDestroyed = true
         clearPushTokenRequest()
         pendingPushPermissions.forEach { request ->
@@ -260,6 +263,15 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     }
 
     fun isWebViewLoaded(): Boolean = isLoaded
+
+    override fun arePushListenersReady(): Boolean = pushListenersReady
+
+    override fun emitPushOpened(href: String) {
+        val payload = JSObject().apply {
+            put("href", href)
+        }
+        trigger("pushOpened", payload)
+    }
 
     @Command
     fun isWhisperReady(invoke: Invoke) {
@@ -705,9 +717,14 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun getPushState(invoke: Invoke) {
-        val state = pushState()
-        NotificationTapHandler.takePendingHref()?.let { state.put("pendingHref", it) }
-        invoke.resolve(state)
+        invoke.resolve(pushState())
+    }
+
+    @Command
+    fun pushListenersReady(invoke: Invoke) {
+        pushListenersReady = true
+        NotificationTapHandler.flushPendingHref(this)
+        invoke.resolve()
     }
 
     @Command

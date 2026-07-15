@@ -21,7 +21,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
-import { normalizePair, normalizePush, queuePushDeepLink, routePushHref } from "./push-native"
+import { initializeNativePush, normalizePair, normalizePush, queuePushDeepLink, routePushHref } from "./push-native"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
 import { Onboarding } from "./onboarding"
@@ -157,12 +157,7 @@ const App = () => {
   }
 
   const initializePush = async (ready: Promise<unknown>) => {
-    await ready
-    const result = await bridge.sendAsync<PushState & { pendingHref?: unknown }>("getPushState")
-    const pendingHref = result?.pendingHref
-    const next = normalizePush(result)
-    if (next) setPush(next)
-    if (pendingHref !== undefined) await handlePushTap(pendingHref, false)
+    await initializeNativePush(ready, bridge.sendAsync, setPush)
   }
 
   const showVoiceError = (message?: string) => {

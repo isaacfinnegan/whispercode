@@ -92,6 +92,62 @@ test("listeners reject readiness when registration fails", async () => {
   await expect(bridge.on("pushOpened", () => {}).ready).rejects.toThrow("listener registration failed")
 })
 
+test("native push initialization acknowledges listener readiness before requesting state", async () => {
+  const calls: string[] = []
+  const initialize = (
+    (await import("./push-native")) as {
+      initializeNativePush?: (
+        ready: Promise<unknown>,
+        send: (method: string) => Promise<unknown>,
+        setPush: (state: typeof push) => void,
+      ) => Promise<void>
+    }
+  ).initializeNativePush
+
+  expect(initialize).toBeDefined()
+  if (!initialize) return
+
+  await initialize(
+    Promise.resolve(),
+    async (method) => {
+      calls.push(method)
+      return push
+    },
+    () => {},
+  )
+
+  expect(calls).toEqual(["pushListenersReady", "getPushState"])
+})
+
+test("native push initialization skips state when listener acknowledgment fails", async () => {
+  const calls: string[] = []
+  const initialize = (
+    (await import("./push-native")) as {
+      initializeNativePush?: (
+        ready: Promise<unknown>,
+        send: (method: string) => Promise<unknown>,
+        setPush: (state: typeof push) => void,
+      ) => Promise<void>
+    }
+  ).initializeNativePush
+
+  expect(initialize).toBeDefined()
+  if (!initialize) return
+
+  await expect(
+    initialize(
+      Promise.resolve(),
+      async (method) => {
+        calls.push(method)
+        throw new Error("listener acknowledgment failed")
+      },
+      () => {},
+    ),
+  ).rejects.toThrow("listener acknowledgment failed")
+
+  expect(calls).toEqual(["pushListenersReady"])
+})
+
 test("isPushHref only accepts app-relative and approved deep links", () => {
   expect(isPushHref("/session/abc")).toBe(true)
   expect(isPushHref("opencode://open-project?directory=%2Ftmp%2Fdemo")).toBe(true)
