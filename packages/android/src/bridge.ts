@@ -23,39 +23,45 @@ const resolve = (method: string) => {
   if (method in commands) return commands[method as keyof typeof commands]
 }
 
-export const bridge = {
-  available: () => true,
-  send: (method: string, params?: unknown) => {
-    void bridge.sendAsync(method, params)
-  },
-  sendAsync: <T = unknown>(method: string, params?: unknown) => {
+type Invoker = <T>(command: string, params?: Record<string, unknown>) => Promise<T>
+
+export const createBridge = (call: Invoker) => {
+  const sendAsync = <T = unknown>(method: string, params?: unknown) => {
     const command = resolve(method)
     if (!command) return Promise.resolve(null)
-    return invoke<T>(`plugin:mobile-bridge|${command}`, params as Record<string, unknown>)
-      .then((value) => value ?? null)
-      .catch(() => null)
-  },
-  on: (type: string, handler: (payload: unknown) => void) => {
-    let active = true
-    let listener: { unregister: () => Promise<void> } | null = null
+    return call<T>(`plugin:mobile-bridge|${command}`, params as Record<string, unknown>).then((value) => value ?? null)
+  }
 
-    void addPluginListener("mobile-bridge", type, (payload) => {
-      if (!active) return
-      handler(payload)
-    })
-      .then((value) => {
-        if (active) {
-          listener = value
-          return
-        }
-        void value.unregister().catch(() => undefined)
+  return {
+    available: () => true,
+    send: (method: string, params?: unknown) => {
+      void sendAsync(method, params).catch(() => undefined)
+    },
+    sendAsync,
+    on: (type: string, handler: (payload: unknown) => void) => {
+      let active = true
+      let listener: { unregister: () => Promise<void> } | null = null
+
+      void addPluginListener("mobile-bridge", type, (payload) => {
+        if (!active) return
+        handler(payload)
       })
-      .catch(() => undefined)
+        .then((value) => {
+          if (active) {
+            listener = value
+            return
+          }
+          void value.unregister().catch(() => undefined)
+        })
+        .catch(() => undefined)
 
-    return () => {
-      active = false
-      if (!listener) return
-      void listener.unregister().catch(() => undefined)
-    }
-  },
+      return () => {
+        active = false
+        if (!listener) return
+        void listener.unregister().catch(() => undefined)
+      }
+    },
+  }
 }
+
+export const bridge = createBridge(invoke)

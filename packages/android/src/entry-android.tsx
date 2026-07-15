@@ -11,7 +11,6 @@ import {
   type PushState,
   type PushPrefs,
   type PushCred,
-  type PushDiag,
 } from "@opencode-ai/app"
 import { showToast } from "@opencode-ai/ui/toast"
 import { requestPermissions } from "@tauri-apps/api/core"
@@ -21,6 +20,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
+import { isPushHref, normalizePair, normalizePush } from "./push-native"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
 import { Onboarding } from "./onboarding"
@@ -122,93 +122,6 @@ const emptyPush: PushState = {
   generic: true,
 }
 
-const normalizePush = (value: unknown): PushState | null => {
-  if (!value || typeof value !== "object") return null
-  const permission = (value as { permission?: unknown }).permission
-  if (
-    permission !== "unsupported" &&
-    permission !== "not-determined" &&
-    permission !== "denied" &&
-    permission !== "authorized" &&
-    permission !== "provisional" &&
-    permission !== "ephemeral"
-  ) {
-    return null
-  }
-  return {
-    supported: (value as { supported?: unknown }).supported !== false,
-    permission,
-    allowed: (value as { allowed?: unknown }).allowed === true,
-    registered: (value as { registered?: unknown }).registered === true,
-    paired: (value as { paired?: unknown }).paired === true,
-    generic: (value as { generic?: unknown }).generic !== false,
-    channel:
-      typeof (value as { channel?: unknown }).channel === "string" ? (value as { channel: string }).channel : undefined,
-    diag: normalizeDiag((value as { diag?: unknown }).diag) ?? undefined,
-  }
-}
-
-const normalizeDiag = (value: unknown): PushDiag | null => {
-  if (!value || typeof value !== "object") return null
-  const pair = (value as { pairStatus?: unknown }).pairStatus
-  return {
-    token: (value as { token?: unknown }).token === true,
-    tokenPending: (value as { tokenPending?: unknown }).tokenPending === true,
-    relay: typeof (value as { relay?: unknown }).relay === "string" ? (value as { relay: string }).relay : undefined,
-    device:
-      typeof (value as { device?: unknown }).device === "string" ? (value as { device: string }).device : undefined,
-    pairID:
-      typeof (value as { pairID?: unknown }).pairID === "string" ? (value as { pairID: string }).pairID : undefined,
-    pairStatus:
-      pair === "pending" || pair === "claimed" || pair === "active" || pair === "expired" || pair === "failed"
-        ? pair
-        : undefined,
-    pairExpires:
-      typeof (value as { pairExpires?: unknown }).pairExpires === "string"
-        ? (value as { pairExpires: string }).pairExpires
-        : undefined,
-    lastCode:
-      typeof (value as { lastCode?: unknown }).lastCode === "string"
-        ? (value as { lastCode: string }).lastCode
-        : undefined,
-    lastError:
-      typeof (value as { lastError?: unknown }).lastError === "string"
-        ? (value as { lastError: string }).lastError
-        : undefined,
-  }
-}
-
-const normalizePair = (value: unknown): PairInfo | null => {
-  if (!value || typeof value !== "object") return null
-  const status = (value as { status?: unknown }).status
-  if (
-    status !== "pending" &&
-    status !== "claimed" &&
-    status !== "active" &&
-    status !== "expired" &&
-    status !== "failed"
-  ) {
-    return null
-  }
-  const id = typeof (value as { id?: unknown }).id === "string" ? (value as { id: string }).id : undefined
-  if (!id && status !== "active") return null
-  return {
-    id: id ?? "active",
-    status,
-    token: typeof (value as { token?: unknown }).token === "string" ? (value as { token: string }).token : undefined,
-    command:
-      typeof (value as { command?: unknown }).command === "string" ? (value as { command: string }).command : undefined,
-    expires:
-      typeof (value as { expires?: unknown }).expires === "string" ? (value as { expires: string }).expires : undefined,
-    channel:
-      typeof (value as { channel?: unknown }).channel === "string" ? (value as { channel: string }).channel : undefined,
-    device:
-      typeof (value as { device?: unknown }).device === "string" ? (value as { device: string }).device : undefined,
-    message:
-      typeof (value as { message?: unknown }).message === "string" ? (value as { message: string }).message : undefined,
-  }
-}
-
 const App = () => {
   const [voice, setVoice] = createSignal<VoiceStatus>({ state: "prewarming", ready: false })
   const [push, setPush] = createSignal<PushState | undefined>()
@@ -228,6 +141,22 @@ const App = () => {
 
   const emitResume = () => {
     window.dispatchEvent(new Event("opencode:resume"))
+  }
+
+  const handlePushTap = async (href: unknown, refresh = true) => {
+    if (typeof href === "string" && isPushHref(href)) {
+      window.dispatchEvent(new CustomEvent("opencode:pushOpened", { detail: { href } }))
+    }
+    emitResume()
+    if (refresh) await refreshPush()
+  }
+
+  const initializePush = async () => {
+    const result = await bridge.sendAsync<PushState & { pendingHref?: unknown }>("getPushState")
+    const pendingHref = result?.pendingHref
+    const next = normalizePush(result)
+    if (next) setPush(next)
+    if (pendingHref !== undefined) await handlePushTap(pendingHref, false)
   }
 
   const showVoiceError = (message?: string) => {
@@ -511,7 +440,6 @@ const App = () => {
   onMount(() => {
     document.documentElement.dataset.platform = "android"
     void refreshVoice()
-    void refreshPush()
 
     const handleClick = (event: MouseEvent) => {
       const link = (event.target as HTMLElement | null)?.closest("a.external-link") as HTMLAnchorElement | null
@@ -545,12 +473,17 @@ const App = () => {
       if (next) setPush(next)
     })
 
-    const stopPushOpened = bridge.on("pushOpened", (payload) => {
-      const { href } = (payload ?? {}) as { href?: string }
-      if (href) {
-        window.dispatchEvent(new CustomEvent("opencode:pushOpened", { detail: { href } }))
-      }
+    const stopPushReceived = bridge.on("pushReceived", () => {
+      emitResume()
+      void refreshPush().catch(() => undefined)
     })
+
+    const stopPushOpened = bridge.on("pushOpened", (payload) => {
+      const href = payload && typeof payload === "object" ? (payload as { href?: unknown }).href : undefined
+      void handlePushTap(href).catch(() => undefined)
+    })
+
+    void initializePush().catch(() => undefined)
 
     document.addEventListener("click", handleClick)
     window.addEventListener("focus", onFocus)
@@ -562,6 +495,7 @@ const App = () => {
       stopListening()
       stopVoiceState()
       stopPushState()
+      stopPushReceived()
       stopPushOpened()
     })
   })
