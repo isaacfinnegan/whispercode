@@ -21,7 +21,11 @@ val keystoreProperties = Properties().apply {
     }
 }
 
-val hasReleaseKeystore = keystoreProperties.getProperty("storeFile")?.isNotBlank() == true
+val releaseKeystoreFile = keystoreProperties.getProperty("storeFile")
+    ?.takeIf { it.isNotBlank() }
+    ?.let(rootProject::file)
+    ?.takeIf { it.isFile }
+val hasReleaseKeystore = releaseKeystoreFile != null
 
 android {
     compileSdk = 36
@@ -36,9 +40,7 @@ android {
     }
     signingConfigs {
         create("release") {
-            if (hasReleaseKeystore) {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
-            }
+            releaseKeystoreFile?.let { storeFile = it }
             storePassword = keystoreProperties.getProperty("storePassword", "")
             keyAlias = keystoreProperties.getProperty("keyAlias", "")
             keyPassword = keystoreProperties.getProperty("keyPassword", "")

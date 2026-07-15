@@ -978,19 +978,24 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
             rejectPushPermissions("push_registration_failed")
             return
         }
+        val applicationContext = activity.applicationContext
+        val tokenPrefs = SecurePreferencesManager(applicationContext)
         val handler = main
         val owner = WeakReference(this)
         val listener = OnCompleteListener<String> { completed ->
             handler.post {
-                val plugin = owner.get() ?: return@post
-                if (!isCurrentPushRequest(generation, plugin.pushRequestGeneration, plugin.pushDestroyed)) return@post
-                plugin.clearPushTokenRequest()
                 val token = if (completed.isSuccessful) completed.result?.takeIf { it.isNotBlank() } else null
+                val plugin = owner.get()
+                if (plugin != null && !plugin.pushDestroyed &&
+                    !isCurrentPushRequest(generation, plugin.pushRequestGeneration, plugin.pushDestroyed)
+                ) return@post
                 if (token != null) {
-                    plugin.prefs.saveFcmToken(token)
-                    plugin.prefs.setTokenPending(true)
-                    TokenSyncWorker.schedule(plugin.activity)
+                    tokenPrefs.saveFcmToken(token)
+                    tokenPrefs.setTokenPending(true)
+                    TokenSyncWorker.schedule(applicationContext)
                 }
+                if (plugin == null || plugin.pushDestroyed) return@post
+                plugin.clearPushTokenRequest()
                 plugin.pendingPushPermissions.toList().forEach { request ->
                     request.tokenFinished.set(true)
                     plugin.finishPushPermission(request)
