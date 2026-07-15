@@ -98,7 +98,7 @@ export function Onboarding(props: OnboardingProps) {
     stopScanResult()
     stopScanComplete()
     if (healthTimer) clearTimeout(healthTimer)
-    void bridge.sendAsync("cancelScan")
+    void bridge.sendAsync("cancelScan").catch(() => null)
   })
 
   const startScan = () => {
@@ -106,7 +106,7 @@ export function Onboarding(props: OnboardingProps) {
     setServers([])
     setSelected(null)
     setSelectedHealthy(undefined)
-    void bridge.sendAsync("scanNetwork")
+    void bridge.sendAsync("scanNetwork").catch(() => null)
   }
 
   const selectServer = async (url: string) => {

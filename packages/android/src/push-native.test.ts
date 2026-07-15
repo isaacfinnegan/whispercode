@@ -1,7 +1,7 @@
 // @ts-expect-error Bun test types are excluded from the production tsconfig.
 import { expect, test } from "bun:test"
 import { createBridge } from "./bridge"
-import { isPushHref, normalizePair, normalizePush } from "./push-native"
+import { isPushHref, normalizePair, normalizePush, routePushHref } from "./push-native"
 
 const push = {
   supported: true,
@@ -60,6 +60,27 @@ test("mapped commands preserve native rejection messages", async () => {
   await expect(bridge.sendAsync("unknown")).resolves.toBeNull()
 })
 
+test("listeners expose registration readiness", async () => {
+  let register: (() => void) | undefined
+  const bridge = createBridge(
+    async () => null as never,
+    () =>
+      new Promise((resolve) => {
+        register = () => resolve({ unregister: async () => {} })
+      }),
+  )
+
+  const stop = bridge.on("pushOpened", () => {})
+  let ready = false
+  void stop.ready.then(() => {
+    ready = true
+  })
+  expect(ready).toBe(false)
+  register?.()
+  await stop.ready
+  expect(ready).toBe(true)
+})
+
 test("isPushHref only accepts app-relative and approved deep links", () => {
   expect(isPushHref("/session/abc")).toBe(true)
   expect(isPushHref("opencode://open-project?directory=%2Ftmp%2Fdemo")).toBe(true)
@@ -69,4 +90,35 @@ test("isPushHref only accepts app-relative and approved deep links", () => {
   expect(isPushHref("https://example.com")).toBe(false)
   expect(isPushHref("//example.com")).toBe(false)
   expect(isPushHref("opencode://other?directory=%2Ftmp%2Fdemo")).toBe(false)
+})
+
+test("routePushHref uses router navigation and the deep-link event", () => {
+  const routes: string[] = []
+  const deepLinks: string[] = []
+
+  expect(
+    routePushHref(
+      "/session/abc",
+      (href) => routes.push(href),
+      (href) => deepLinks.push(href),
+    ),
+  ).toBe(true)
+  expect(routes).toEqual(["/session/abc"])
+  expect(deepLinks).toEqual([])
+
+  expect(
+    routePushHref(
+      "opencode://new-session?directory=%2Ftmp%2Fdemo",
+      (href) => routes.push(href),
+      (href) => deepLinks.push(href),
+    ),
+  ).toBe(true)
+  expect(deepLinks).toEqual(["opencode://new-session?directory=%2Ftmp%2Fdemo"])
+  expect(
+    routePushHref(
+      "https://example.com",
+      () => {},
+      () => {},
+    ),
+  ).toBe(false)
 })

@@ -24,8 +24,10 @@ const resolve = (method: string) => {
 }
 
 type Invoker = <T>(command: string, params?: Record<string, unknown>) => Promise<T>
+type Listener = { unregister: () => Promise<void> }
+type ListenerRegistrar = (plugin: string, event: string, handler: (payload: unknown) => void) => Promise<Listener>
 
-export const createBridge = (call: Invoker) => {
+export const createBridge = (call: Invoker, listen: ListenerRegistrar = addPluginListener) => {
   const sendAsync = <T = unknown>(method: string, params?: unknown) => {
     const command = resolve(method)
     if (!command) return Promise.resolve(null)
@@ -40,9 +42,9 @@ export const createBridge = (call: Invoker) => {
     sendAsync,
     on: (type: string, handler: (payload: unknown) => void) => {
       let active = true
-      let listener: { unregister: () => Promise<void> } | null = null
+      let listener: Listener | null = null
 
-      void addPluginListener("mobile-bridge", type, (payload) => {
+      const ready = listen("mobile-bridge", type, (payload) => {
         if (!active) return
         handler(payload)
       })
@@ -55,11 +57,12 @@ export const createBridge = (call: Invoker) => {
         })
         .catch(() => undefined)
 
-      return () => {
+      const stop = () => {
         active = false
         if (!listener) return
         void listener.unregister().catch(() => undefined)
       }
+      return Object.assign(stop, { ready })
     },
   }
 }

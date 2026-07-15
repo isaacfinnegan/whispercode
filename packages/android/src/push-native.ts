@@ -86,3 +86,10 @@ export const isPushHref = (href: string) => {
     return false
   }
 }
+
+export const routePushHref = (href: string, navigate: (href: string) => void, deepLink: (href: string) => void) => {
+  if (!isPushHref(href)) return false
+  if (href.startsWith("opencode://")) deepLink(href)
+  else navigate(href)
+  return true
+}

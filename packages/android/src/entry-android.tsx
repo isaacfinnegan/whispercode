@@ -4,6 +4,7 @@ import { createResource, createSignal, onCleanup, onMount, Show } from "solid-js
 import {
   AppBaseProviders,
   AppInterface,
+  handleNotificationClick,
   PlatformProvider,
   ServerConnection,
   type Platform,
@@ -20,7 +21,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
-import { isPushHref, normalizePair, normalizePush } from "./push-native"
+import { normalizePair, normalizePush, routePushHref } from "./push-native"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
 import { Onboarding } from "./onboarding"
@@ -144,14 +145,17 @@ const App = () => {
   }
 
   const handlePushTap = async (href: unknown, refresh = true) => {
-    if (typeof href === "string" && isPushHref(href)) {
-      window.dispatchEvent(new CustomEvent("opencode:pushOpened", { detail: { href } }))
+    if (typeof href === "string") {
+      routePushHref(href, handleNotificationClick, (url) => {
+        window.dispatchEvent(new CustomEvent("opencode:deep-link", { detail: { urls: [url] } }))
+      })
     }
     emitResume()
     if (refresh) await refreshPush()
   }
 
-  const initializePush = async () => {
+  const initializePush = async (ready: Promise<unknown>) => {
+    await ready
     const result = await bridge.sendAsync<PushState & { pendingHref?: unknown }>("getPushState")
     const pendingHref = result?.pendingHref
     const next = normalizePush(result)
@@ -439,7 +443,7 @@ const App = () => {
 
   onMount(() => {
     document.documentElement.dataset.platform = "android"
-    void refreshVoice()
+    void refreshVoice().catch(() => undefined)
 
     const handleClick = (event: MouseEvent) => {
       const link = (event.target as HTMLElement | null)?.closest("a.external-link") as HTMLAnchorElement | null
@@ -483,7 +487,9 @@ const App = () => {
       void handlePushTap(href).catch(() => undefined)
     })
 
-    void initializePush().catch(() => undefined)
+    void initializePush(Promise.all([stopPushState.ready, stopPushReceived.ready, stopPushOpened.ready])).catch(
+      () => undefined,
+    )
 
     document.addEventListener("click", handleClick)
     window.addEventListener("focus", onFocus)
