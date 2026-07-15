@@ -122,9 +122,10 @@ export class PushFail extends Error {
   issue: PushIssue
 
   constructor(issue: PushIssue) {
-    super(issue.message)
+    const message = userMessage(issue.message)
+    super(message)
     this.name = "PushFail"
-    this.issue = issue
+    this.issue = { ...issue, message }
   }
 }
 
@@ -175,7 +176,7 @@ function act(code: PushIssueCode): PushIssue["action"] {
 function issue(code: PushIssueCode, message: string, detail?: string): PushIssue {
   return {
     code,
-    message,
+    message: userMessage(message),
     detail,
     action: act(code),
   }
@@ -406,7 +407,7 @@ export function mergePushIssue(saved?: PushIssue, push?: PushState): PushIssue |
       break
   }
 
-  return saved
+  return { ...saved, message: userMessage(saved.message) }
 }
 
 function errIssue(err: unknown, push?: PushState, phase?: PushPhase): PushIssue {
@@ -422,16 +423,16 @@ function errIssue(err: unknown, push?: PushState, phase?: PushPhase): PushIssue 
     return issue(push?.permission === "denied" ? "permission_denied" : "permission_required", message)
   }
   if (lower.includes("apns registration failed")) {
-    return issue("apns_register_failed", userMessage(message))
+    return issue("apns_register_failed", message)
   }
   if (lower.includes("still waiting for apple push registration")) {
-    return issue("apns_register_timeout", userMessage(message))
+    return issue("apns_register_timeout", message)
   }
   if (lower.includes("apns token unavailable")) {
     return issue("missing_token", "WhisperCode could not get a mobile push token yet. Try again in a moment.")
   }
   if (lower.includes("apple push token")) {
-    return issue("missing_token", userMessage(message))
+    return issue("missing_token", message)
   }
   if (lower.includes("connect to an opencode server first")) {
     return issue("server_required", message)
@@ -468,7 +469,7 @@ function errIssue(err: unknown, push?: PushState, phase?: PushPhase): PushIssue 
     return issue("host_install_failed", message)
   }
   if (lower.includes("re-pair this iphone")) {
-    return issue("repair_needed", userMessage(message))
+    return issue("repair_needed", message)
   }
 
   const next = pushIssue(push)

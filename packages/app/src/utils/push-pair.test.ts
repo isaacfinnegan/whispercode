@@ -746,6 +746,66 @@ describe("runPushSetup", () => {
     }
   })
 
+  test("neutralizes messages at every PushIssue boundary", async () => {
+    const setup = (err: unknown) =>
+      runPushSetup({
+        platform: {
+          fetch: globalThis.fetch,
+          pushState: () => push(),
+          getPushState: async () => push(),
+          getPushPairing: async () => undefined,
+          beginPushPairing: async () => {
+            throw err
+          },
+        },
+        server: { type: "http", http: { url: "http://localhost:4096" } } as any,
+      })
+
+    await setup(new Error("Apple Push transport failed")).then(
+      () => {
+        throw new Error("expected push setup to fail")
+      },
+      (err) => {
+        expect((err as PushFail).issue).toMatchObject({
+          code: "unknown",
+          message: "mobile push transport failed",
+        })
+      },
+    )
+
+    await setup(
+      new PushFail({
+        code: "pair_failed",
+        message: "Apple Push pairing failed on this iPhone",
+        detail: "APNs relay detail",
+        action: "retry",
+      }),
+    ).then(
+      () => {
+        throw new Error("expected push setup to fail")
+      },
+      (err) => {
+        expect((err as PushFail).issue).toEqual({
+          code: "pair_failed",
+          message: "mobile push pairing failed on this device",
+          detail: "APNs relay detail",
+          action: "retry",
+        })
+      },
+    )
+
+    expect(
+      pushIssue(
+        push({
+          diag: { lastCode: "relay_timeout", lastError: "Apple Push relay timed out on this iPhone" },
+        }),
+      ),
+    ).toMatchObject({
+      code: "relay_unreachable",
+      message: "mobile push relay timed out on this device",
+    })
+  })
+
   test("surfaces relay rate limits during finish setup", async () => {
     await withStub(
       {
@@ -847,6 +907,25 @@ describe("pushIssue", () => {
 })
 
 describe("mergePushIssue", () => {
+  test("neutralizes persisted issue messages without changing their details", () => {
+    const issue = mergePushIssue(
+      {
+        code: "pair_failed",
+        message: "Apple Push pairing failed on this iPhone",
+        detail: "APNs relay detail",
+        action: "retry",
+      },
+      push(),
+    )
+
+    expect(issue).toEqual({
+      code: "pair_failed",
+      message: "mobile push pairing failed on this device",
+      detail: "APNs relay detail",
+      action: "retry",
+    })
+  })
+
   test("drops stale permission issues once device notification access is restored", () => {
     const issue = mergePushIssue(
       {
