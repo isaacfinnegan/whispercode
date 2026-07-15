@@ -75,9 +75,10 @@ class SecurePreferencesManager(private val context: Context) {
                     .putBoolean(KEY_TOKEN_PENDING, true)
                     .remove(LEGACY_KEY_PENDING_TOKEN)
                     .apply()
+                }
             }
         }
-    }
+        getRelayUrl()
 
     private fun handleKeyStoreCorruption() {
         try {
@@ -147,7 +148,16 @@ class SecurePreferencesManager(private val context: Context) {
         if (result is RelayUrlResult.Valid) sharedPreferences?.edit()?.putString(KEY_RELAY_URL, result.url)?.apply()
     }
 
-    fun getRelayUrl(): String = sharedPreferences?.getString(KEY_RELAY_URL, DEFAULT_RELAY_URL) ?: DEFAULT_RELAY_URL
+    fun getRelayUrl(): String {
+        val relay = sharedPreferences?.getString(KEY_RELAY_URL, null) ?: return DEFAULT_RELAY_URL
+        val result = normalizeRelayUrl(relay)
+        if (result is RelayUrlResult.Valid) {
+            if (result.url != relay) sharedPreferences?.edit()?.putString(KEY_RELAY_URL, result.url)?.apply()
+            return result.url
+        }
+        resetForRelay(DEFAULT_RELAY_URL)
+        return DEFAULT_RELAY_URL
+    }
 
     fun resetForRelay(relayUrl: String?): RelayUrlResult {
         val result = normalizeRelayUrl(relayUrl)

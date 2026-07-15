@@ -194,6 +194,66 @@ class SecurePreferencesManagerTest {
     }
 
     @Test
+    fun `legacy public HTTP relay resets relay scoped state during recreation`() {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        EncryptedSharedPreferences.create(
+            context,
+            "whisper_secure_prefs",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        ).edit()
+            .putString("push.relay_url", "http://relay.example.com")
+            .putString("push.channel", "channel")
+            .putString("push.device", "device")
+            .putString("push.secret", "secret")
+            .putString("push.pair_id", "pair")
+            .putString("push.pair_token", "pair-token")
+            .putString("push.pair_command", "pair-command")
+            .putString("push.pair_expires", "2026-01-01")
+            .putString("push.pair_status", "pending")
+            .putString("push.fcm_token", "fcm-token")
+            .putBoolean("push.token_pending", false)
+            .commit()
+
+        val recreated = SecurePreferencesManager(context)
+
+        assertEquals("https://whisper.clankercontext.com", recreated.getRelayUrl())
+        assertNull(recreated.getChannelId())
+        assertNull(recreated.getDeviceId())
+        assertNull(recreated.getDeviceSecret())
+        assertNull(recreated.getPairId())
+        assertNull(recreated.getPairToken())
+        assertNull(recreated.getPairCommand())
+        assertNull(recreated.getPairExpires())
+        assertNull(recreated.getPairStatus())
+        assertEquals("fcm-token", recreated.getFcmToken())
+        assertTrue(recreated.isTokenPending())
+    }
+
+    @Test
+    fun `legacy valid relay URLs survive recreation`() {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        val stored = EncryptedSharedPreferences.create(
+            context,
+            "whisper_secure_prefs",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+
+        stored.edit().putString("push.relay_url", "https://relay.example.com/").commit()
+        assertEquals("https://relay.example.com", SecurePreferencesManager(context).getRelayUrl())
+
+        stored.edit().putString("push.relay_url", "http://10.0.2.2/").commit()
+        assertEquals("http://10.0.2.2", SecurePreferencesManager(context).getRelayUrl())
+    }
+
+    @Test
     fun `relay validation permits HTTPS and local HTTP only`() {
         val prefs = SecurePreferencesManager(context)
 
