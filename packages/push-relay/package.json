@@ -9,6 +9,9 @@
     "typecheck": "tsgo --noEmit",
     "test": "bun test src"
   },
+  "dependencies": {
+    "google-auth-library": "10.5.0"
+  },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",

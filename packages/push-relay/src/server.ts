@@ -1,8 +1,10 @@
 import { createAdapter, type Dial } from "./apns"
+import { createAdapter as createFcmAdapter } from "./fcm"
 import { log } from "./log"
 import { file as dbFile } from "./path"
 import { createRateLimiter, defaultIpExtractor, defaultRateLimitConfig, type RateLimitConfig } from "./ratelimit"
 import { RelayErr, Store, type CleanupConfig, type Send } from "./store"
+import type { PushAdapter } from "./push"
 
 type Opts = {
   file?: string
@@ -20,6 +22,10 @@ type Opts = {
   cleanup?: CleanupConfig
   rateLimit?: RateLimitConfig | false
   ipExtractor?: (req: Request) => string
+  fcmMode?: "mock" | "disabled" | "live"
+  fcmProject?: string
+  fcmServiceAccount?: string
+  fcmAdapter?: PushAdapter
 }
 
 export type Relay = {
@@ -32,6 +38,13 @@ export function createRelay(opts?: Opts) {
   const adapters = {
     sandbox: createAdapter({ ...opts, env: "sandbox" }),
     production: createAdapter({ ...opts, env: "production" }),
+    fcm:
+      opts?.fcmAdapter ??
+      createFcmAdapter({
+        mode: opts?.fcmMode ?? opts?.mode,
+        project: opts?.fcmProject,
+        serviceAccount: opts?.fcmServiceAccount,
+      }),
   }
 
   const limiter = opts?.rateLimit !== false ? createRateLimiter(opts?.rateLimit ?? defaultRateLimitConfig()) : null
@@ -95,6 +108,7 @@ export function createRelay(opts?: Opts) {
       limiter?.stop()
       adapters.sandbox.close()
       adapters.production.close()
+      adapters.fcm.close()
       db.close()
     },
   } satisfies Relay
@@ -124,7 +138,7 @@ export function listen(opts?: Opts & { port?: number }) {
   }
 }
 
-type Adapters = Record<"sandbox" | "production", ReturnType<typeof createAdapter>>
+type Adapters = Record<"sandbox" | "production", ReturnType<typeof createAdapter>> & { fcm: PushAdapter }
 
 async function route(db: Store, adapters: Adapters, req: Request, root?: string) {
   const url = new URL(req.url)
@@ -137,7 +151,8 @@ async function route(db: Store, adapters: Adapters, req: Request, root?: string)
 
   if (req.method === "POST" && path === "/v1/pair/start") {
     const body = await json(req)
-    need(body, ["apns_token", "device_name", "app_version"])
+    need(body, ["device_name", "app_version"])
+    needPush(body)
     return out(200, db.start(body as never, base))
   }
 
@@ -172,7 +187,8 @@ async function route(db: Store, adapters: Adapters, req: Request, root?: string)
 
   if (req.method === "PUT" && path === "/v1/device/token") {
     const body = await json(req)
-    need(body, ["channel_id", "device_id", "device_secret", "apns_token"])
+    need(body, ["channel_id", "device_id", "device_secret"])
+    needPush(body)
     return out(200, db.putToken(body as never))
   }
 
@@ -233,6 +249,13 @@ function need(body: Record<string, unknown>, keys: string[]) {
   }
 }
 
+function needPush(body: Record<string, unknown>) {
+  const provider = body.push_provider ?? "apns"
+  if (provider !== "apns" && provider !== "fcm") throw new RelayErr(400, "bad_push_provider")
+  if (provider === "fcm") return need(body, ["push_token"])
+  return need(body, ["apns_token"])
+}
+
 function out(code: number, body: Record<string, unknown>) {
   return Response.json(body, { status: code })
 }
@@ -251,9 +274,10 @@ async function deliver(db: Store, adapters: Adapters, body: Send | Record<string
   }
 
   const collapse = typeof body.collapse_id === "string" ? body.collapse_id : null
+  const provider = body.push_provider === "fcm" ? "fcm" : "apns"
   const env = body.apns_env === "sandbox" ? "sandbox" : "production"
-  const apns = adapters[env]
-  const res = await apns.send({
+  const adapter = provider === "fcm" ? adapters.fcm : adapters[env]
+  const res = await adapter.send({
     delivery: id,
     token,
     channel,
@@ -262,10 +286,10 @@ async function deliver(db: Store, adapters: Adapters, body: Send | Record<string
     collapse,
   })
   db.mark(id, res.sent ? "sent" : "failed", res.code)
-  log("info", "deliver", { delivery_id: id, sent: res.sent, mode: res.mode, error: res.code ?? null })
+  log("info", "deliver", { delivery_id: id, provider, sent: res.sent, mode: res.mode, error: res.code ?? null })
   const did = typeof body.device_id === "string" ? body.device_id : undefined
   if (res.invalid && did) {
-    log("warn", "device_deactivated", { device_id: did, error: res.code })
+    log("warn", "device_deactivated", { device_id: did, provider, error: res.code })
     db.deactivate(did, res.code)
   }
   return {
@@ -283,5 +307,6 @@ function clean(body: Record<string, unknown>) {
   delete next.session_id
   delete next.kind
   delete next.apns_env
+  delete next.push_provider
   return next
 }

@@ -7,27 +7,9 @@ import {
   type IncomingHttpHeaders,
   type OutgoingHttpHeaders,
 } from "node:http2"
+import type { PushAdapter, PushMsg, PushRes } from "./push"
 
-export type PushMsg = {
-  delivery: string
-  token: string
-  kind: string
-  channel: string
-  session?: string | null
-  collapse?: string | null
-}
-
-export type PushRes = {
-  sent: boolean
-  mode: "mock" | "disabled" | "live"
-  code?: string
-  invalid?: boolean
-}
-
-export type PushAdapter = {
-  send(msg: PushMsg): Promise<PushRes>
-  close(): void
-}
+export type { PushAdapter, PushMsg, PushRes } from "./push"
 
 type Mode = "mock" | "disabled" | "live"
 

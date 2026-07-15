@@ -4,11 +4,15 @@ import { Database } from "bun:sqlite"
 import { randomUUID } from "crypto"
 import { file as dbFile } from "./path"
 import { equal, hash, verify } from "./sign"
+import type { PushProvider } from "./push"
 
 export type PairState = "pending" | "claimed" | "active" | "expired" | "failed"
 
-type PairStart = {
-  apns_token: string
+export type PushTokenInput =
+  | { push_provider?: "apns"; apns_token: string; push_token?: string }
+  | { push_provider: "fcm"; push_token: string; apns_token?: string }
+
+type PairStart = PushTokenInput & {
   device_name: string
   app_version: string
   apns_env?: string
@@ -48,10 +52,10 @@ type DeviceAuth = {
   device_secret: string
 }
 
-type DeviceToken = DeviceAuth & {
-  apns_token: string
-  apns_env?: string
-}
+type DeviceToken = DeviceAuth &
+  PushTokenInput & {
+    apns_env?: string
+  }
 
 type DevicePrefs = DeviceAuth & {
   prefs: Prefs
@@ -78,6 +82,7 @@ export type Send = {
   kind?: string
   collapse_id?: string
   apns_env?: string
+  push_provider?: PushProvider
 }
 
 type PublishResult = {
@@ -130,7 +135,9 @@ export class Store {
       CREATE TABLE IF NOT EXISTS pair_request (
         id TEXT PRIMARY KEY,
         token_hash TEXT NOT NULL UNIQUE,
-        apns_token TEXT NOT NULL,
+         apns_token TEXT NOT NULL,
+         push_provider TEXT NOT NULL DEFAULT 'apns',
+         push_token TEXT,
         device_name TEXT NOT NULL,
         app_version TEXT NOT NULL,
         apns_env TEXT,
@@ -152,7 +159,9 @@ export class Store {
         id TEXT PRIMARY KEY,
         channel_id TEXT NOT NULL,
         secret TEXT NOT NULL,
-        apns_token TEXT NOT NULL,
+         apns_token TEXT NOT NULL,
+         push_provider TEXT NOT NULL DEFAULT 'apns',
+         push_token TEXT,
         apns_env TEXT,
         prefs_json TEXT NOT NULL,
         error_code TEXT,
@@ -198,14 +207,31 @@ export class Store {
       this.db.exec(`ALTER TABLE device ADD COLUMN created_at INTEGER`)
     } catch {}
     try {
+      this.db.exec(`ALTER TABLE pair_request ADD COLUMN push_provider TEXT NOT NULL DEFAULT 'apns'`)
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE pair_request ADD COLUMN push_token TEXT`)
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE device ADD COLUMN push_provider TEXT NOT NULL DEFAULT 'apns'`)
+    } catch {}
+    try {
+      this.db.exec(`ALTER TABLE device ADD COLUMN push_token TEXT`)
+    } catch {}
+    this.db.exec(`UPDATE pair_request SET push_provider = 'apns' WHERE push_provider IS NULL`)
+    this.db.exec(`UPDATE pair_request SET push_token = apns_token WHERE push_token IS NULL`)
+    this.db.exec(`UPDATE device SET push_provider = 'apns' WHERE push_provider IS NULL`)
+    this.db.exec(`UPDATE device SET push_token = apns_token WHERE push_token IS NULL`)
+    try {
       this.db.exec(`DROP INDEX IF EXISTS delivery_event_idx`)
       this.db.exec(
         `CREATE UNIQUE INDEX IF NOT EXISTS delivery_event_device_idx ON delivery(channel_id, event_id, device_id)`,
       )
     } catch {}
     this.repair()
+    this.db.exec(`DROP INDEX IF EXISTS device_channel_token_active_idx`)
     this.db.exec(
-      `CREATE UNIQUE INDEX IF NOT EXISTS device_channel_token_active_idx ON device(channel_id, apns_token) WHERE revoked_at IS NULL`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS device_channel_provider_token_active_idx ON device(channel_id, push_provider, push_token) WHERE revoked_at IS NULL`,
     )
   }
 
@@ -214,19 +240,21 @@ export class Store {
   }
 
   start(input: PairStart, root: string) {
-    const token = id("ptok")
+    const pairToken = id("ptok")
     const pair = id("pair")
     const now = Date.now()
     const exp = now + this.pairMs
     this.db
       .prepare(
-        `INSERT INTO pair_request (id, token_hash, apns_token, device_name, app_version, apns_env, status, expires_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO pair_request (id, token_hash, apns_token, push_provider, push_token, device_name, app_version, apns_env, status, expires_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         pair,
-        hash(token),
-        input.apns_token,
+        hash(pairToken),
+        token(input),
+        provider(input),
+        token(input),
         input.device_name,
         input.app_version,
         input.apns_env ?? null,
@@ -236,9 +264,9 @@ export class Store {
       )
     return {
       pair_id: pair,
-      pair_token: token,
+      pair_token: pairToken,
       expires_at: new Date(exp).toISOString(),
-      install_command: cmd(root, token),
+      install_command: cmd(root, pairToken),
     }
   }
 
@@ -304,17 +332,18 @@ export class Store {
       if (ch.revoked_at) throw new RelayErr(410, "channel_revoked")
       if (!equal(String(ch.secret), input.channel_secret)) throw new RelayErr(401, "bad_channel_secret")
 
-      const tok = String(row.apns_token)
-      const hit = this.best(this.same(chId, tok))
+      const tok = value(row)
+      const push = source(row)
+      const hit = this.best(this.same(chId, push, tok))
       const device = hit ? String(hit.id) : id("dev")
       const now = Date.now()
       this.db.transaction(() => {
-        this.prune(chId, tok, device)
+        this.prune(chId, push, tok, device)
         if (hit?.secret) {
           this.db
             .prepare(
               `UPDATE device
-               SET apns_token = ?,
+                SET apns_token = ?, push_provider = ?, push_token = ?,
                    apns_env = COALESCE(?, apns_env),
                    device_name = ?,
                    error_code = NULL,
@@ -323,16 +352,18 @@ export class Store {
                    created_at = COALESCE(created_at, ?)
                WHERE id = ?`,
             )
-            .run(tok, row.apns_env ?? null, String(row.device_name), now, now, device)
+            .run(tok, push, tok, row.apns_env ?? null, String(row.device_name), now, now, device)
         } else {
           this.db
             .prepare(
-              `INSERT INTO device (id, channel_id, secret, apns_token, apns_env, device_name, created_at, prefs_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO device (id, channel_id, secret, apns_token, push_provider, push_token, apns_env, device_name, created_at, prefs_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
               device,
               chId,
               id("dsec"),
+              tok,
+              push,
               tok,
               row.apns_env ?? null,
               String(row.device_name),
@@ -366,13 +397,15 @@ export class Store {
         .run(channel, secret, input.server_label, now)
       this.db
         .prepare(
-          `INSERT INTO device (id, channel_id, secret, apns_token, apns_env, device_name, created_at, prefs_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO device (id, channel_id, secret, apns_token, push_provider, push_token, apns_env, device_name, created_at, prefs_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           device,
           channel,
           dsec,
-          String(row.apns_token),
+          value(row),
+          source(row),
+          value(row),
           row.apns_env ?? null,
           String(row.device_name),
           now,
@@ -415,12 +448,12 @@ export class Store {
     const dev = this.deviceIncludingRevoked(input)
     const now = Date.now()
     this.db.transaction(() => {
-      this.prune(input.channel_id, input.apns_token, input.device_id)
+      this.prune(input.channel_id, provider(input), token(input), input.device_id)
       this.db
         .prepare(
-          `UPDATE device SET apns_token = ?, apns_env = COALESCE(?, apns_env), error_code = NULL, revoked_at = NULL, last_seen_at = ? WHERE id = ?`,
+          `UPDATE device SET apns_token = ?, push_provider = ?, push_token = ?, apns_env = COALESCE(?, apns_env), error_code = NULL, revoked_at = NULL, last_seen_at = ? WHERE id = ?`,
         )
-        .run(input.apns_token, input.apns_env ?? null, now, input.device_id)
+        .run(token(input), provider(input), token(input), input.apns_env ?? null, now, input.device_id)
       if (dev.revoked_at) {
         this.db
           .prepare(`UPDATE pair_request SET status = 'claimed' WHERE device_id = ? AND status = 'failed'`)
@@ -461,7 +494,8 @@ export class Store {
       accepted: true,
       delivery_id: idd,
       device_id: String(dev.id),
-      token: String(dev.apns_token),
+      token: value(dev),
+      push_provider: source(dev),
       channel_id: input.channel_id,
       session_id: null,
       kind: "test",
@@ -534,8 +568,9 @@ export class Store {
     const seen = new Set<string>()
     for (const dev of devices) {
       const did = String(dev.id)
-      const tok = String(dev.apns_token)
-      if (seen.has(tok)) {
+      const tok = value(dev)
+      const push = source(dev)
+      if (seen.has(`${push}:${tok}`)) {
         const idd = id("dlv")
         this.db
           .prepare(
@@ -556,7 +591,7 @@ export class Store {
           )
         continue
       }
-      seen.add(tok)
+      seen.add(`${push}:${tok}`)
       const pref = loadPrefs(dev.prefs_json ?? null)
       if (!enabled(pref, input.kind)) {
         const idd = id("dlv")
@@ -590,7 +625,8 @@ export class Store {
         accepted: true,
         delivery_id: idd,
         device_id: did,
-        token: String(dev.apns_token),
+        token: tok,
+        push_provider: push,
         channel_id: input.channel_id,
         session_id: input.session_id,
         kind: input.kind,
@@ -627,6 +663,7 @@ export class Store {
       device_id: String(d.id),
       device_name: d.device_name != null ? String(d.device_name) : null,
       apns_env: typeof d.apns_env === "string" ? d.apns_env : "production",
+      push_provider: source(d),
       prefs: loadPrefs(d.prefs_json ?? null),
       error_code: d.error_code != null ? String(d.error_code) : null,
       active: d.revoked_at == null,
@@ -694,20 +731,21 @@ export class Store {
   private repair() {
     const rows = this.db
       .prepare(
-        `SELECT channel_id, apns_token
+        `SELECT channel_id, push_provider, push_token
          FROM device
          WHERE revoked_at IS NULL
-         GROUP BY channel_id, apns_token
+          GROUP BY channel_id, push_provider, push_token
          HAVING COUNT(*) > 1`,
       )
       .all() as Row[]
 
     for (const row of rows) {
       const channel = String(row.channel_id)
-      const token = String(row.apns_token)
-      const keep = this.best(this.same(channel, token))
+      const token = value(row)
+      const push = source(row)
+      const keep = this.best(this.same(channel, push, token))
       if (!keep?.id) continue
-      this.prune(channel, token, String(keep.id))
+      this.prune(channel, push, token, String(keep.id))
     }
   }
 
@@ -723,8 +761,10 @@ export class Store {
     return (this.db.prepare(sql).get(...args) as Row | null) ?? null
   }
 
-  private same(channel: string, token: string) {
-    return this.db.prepare(`SELECT * FROM device WHERE channel_id = ? AND apns_token = ?`).all(channel, token) as Row[]
+  private same(channel: string, push: PushProvider, token: string) {
+    return this.db
+      .prepare(`SELECT * FROM device WHERE channel_id = ? AND push_provider = ? AND push_token = ?`)
+      .all(channel, push, token) as Row[]
   }
 
   private best(rows: Row[], keep?: string) {
@@ -737,7 +777,7 @@ export class Store {
       .sort((a, b) => live(b) - live(a) || stamp(b) - stamp(a) || String(b.id).localeCompare(String(a.id)))[0]
   }
 
-  private prune(channel: string, token: string, keep: string) {
+  private prune(channel: string, push: PushProvider, token: string, keep: string) {
     const now = Date.now()
     this.db
       .prepare(
@@ -745,17 +785,17 @@ export class Store {
          SET device_id = ?
          WHERE status IN ('pending', 'claimed', 'active')
            AND device_id IN (
-             SELECT id FROM device WHERE channel_id = ? AND apns_token = ? AND id != ?
+              SELECT id FROM device WHERE channel_id = ? AND push_provider = ? AND push_token = ? AND id != ?
            )`,
       )
-      .run(keep, channel, token, keep)
+      .run(keep, channel, push, token, keep)
     this.db
       .prepare(
         `UPDATE device
          SET revoked_at = ?, error_code = COALESCE(error_code, 'duplicate_token')
-         WHERE channel_id = ? AND apns_token = ? AND revoked_at IS NULL AND id != ?`,
+          WHERE channel_id = ? AND push_provider = ? AND push_token = ? AND revoked_at IS NULL AND id != ?`,
       )
-      .run(now, channel, token, keep)
+      .run(now, channel, push, token, keep)
   }
 
   private device(input: DeviceAuth) {
@@ -839,4 +879,20 @@ function enabled(pref: Prefs, kind: string) {
     default:
       return true
   }
+}
+
+function provider(input: PushTokenInput): PushProvider {
+  return input.push_provider === "fcm" ? "fcm" : "apns"
+}
+
+function token(input: PushTokenInput) {
+  return input.push_provider === "fcm" ? input.push_token : (input.push_token ?? input.apns_token)
+}
+
+function source(row: Row): PushProvider {
+  return row.push_provider === "fcm" ? "fcm" : "apns"
+}
+
+function value(row: Row) {
+  return typeof row.push_token === "string" ? row.push_token : String(row.apns_token)
 }

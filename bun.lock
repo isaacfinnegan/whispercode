@@ -789,6 +789,9 @@
     "packages/push-relay": {
       "name": "@whispercode/push-relay",
       "version": "0.1.0",
+      "dependencies": {
+        "google-auth-library": "10.5.0",
+      },
       "devDependencies": {
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",

@@ -131,6 +131,84 @@ describe("push relay", () => {
     }
   })
 
+  test("keeps legacy APNs pair requests provider-compatible", async () => {
+    const next = await tmp()
+    const db = new Store({ file: next.file })
+    try {
+      db.start({ apns_token: "legacy_token", device_name: "iPhone", app_version: "1" }, "http://localhost")
+      expect(db.db.prepare(`SELECT push_provider, push_token FROM pair_request`).get()).toEqual({
+        push_provider: "apns",
+        push_token: "legacy_token",
+      })
+    } finally {
+      db.close()
+      await fs.rm(next.dir, { recursive: true, force: true })
+    }
+  })
+
+  test("accepts FCM tokens and rejects unknown push providers", async () => {
+    const sent: string[] = []
+    const env = await setup({
+      fcmAdapter: {
+        async send(msg) {
+          sent.push(msg.token)
+          return { sent: false, mode: "live", code: "UNREGISTERED", invalid: true }
+        },
+        close() {},
+      },
+    })
+    try {
+      const start = await post<Start>(env.root, "/v1/pair/start", {
+        push_provider: "fcm",
+        push_token: "fcm_token",
+        device_name: "Pixel",
+        app_version: "1",
+      })
+      const claim = await post<Claim>(env.root, "/v1/pair/claim", {
+        pair_token: start.pair_token,
+        plugin_version: "1",
+        server_label: "Mac",
+      })
+      await post(env.root, "/v1/channel/checkin", {
+        ...check(claim.channel_id),
+        sig: sign(claim.channel_secret, check(claim.channel_id)),
+      })
+      const active = await get(env.root, `/v1/pair/${start.pair_id}`)
+      await put(env.root, "/v1/device/token", {
+        channel_id: claim.channel_id,
+        device_id: String(active.device_id),
+        device_secret: String(active.device_secret),
+        push_provider: "fcm",
+        push_token: "fcm_token_2",
+      })
+      const devices = await post<{ devices: Array<Record<string, unknown>> }>(env.root, "/v1/channel/devices", {
+        channel_id: claim.channel_id,
+        channel_secret: claim.channel_secret,
+      })
+      expect(devices.devices[0]).toMatchObject({ push_provider: "fcm" })
+      expect(devices.devices[0]).not.toHaveProperty("push_token")
+
+      const tested = await post(env.root, "/v1/device/test", {
+        channel_id: claim.channel_id,
+        device_id: String(active.device_id),
+        device_secret: String(active.device_secret),
+      })
+      expect(tested).not.toHaveProperty("push_provider")
+      expect(sent).toEqual(["fcm_token_2"])
+      expect((await get(env.root, `/v1/pair/${start.pair_id}`)).status).toBe("failed")
+
+      const bad = await fetch(new URL("/v1/pair/start", env.root), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ push_provider: "webpush", push_token: "x", device_name: "x", app_version: "1" }),
+      })
+      expect(bad.status).toBe(400)
+      expect((await bad.json()).error).toBe("bad_push_provider")
+    } finally {
+      await env.stop()
+    }
+  })
+
   test("reactivates device after putToken with fresh token", async () => {
     let callCount = 0
     const env = await setup({
@@ -1017,7 +1095,7 @@ describe("push relay", () => {
     let open = true
     try {
       const now = Date.now()
-      db.db.exec(`DROP INDEX IF EXISTS device_channel_token_active_idx`)
+      db.db.exec(`DROP INDEX IF EXISTS device_channel_provider_token_active_idx`)
       db.db.exec(
         `INSERT INTO channel (id, secret, server_label, created_at, last_seen_at) VALUES ('ch1', 'sec', 'srv', ${now}, ${now})`,
       )
@@ -1041,7 +1119,7 @@ describe("push relay", () => {
 
       const rows = db.db
         .prepare(
-          `SELECT id, revoked_at, error_code FROM device WHERE channel_id = 'ch1' AND apns_token = 'tok_dup' ORDER BY id`,
+          `SELECT id, revoked_at, error_code FROM device WHERE channel_id = 'ch1' AND push_token = 'tok_dup' ORDER BY id`,
         )
         .all() as Array<Record<string, string | number | null>>
       const live = rows.filter((row) => row.revoked_at == null)
@@ -1054,9 +1132,11 @@ describe("push relay", () => {
       expect(pair.device_id).toBe("dev_new")
 
       const idx = db.db
-        .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'device_channel_token_active_idx'`)
+        .prepare(
+          `SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'device_channel_provider_token_active_idx'`,
+        )
         .get() as { name: string }
-      expect(idx.name).toBe("device_channel_token_active_idx")
+      expect(idx.name).toBe("device_channel_provider_token_active_idx")
     } finally {
       if (open) db.close()
       await fs.rm(next.dir, { recursive: true, force: true }).catch(() => undefined)
