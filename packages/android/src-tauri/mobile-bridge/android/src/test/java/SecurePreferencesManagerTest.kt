@@ -264,7 +264,7 @@ class SecurePreferencesManagerTest {
     }
 
     @Test
-    fun `legacy public HTTP relay resets relay scoped state during recreation`() {
+    fun `initialization resets invalid public relay with modern FCM token`() {
         store.edit()
             .putString("push.relay_url", "http://relay.example.com")
             .putString("push.channel", "channel")
@@ -281,7 +281,7 @@ class SecurePreferencesManagerTest {
 
         val recreated = manager()
 
-        assertEquals("https://whisper.clankercontext.com", recreated.getRelayUrl())
+        assertEquals("https://whisper.clankercontext.com", store.getString("push.relay_url", null))
         assertNull(recreated.getChannelId())
         assertNull(recreated.getDeviceId())
         assertNull(recreated.getDeviceSecret())

@@ -79,8 +79,8 @@ class SecurePreferencesManager private constructor(
                     .putBoolean(KEY_TOKEN_PENDING, true)
                     .remove(LEGACY_KEY_PENDING_TOKEN)
                     .apply()
-                }
             }
+        }
         getRelayUrl()
     }
 
