@@ -999,7 +999,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
             if (!isCurrentPushRequest(generation, pushRequestGeneration, pushDestroyed)) return@Runnable
             rejectPushPermissions("push_registration_timeout")
         }
-        task.addOnCompleteListener(listener)
+        task.addOnCompleteListener(activity, listener)
         main.postDelayed(pushTokenTimeout!!, PUSH_TOKEN_TIMEOUT_MS)
     }
 
@@ -1007,9 +1007,6 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         pushRequestGeneration += 1
         pushTokenTimeout?.let(main::removeCallbacks)
         pushTokenTimeout = null
-        val task = pushTokenTask
-        val listener = pushTokenListener
-        if (task != null && listener != null) task.removeOnCompleteListener(listener)
         pushTokenTask = null
         pushTokenListener = null
     }

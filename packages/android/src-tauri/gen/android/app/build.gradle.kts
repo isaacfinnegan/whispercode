@@ -21,6 +21,8 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+val hasReleaseKeystore = keystoreProperties.getProperty("storeFile")?.isNotBlank() == true
+
 android {
     compileSdk = 36
     namespace = "com.devgriffin.whispercode"
@@ -34,7 +36,9 @@ android {
     }
     signingConfigs {
         create("release") {
-            storeFile = file(keystoreProperties.getProperty("storeFile", ""))
+            if (hasReleaseKeystore) {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+            }
             storePassword = keystoreProperties.getProperty("storePassword", "")
             keyAlias = keystoreProperties.getProperty("keyAlias", "")
             keyPassword = keystoreProperties.getProperty("keyPassword", "")
@@ -42,7 +46,9 @@ android {
     }
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true

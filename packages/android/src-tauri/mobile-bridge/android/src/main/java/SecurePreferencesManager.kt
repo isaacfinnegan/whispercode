@@ -15,8 +15,14 @@ sealed class RelayUrlResult {
     data class Invalid(val code: String) : RelayUrlResult()
 }
 
-class SecurePreferencesManager(private val context: Context) {
+class SecurePreferencesManager private constructor(
+    private val context: Context,
+    private var sharedPreferences: SharedPreferences?,
+) {
     companion object {
+        internal fun fromPreferences(context: Context, preferences: SharedPreferences): SecurePreferencesManager =
+            SecurePreferencesManager(context, preferences).also { it.migrateLegacyState() }
+
         private const val TAG = "SecurePrefs"
         private const val SECURE_FILE_NAME = "whisper_secure_prefs"
         private const val DEFAULT_RELAY_URL = "https://whisper.clankercontext.com"
@@ -39,9 +45,7 @@ class SecurePreferencesManager(private val context: Context) {
         private const val INVALID_RELAY_URL = "invalid_relay_url"
     }
 
-    private var sharedPreferences: SharedPreferences? = null
-
-    init {
+    constructor(context: Context) : this(context, null) {
         initializePreferences()
         migrateLegacyState()
     }
@@ -77,7 +81,6 @@ class SecurePreferencesManager(private val context: Context) {
                     .apply()
                 }
             }
-        }
         getRelayUrl()
     }
 

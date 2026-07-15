@@ -1,8 +1,6 @@
 package ai.opencode.mobilebridge
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -16,16 +14,20 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class SecurePreferencesManagerTest {
     private lateinit var context: Context
+    private lateinit var store: android.content.SharedPreferences
 
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
-        context.getSharedPreferences("whisper_secure_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        store = context.getSharedPreferences("whisper_secure_prefs", Context.MODE_PRIVATE)
+        store.edit().clear().commit()
     }
+
+    private fun manager() = SecurePreferencesManager.fromPreferences(context, store)
 
     @Test
     fun `FCM token and pending state are separate`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
 
         prefs.saveFcmToken("fcm-token")
         prefs.setTokenPending(false)
@@ -36,7 +38,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `clearCredentials retains relay token and pending state`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveCredentials("channel", "device", "secret")
         prefs.saveFcmToken("fcm-token")
         prefs.setTokenPending(true)
@@ -54,7 +56,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `resetForRelay clears credentials and pair state but retains pending FCM token`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveCredentials("channel", "device", "secret")
         prefs.saveFcmToken("fcm-token")
         prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
@@ -75,7 +77,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `saveRelayUrl resets relay scoped state when the normalized relay changes`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveCredentials("channel", "device", "secret")
         prefs.saveFcmToken("fcm-token")
         prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
@@ -92,7 +94,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `saveRelayUrl preserves relay scoped state when the normalized relay is unchanged`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveRelayUrl("https://relay.example.com")
         prefs.saveCredentials("channel", "device", "secret")
         prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
@@ -106,7 +108,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `saveRelayUrl returns stable errors for invalid public relays`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
 
         assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.saveRelayUrl("http://relay.example.com"))
         assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.saveRelayUrl("https://user:pass@relay.example.com"))
@@ -115,9 +117,9 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `pair state survives manager recreation`() {
-        SecurePreferencesManager(context).savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+        manager().savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
 
-        val recreated = SecurePreferencesManager(context)
+        val recreated = manager()
 
         assertEquals("pair", recreated.getPairId())
         assertEquals("pair-token", recreated.getPairToken())
@@ -128,7 +130,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `diagnostics set clear and exclude FCM and pair tokens`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveFcmToken("fcm-token")
         prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
 
@@ -152,7 +154,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `FCM token arrival clears an earlier diagnostic containing the token`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveDiagnostic("fcm-token", "Token registration failed: fcm-token")
 
         prefs.saveFcmToken("fcm-token")
@@ -163,7 +165,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `pair token arrival clears an earlier diagnostic containing the token`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveDiagnostic("pair-token", "Pair authorization failed: pair-token")
 
         prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
@@ -174,7 +176,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `diagnostic code excludes known FCM and pair tokens`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveFcmToken("fcm-token")
 
         prefs.saveDiagnostic("sync-fcm-token", "Network unavailable")
@@ -189,9 +191,9 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `diagnostics survive manager recreation`() {
-        SecurePreferencesManager(context).saveDiagnostic("network_error", "Network unavailable")
+        manager().saveDiagnostic("network_error", "Network unavailable")
 
-        val recreated = SecurePreferencesManager(context)
+        val recreated = manager()
 
         assertEquals("network_error", recreated.getLastCode())
         assertEquals("Network unavailable", recreated.getLastError())
@@ -199,7 +201,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `clearPair preserves relay FCM token and pending state`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveRelayUrl("https://relay.example.com")
         prefs.saveFcmToken("fcm-token")
         prefs.setTokenPending(true)
@@ -215,7 +217,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `clearDiagnostic preserves relay FCM token and pending state`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveRelayUrl("https://relay.example.com")
         prefs.saveFcmToken("fcm-token")
         prefs.setTokenPending(true)
@@ -233,7 +235,7 @@ class SecurePreferencesManagerTest {
     @Suppress("DEPRECATION")
     @Test
     fun `legacy clearAll preserves relay FCM token and pending state`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
         prefs.saveRelayUrl("https://relay.example.com")
         prefs.saveFcmToken("fcm-token")
         prefs.setTokenPending(true)
@@ -253,18 +255,9 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `legacy pending token migrates to FCM token and pending flag`() {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        EncryptedSharedPreferences.create(
-            context,
-            "whisper_secure_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        ).edit().putString("push.pending_token", "legacy-token").commit()
+        store.edit().putString("push.pending_token", "legacy-token").commit()
 
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
 
         assertEquals("legacy-token", prefs.getFcmToken())
         assertTrue(prefs.isTokenPending())
@@ -272,16 +265,7 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `legacy public HTTP relay resets relay scoped state during recreation`() {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        EncryptedSharedPreferences.create(
-            context,
-            "whisper_secure_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        ).edit()
+        store.edit()
             .putString("push.relay_url", "http://relay.example.com")
             .putString("push.channel", "channel")
             .putString("push.device", "device")
@@ -295,7 +279,7 @@ class SecurePreferencesManagerTest {
             .putBoolean("push.token_pending", false)
             .commit()
 
-        val recreated = SecurePreferencesManager(context)
+        val recreated = manager()
 
         assertEquals("https://whisper.clankercontext.com", recreated.getRelayUrl())
         assertNull(recreated.getChannelId())
@@ -312,27 +296,18 @@ class SecurePreferencesManagerTest {
 
     @Test
     fun `legacy valid relay URLs survive recreation`() {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        val stored = EncryptedSharedPreferences.create(
-            context,
-            "whisper_secure_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        val stored = store
 
         stored.edit().putString("push.relay_url", "https://relay.example.com/").commit()
-        assertEquals("https://relay.example.com", SecurePreferencesManager(context).getRelayUrl())
+        assertEquals("https://relay.example.com", manager().getRelayUrl())
 
         stored.edit().putString("push.relay_url", "http://10.0.2.2/").commit()
-        assertEquals("http://10.0.2.2", SecurePreferencesManager(context).getRelayUrl())
+        assertEquals("http://10.0.2.2", manager().getRelayUrl())
     }
 
     @Test
     fun `relay validation permits HTTPS and local HTTP only`() {
-        val prefs = SecurePreferencesManager(context)
+        val prefs = manager()
 
         assertEquals(RelayUrlResult.Valid("https://relay.example.com"), prefs.normalizeRelayUrl("https://relay.example.com/"))
         assertEquals(RelayUrlResult.Valid("http://localhost:3000"), prefs.normalizeRelayUrl("http://localhost:3000/"))

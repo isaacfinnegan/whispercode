@@ -12,11 +12,11 @@ object NotificationTapHandler {
     private var pendingHref: String? = null
     private var bridgePlugin: WeakReference<PushOpenedPlugin>? = null
 
-    fun setPluginInstance(plugin: PushOpenedPlugin) {
+    internal fun setPluginInstance(plugin: PushOpenedPlugin) {
         bridgePlugin = WeakReference(plugin)
     }
 
-    fun clearPluginInstance(plugin: PushOpenedPlugin) {
+    internal fun clearPluginInstance(plugin: PushOpenedPlugin) {
         if (bridgePlugin?.get() === plugin) bridgePlugin = null
     }
 
@@ -34,7 +34,7 @@ object NotificationTapHandler {
         dispatchHref(plugin, href)
     }
 
-    fun flushPendingHref(plugin: PushOpenedPlugin) {
+    internal fun flushPendingHref(plugin: PushOpenedPlugin) {
         if (bridgePlugin?.get() !== plugin || !plugin.arePushListenersReady()) return
         val href = pendingHref ?: return
         pendingHref = null
