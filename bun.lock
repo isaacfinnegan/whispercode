@@ -29,7 +29,7 @@
     },
     "packages/android": {
       "name": "@opencode-ai/android",
-      "version": "1.18.0-whispercode-264",
+      "version": "1.18.0-whispercode-265",
       "dependencies": {
         "@opencode-ai/app": "workspace:*",
         "@opencode-ai/ui": "workspace:*",
