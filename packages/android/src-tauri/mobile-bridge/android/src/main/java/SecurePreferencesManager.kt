@@ -79,6 +79,7 @@ class SecurePreferencesManager(private val context: Context) {
             }
         }
         getRelayUrl()
+    }
 
     private fun handleKeyStoreCorruption() {
         try {
