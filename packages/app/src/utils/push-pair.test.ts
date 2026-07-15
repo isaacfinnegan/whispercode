@@ -698,6 +698,54 @@ describe("runPushSetup", () => {
     )
   })
 
+  test("neutralizes provider wording from raw pairing errors", async () => {
+    const cases = [
+      {
+        raw: "APNs registration failed: temporary service unavailable",
+        code: "apns_register_failed",
+        message: "mobile push registration failed: temporary service unavailable",
+      },
+      {
+        raw: "Still waiting for Apple push registration after retrying",
+        code: "apns_register_timeout",
+        message: "Still waiting for mobile push registration after retrying",
+      },
+      {
+        raw: "Apple push token is unavailable for this request",
+        code: "missing_token",
+        message: "mobile push token is unavailable for this request",
+      },
+      {
+        raw: "Please re-pair this iPhone before retrying",
+        code: "repair_needed",
+        message: "Please re-pair this device before retrying",
+      },
+    ] as const
+
+    for (const item of cases) {
+      await runPushSetup({
+        platform: {
+          fetch: globalThis.fetch,
+          pushState: () => push(),
+          getPushState: async () => push(),
+          getPushPairing: async () => undefined,
+          beginPushPairing: async () => {
+            throw new Error(item.raw)
+          },
+        },
+        server: { type: "http", http: { url: "http://localhost:4096" } } as any,
+      }).then(
+        () => {
+          throw new Error("expected push setup to fail")
+        },
+        (err) => {
+          expect(err).toBeInstanceOf(PushFail)
+          expect((err as PushFail).issue).toMatchObject({ code: item.code, message: item.message })
+        },
+      )
+    }
+  })
+
   test("surfaces relay rate limits during finish setup", async () => {
     await withStub(
       {

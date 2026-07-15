@@ -189,6 +189,13 @@ function text(value: unknown) {
   return value instanceof Error ? value.message : String(value)
 }
 
+function userMessage(message: string) {
+  return message
+    .replace(/\bapns\b/gi, "mobile push")
+    .replace(/\bapple push\b/gi, "mobile push")
+    .replace(/\biphone\b/gi, "device")
+}
+
 function limited(value: unknown) {
   const next = text(value).trim().toLowerCase()
   return (
@@ -415,16 +422,16 @@ function errIssue(err: unknown, push?: PushState, phase?: PushPhase): PushIssue 
     return issue(push?.permission === "denied" ? "permission_denied" : "permission_required", message)
   }
   if (lower.includes("apns registration failed")) {
-    return issue("apns_register_failed", message)
+    return issue("apns_register_failed", userMessage(message))
   }
   if (lower.includes("still waiting for apple push registration")) {
-    return issue("apns_register_timeout", message)
+    return issue("apns_register_timeout", userMessage(message))
   }
   if (lower.includes("apns token unavailable")) {
     return issue("missing_token", "WhisperCode could not get a mobile push token yet. Try again in a moment.")
   }
   if (lower.includes("apple push token")) {
-    return issue("missing_token", message)
+    return issue("missing_token", userMessage(message))
   }
   if (lower.includes("connect to an opencode server first")) {
     return issue("server_required", message)
@@ -461,7 +468,7 @@ function errIssue(err: unknown, push?: PushState, phase?: PushPhase): PushIssue 
     return issue("host_install_failed", message)
   }
   if (lower.includes("re-pair this iphone")) {
-    return issue("repair_needed", message)
+    return issue("repair_needed", userMessage(message))
   }
 
   const next = pushIssue(push)
