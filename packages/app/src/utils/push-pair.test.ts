@@ -322,19 +322,27 @@ describe("claimPush", () => {
   test("includes command output when both runners end before any relay claim", async () => {
     await withStub(
       {
-        runs: [{ out: "bunx missing" }, { out: "npm missing" }],
+        runs: [{ out: "bunx missing" }, { out: "Apple Push relay failed on this iPhone" }],
         pairs: [{ status: "pending" }, { status: "pending" }, { status: "pending" }, { status: "pending" }],
       },
       async (next) => {
-        await expect(
-          claimPush({
-            platform: { fetch: next.fetch },
-            server: { type: "http", http: { url: "http://localhost:4096" } } as any,
-            token: "ptok_1",
-            relay: "http://localhost:8787",
-            pairId: "pair_1",
-          }),
-        ).rejects.toThrow("Push pairing command failed via npx: npm missing")
+        await claimPush({
+          platform: { fetch: next.fetch },
+          server: { type: "http", http: { url: "http://localhost:4096" } } as any,
+          token: "ptok_1",
+          relay: "http://localhost:8787",
+          pairId: "pair_1",
+        }).then(
+          () => {
+            throw new Error("expected push claim to fail")
+          },
+          (err) => {
+            expect((err as PushFail).issue).toMatchObject({
+              message: "Push pairing command failed via npx: mobile push relay failed on this device",
+              detail: "mobile push relay failed on this device",
+            })
+          },
+        )
       },
     )
   })
@@ -788,7 +796,7 @@ describe("runPushSetup", () => {
         expect((err as PushFail).issue).toEqual({
           code: "pair_failed",
           message: "mobile push pairing failed on this device",
-          detail: "APNs relay detail",
+          detail: "mobile push relay detail",
           action: "retry",
         })
       },
@@ -921,7 +929,7 @@ describe("mergePushIssue", () => {
     expect(issue).toEqual({
       code: "pair_failed",
       message: "mobile push pairing failed on this device",
-      detail: "APNs relay detail",
+      detail: "mobile push relay detail",
       action: "retry",
     })
   })

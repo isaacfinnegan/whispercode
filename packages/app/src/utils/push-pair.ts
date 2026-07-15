@@ -123,9 +123,10 @@ export class PushFail extends Error {
 
   constructor(issue: PushIssue) {
     const message = userMessage(issue.message)
+    const detail = issue.detail === undefined ? undefined : userMessage(issue.detail)
     super(message)
     this.name = "PushFail"
-    this.issue = { ...issue, message }
+    this.issue = { ...issue, message, detail }
   }
 }
 
@@ -177,7 +178,7 @@ function issue(code: PushIssueCode, message: string, detail?: string): PushIssue
   return {
     code,
     message: userMessage(message),
-    detail,
+    detail: detail === undefined ? undefined : userMessage(detail),
     action: act(code),
   }
 }
@@ -407,7 +408,11 @@ export function mergePushIssue(saved?: PushIssue, push?: PushState): PushIssue |
       break
   }
 
-  return { ...saved, message: userMessage(saved.message) }
+  return {
+    ...saved,
+    message: userMessage(saved.message),
+    detail: saved.detail === undefined ? undefined : userMessage(saved.detail),
+  }
 }
 
 function errIssue(err: unknown, push?: PushState, phase?: PushPhase): PushIssue {
