@@ -150,6 +150,23 @@ class PushRelayClientTest {
         assertNull(error.message)
     }
 
+    @Test
+    fun `non JSON error response preserves HTTP status`() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(502)
+                .setHeader("Content-Type", "text/html")
+                .setBody("<html>Bad Gateway</html>")
+        )
+
+        val result = client.delete(relay(), credentials())
+
+        val error = assertErr(result)
+        assertEquals(502, error.status)
+        assertEquals("http_error", error.code)
+        assertNull(error.message)
+    }
+
     private fun relay(): String = server.url("/").toString().removeSuffix("/")
 
     private fun credentials() = PushCredentials("channel-1", "device-1", "secret-1")

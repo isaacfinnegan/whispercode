@@ -77,11 +77,15 @@ class PushRelayClient {
             val status = connection.responseCode
             val response = if (status in 200..299) connection.inputStream else connection.errorStream
             val text = response?.bufferedReader()?.use { it.readText() }.orEmpty()
-            val json = if (text.isBlank()) JSONObject() else JSONObject(text)
-            if (status in 200..299) return RelayResult.Ok(json)
+            if (status in 200..299) return RelayResult.Ok(if (text.isBlank()) JSONObject() else JSONObject(text))
 
-            val code = json.optString("error", json.optString("code", "http_error"))
-            val message = json.optString("message").takeIf { it.isNotBlank() }
+            val json = try {
+                if (text.isBlank()) null else JSONObject(text)
+            } catch (_: Exception) {
+                null
+            }
+            val code = json?.let { it.optString("error", it.optString("code", "http_error")) } ?: "http_error"
+            val message = json?.optString("message")?.takeIf { it.isNotBlank() }
             return RelayResult.Err(RelayError(status, code, message))
         } catch (error: Exception) {
             return RelayResult.Err(RelayError(null, "network_error", error.message))
