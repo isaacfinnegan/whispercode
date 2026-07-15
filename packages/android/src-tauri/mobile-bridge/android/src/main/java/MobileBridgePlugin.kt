@@ -31,7 +31,6 @@ import java.net.URL
 import android.net.Uri
 import android.provider.Settings
 import android.os.Build
-import androidx.core.app.ActivityCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONObject
 import java.util.Collections
@@ -39,6 +38,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicBoolean
+import app.tauri.annotation.PermissionCallback
 
 @InvokeArg
 class ShareArgs {
@@ -137,12 +137,21 @@ fun pairInfoJson(
     if (message != null) put("message", message)
 }
 
+fun relayUrlChanged(previous: String, current: String): Boolean = previous != current
+
 private data class ScanEntry(val host: String, val port: Int, val url: String)
 private data class WifiAddressInfo(val address: String, val prefixLength: Int)
+private data class PushPermissionRequest(
+    val invoke: Invoke,
+    val tokenFinished: AtomicBoolean = AtomicBoolean(false),
+    val permissionFinished: AtomicBoolean = AtomicBoolean(false),
+    val resolved: AtomicBoolean = AtomicBoolean(false),
+)
 
 @TauriPlugin(
     permissions = [
-        Permission(strings = [Manifest.permission.RECORD_AUDIO], alias = "microphone")
+        Permission(strings = [Manifest.permission.RECORD_AUDIO], alias = "microphone"),
+        Permission(strings = [Manifest.permission.POST_NOTIFICATIONS], alias = "notifications"),
     ]
 )
 class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), RecognitionListener {
@@ -155,7 +164,6 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     companion object {
         private const val TAG = "MobileBridgePush"
-        private const val PERMISSION_REQUEST_CODE = 4072
         private val PAIR_STATUSES = setOf("pending", "claimed", "active", "expired", "failed")
         private var activeInstance: MobileBridgePlugin? = null
 
@@ -169,7 +177,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     }
 
     private var recognizer: SpeechRecognizer? = null
-    private var pendingPermissionResult: (() -> Unit)? = null
+    private val pendingPushPermissions = mutableListOf<PushPermissionRequest>()
     private var pendingStop: Invoke? = null
     private var stopTimeout: Runnable? = null
     private var latestText = ""
@@ -205,6 +213,10 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     override fun onDestroy() {
         super.onDestroy()
+        pendingPushPermissions.forEach { request ->
+            if (request.resolved.compareAndSet(false, true)) request.invoke.reject("permission_request_cancelled")
+        }
+        pendingPushPermissions.clear()
         scanCancelled = true
         scanTask?.cancel(true)
         scanExecutor.shutdownNow()
@@ -682,27 +694,16 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun requestPushPermission(invoke: Invoke) {
-        val tokenFinished = AtomicBoolean(false)
-        val permissionFinished = AtomicBoolean(Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU)
-        val resolved = AtomicBoolean(false)
-        val finish = {
-            if (tokenFinished.get() && permissionFinished.get() && resolved.compareAndSet(false, true)) {
-                invoke.resolve(pushState())
-            }
+        val request = PushPermissionRequest(invoke)
+        pendingPushPermissions.add(request)
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || hasNotificationPermission()) {
+            request.permissionFinished.set(true)
+        } else if (pendingPushPermissions.size == 1) {
+            activity.getSharedPreferences(TAG, Context.MODE_PRIVATE).edit().putBoolean("permission_requested", true).apply()
+            requestPermissionForAlias("notifications", invoke, "onPushPermissionResult")
         }
 
-        if (!permissionFinished.get()) {
-            if (hasNotificationPermission()) {
-                permissionFinished.set(true)
-            } else {
-                activity.getSharedPreferences(TAG, Context.MODE_PRIVATE).edit().putBoolean("permission_requested", true).apply()
-                pendingPermissionResult = {
-                    permissionFinished.set(true)
-                    finish()
-                }
-                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), PERMISSION_REQUEST_CODE)
-            }
-        }
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             val token = if (task.isSuccessful) task.result?.takeIf { it.isNotBlank() } else null
             if (token != null) {
@@ -710,18 +711,20 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
                 prefs.setTokenPending(true)
                 TokenSyncWorker.schedule(activity, token)
             }
-            tokenFinished.set(true)
-            finish()
+            main.post {
+                request.tokenFinished.set(true)
+                finishPushPermission(request)
+            }
         }
-        finish()
+        finishPushPermission(request)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != PERMISSION_REQUEST_CODE) return
-        val callback = pendingPermissionResult ?: return
-        pendingPermissionResult = null
-        callback()
+    @PermissionCallback
+    fun onPushPermissionResult(invoke: Invoke) {
+        pendingPushPermissions.toList().forEach { request ->
+            request.permissionFinished.set(true)
+            finishPushPermission(request)
+        }
     }
 
     @Command
@@ -829,8 +832,12 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     @Command
     fun setPushRelayURL(invoke: Invoke) {
         val args = invoke.parseArgs(UrlArgs::class.java)
+        val previous = prefs.getRelayUrl()
         when (val result = prefs.saveRelayUrl(args.url)) {
-            is RelayUrlResult.Valid -> invoke.resolve(pushState())
+            is RelayUrlResult.Valid -> {
+                if (relayUrlChanged(previous, result.url)) triggerPushStateChanged()
+                invoke.resolve(pushState())
+            }
             is RelayUrlResult.Invalid -> invoke.reject(result.code)
         }
     }
@@ -918,6 +925,13 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         val token = prefs.getFcmToken() ?: return
         prefs.setTokenPending(true)
         TokenSyncWorker.schedule(activity, token)
+    }
+
+    private fun finishPushPermission(request: PushPermissionRequest) {
+        if (request.tokenFinished.get() && request.permissionFinished.get() && request.resolved.compareAndSet(false, true)) {
+            pendingPushPermissions.remove(request)
+            request.invoke.resolve(pushState())
+        }
     }
 
     private fun <T> relay(request: () -> RelayResult<T>): RelayCall<T> = RelayCall(activity, request)

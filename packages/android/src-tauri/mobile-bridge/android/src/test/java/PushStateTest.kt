@@ -7,6 +7,12 @@ import org.junit.Test
 
 class PushStateTest {
     @Test
+    fun `relay state emits only when the normalized URL changes`() {
+        assertTrue(relayUrlChanged("https://relay.example", "https://other.example"))
+        assertFalse(relayUrlChanged("https://relay.example", "https://relay.example"))
+    }
+
+    @Test
     fun `push state includes the complete canonical diagnostic shape`() {
         val state = pushStateJson(
             PushStateSnapshot(
