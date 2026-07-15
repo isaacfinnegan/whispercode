@@ -9,6 +9,7 @@ const commands = {
   share: "share",
   getPushState: "get_push_state",
   pushListenersReady: "push_listeners_ready",
+  pushListenersNotReady: "push_listeners_not_ready",
   requestPushPermission: "request_push_permission",
   openSystemSettings: "open_system_settings",
   testPush: "test_push",

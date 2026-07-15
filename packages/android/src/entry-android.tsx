@@ -21,7 +21,14 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
-import { initializeNativePush, normalizePair, normalizePush, queuePushDeepLink, routePushHref } from "./push-native"
+import {
+  initializeNativePush,
+  normalizePair,
+  normalizePush,
+  queuePushDeepLink,
+  revokeNativePushListeners,
+  routePushHref,
+} from "./push-native"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
 import { Onboarding } from "./onboarding"
@@ -492,6 +499,7 @@ const App = () => {
     window.addEventListener("focus", onFocus)
     document.addEventListener("visibilitychange", onVisible)
     onCleanup(() => {
+      void revokeNativePushListeners(bridge.sendAsync)
       document.removeEventListener("click", handleClick)
       window.removeEventListener("focus", onFocus)
       document.removeEventListener("visibilitychange", onVisible)

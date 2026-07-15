@@ -42,6 +42,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::get_push_state,
             #[cfg(target_os = "android")]
             commands::push_listeners_ready,
+            #[cfg(target_os = "android")]
+            commands::push_listeners_not_ready,
             commands::request_push_permission,
             commands::open_system_settings,
             commands::test_push,

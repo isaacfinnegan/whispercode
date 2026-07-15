@@ -148,6 +148,29 @@ test("native push initialization skips state when listener acknowledgment fails"
   expect(calls).toEqual(["pushListenersReady"])
 })
 
+test("native push teardown revokes listener readiness without propagating rejection", async () => {
+  const calls: string[] = []
+  const revoke = (
+    (await import("./push-native")) as {
+      revokeNativePushListeners?: (send: (method: string) => Promise<unknown>) => Promise<void>
+    }
+  ).revokeNativePushListeners
+
+  expect(revoke).toBeDefined()
+  if (!revoke) return
+
+  await expect(
+    revoke(
+      createBridge(async (command) => {
+        calls.push(command)
+        throw new Error("teardown failed")
+      }).sendAsync,
+    ),
+  ).resolves.toBeUndefined()
+
+  expect(calls).toEqual(["plugin:mobile-bridge|push_listeners_not_ready"])
+})
+
 test("isPushHref only accepts app-relative and approved deep links", () => {
   expect(isPushHref("/session/abc")).toBe(true)
   expect(isPushHref("opencode://open-project?directory=%2Ftmp%2Fdemo")).toBe(true)

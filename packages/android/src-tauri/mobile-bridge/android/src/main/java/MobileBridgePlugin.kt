@@ -728,6 +728,12 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     }
 
     @Command
+    fun pushListenersNotReady(invoke: Invoke) {
+        pushListenersReady = false
+        invoke.resolve()
+    }
+
+    @Command
     fun requestPushPermission(invoke: Invoke) {
         if (pushDestroyed) {
             invoke.reject("push_registration_cancelled")

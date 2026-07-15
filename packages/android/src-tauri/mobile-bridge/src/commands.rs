@@ -47,6 +47,12 @@ pub(crate) async fn push_listeners_ready<R: Runtime>(app: AppHandle<R>) -> Resul
     app.mobile_bridge().push_listeners_ready()
 }
 
+#[cfg(target_os = "android")]
+#[command]
+pub(crate) async fn push_listeners_not_ready<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.mobile_bridge().push_listeners_not_ready()
+}
+
 #[command]
 pub(crate) async fn request_push_permission<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value> {
     app.mobile_bridge().request_push_permission()
