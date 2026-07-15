@@ -38,6 +38,7 @@ import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicBoolean
 
 @InvokeArg
 class ShareArgs {
@@ -72,6 +73,70 @@ class TestPushArgs {
     var href: String? = null
 }
 
+@InvokeArg
+class PushPreferencesArgs {
+    var complete: Boolean = false
+    var approval: Boolean = false
+    var question: Boolean = false
+    var error: Boolean = false
+}
+
+data class PushStateSnapshot(
+    val permission: String,
+    val token: Boolean,
+    val tokenPending: Boolean,
+    val paired: Boolean,
+    val relay: String,
+    val device: String?,
+    val pairId: String?,
+    val pairStatus: String?,
+    val pairExpires: String?,
+    val lastCode: String?,
+    val lastError: String?,
+    val channel: String? = null,
+)
+
+fun pushStateJson(snapshot: PushStateSnapshot): JSObject = JSObject().apply {
+    put("supported", true)
+    put("permission", snapshot.permission)
+    put("allowed", snapshot.permission == "authorized")
+    put("registered", snapshot.token)
+    put("paired", snapshot.paired)
+    if (snapshot.channel != null) put("channel", snapshot.channel)
+    put("generic", false)
+    put("diag", JSObject().apply {
+        put("token", snapshot.token)
+        put("tokenPending", snapshot.tokenPending)
+        put("relay", snapshot.relay)
+        if (snapshot.device != null) put("device", snapshot.device)
+        if (snapshot.pairId != null) put("pairID", snapshot.pairId)
+        if (snapshot.pairStatus != null) put("pairStatus", snapshot.pairStatus)
+        if (snapshot.pairExpires != null) put("pairExpires", snapshot.pairExpires)
+        if (snapshot.lastCode != null) put("lastCode", snapshot.lastCode)
+        if (snapshot.lastError != null) put("lastError", snapshot.lastError)
+    })
+}
+
+fun pairInfoJson(
+    id: String?,
+    status: String,
+    token: String? = null,
+    command: String? = null,
+    expires: String? = null,
+    channel: String? = null,
+    device: String? = null,
+    message: String? = null,
+): JSObject = JSObject().apply {
+    if (id != null) put("id", id)
+    put("status", status)
+    if (token != null) put("token", token)
+    if (command != null) put("command", command)
+    if (expires != null) put("expires", expires)
+    if (channel != null) put("channel", channel)
+    if (device != null) put("device", device)
+    if (message != null) put("message", message)
+}
+
 private data class ScanEntry(val host: String, val port: Int, val url: String)
 private data class WifiAddressInfo(val address: String, val prefixLength: Int)
 
@@ -91,6 +156,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     companion object {
         private const val TAG = "MobileBridgePush"
         private const val PERMISSION_REQUEST_CODE = 4072
+        private val PAIR_STATUSES = setOf("pending", "claimed", "active", "expired", "failed")
         private var activeInstance: MobileBridgePlugin? = null
 
         fun emitPushReceived(payload: JSObject) {
@@ -103,6 +169,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     }
 
     private var recognizer: SpeechRecognizer? = null
+    private var pendingPermissionResult: (() -> Unit)? = null
     private var pendingStop: Invoke? = null
     private var stopTimeout: Runnable? = null
     private var latestText = ""
@@ -610,117 +677,105 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun getPushState(invoke: Invoke) {
-        val hasToken = prefs.getPendingToken() != null
-        val hasPerm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
-
-        val state = JSObject().apply {
-            put("supported", true)
-            put("permission", if (hasPerm) "authorized" else "not-determined")
-            put("allowed", hasPerm)
-            put("registered", hasToken)
-            put("paired", prefs.getDeviceSecret() != null)
-            put("channel", prefs.getChannelId())
-            put("generic", false)
-            put("diag", JSObject().apply {
-                put("token", hasToken)
-                put("relay", prefs.getRelayUrl())
-                put("device", prefs.getDeviceId())
-            })
-        }
-        invoke.resolve(state)
+        invoke.resolve(pushState())
     }
 
     @Command
     fun requestPushPermission(invoke: Invoke) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val hasPerm = ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-            if (!hasPerm) {
-                ActivityCompat.requestPermissions(
-                    activity,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    PERMISSION_REQUEST_CODE
-                )
+        val tokenFinished = AtomicBoolean(false)
+        val permissionFinished = AtomicBoolean(Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU)
+        val resolved = AtomicBoolean(false)
+        val finish = {
+            if (tokenFinished.get() && permissionFinished.get() && resolved.compareAndSet(false, true)) {
+                invoke.resolve(pushState())
             }
         }
 
+        if (!permissionFinished.get()) {
+            if (hasNotificationPermission()) {
+                permissionFinished.set(true)
+            } else {
+                activity.getSharedPreferences(TAG, Context.MODE_PRIVATE).edit().putBoolean("permission_requested", true).apply()
+                pendingPermissionResult = {
+                    permissionFinished.set(true)
+                    finish()
+                }
+                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), PERMISSION_REQUEST_CODE)
+            }
+        }
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val token = task.result
-                prefs.savePendingToken(token)
+            val token = if (task.isSuccessful) task.result?.takeIf { it.isNotBlank() } else null
+            if (token != null) {
+                prefs.saveFcmToken(token)
+                prefs.setTokenPending(true)
                 TokenSyncWorker.schedule(activity, token)
             }
-            getPushState(invoke)
+            tokenFinished.set(true)
+            finish()
         }
+        finish()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != PERMISSION_REQUEST_CODE) return
+        val callback = pendingPermissionResult ?: return
+        pendingPermissionResult = null
+        callback()
     }
 
     @Command
     fun beginPushPairing(invoke: Invoke) {
         val args = invoke.parseArgs(VersionArgs::class.java)
         val appVersion = args.version ?: "1.0.0"
-        val token = prefs.getPendingToken() ?: return invoke.reject("missing_fcm_token")
+        val token = prefs.getFcmToken() ?: return invoke.reject("missing_fcm_token")
         val relay = prefs.getRelayUrl()
 
-        val payload = JSONObject().apply {
-            put("apns_token", token)
-            put("device_name", Build.MODEL)
-            put("app_version", appVersion)
-            put("apns_env", "production")
-        }
-
-        executeAsyncHttpRequest("$relay/v1/pair/start", "POST", payload) { response, error ->
-            if (error != null) {
-                invoke.reject("Pair start request failed: $error")
-            } else if (response != null) {
-                val pairId = response.getString("id")
-                prefs.savePairId(pairId)
-                val resultObj = JSObject().apply {
-                    put("id", pairId)
-                    put("command", response.getString("command"))
-                    put("expires_at", response.getString("expires_at"))
-                }
-                invoke.resolve(resultObj)
-            } else {
-                invoke.reject("Empty response payload")
+        relay { PushRelayClient().beginPair(relay, token, Build.MODEL, appVersion) }.fold(invoke, "pair_not_found") { response ->
+            val id = response.optString("pair_id").takeIf { it.isNotBlank() } ?: response.optString("id").takeIf { it.isNotBlank() }
+            val pairToken = response.optString("pair_token").takeIf { it.isNotBlank() }
+            val expires = response.optString("expires_at").takeIf { it.isNotBlank() }
+            val command = response.optString("install_command").takeIf { it.isNotBlank() }
+            if (id == null || pairToken == null || expires == null || command == null) {
+                rejectRelay(invoke, "relay_unreachable")
+                return@fold
             }
+            prefs.savePair(id, pairToken, command, expires, "pending")
+            triggerPushStateChanged()
+            invoke.resolve(pairInfoJson(id, "pending", pairToken, command, expires))
         }
     }
 
     @Command
     fun getPushPairing(invoke: Invoke) {
         val args = invoke.parseArgs(PairIdArgs::class.java)
-        val pairId = args.pair_id ?: prefs.getPairId() ?: return invoke.reject("missing_pair_id")
+        val pairId = args.pair_id ?: prefs.getPairId() ?: return invoke.reject("pair_not_found")
         val relay = prefs.getRelayUrl()
 
-        executeAsyncHttpRequest("$relay/v1/pair/$pairId", "GET", null) { response, error ->
-            if (error != null) {
-                invoke.reject("Pair lookup request failed: $error")
-            } else if (response != null) {
-                val status = response.getString("status")
-                val resultObj = JSObject().apply {
-                    put("status", status)
-                }
-
-                if (status == "active") {
-                    val channelId = response.getString("channel_id")
-                    val deviceId = response.getString("device_id")
-                    val deviceSecret = response.getString("device_secret")
-
-                    prefs.saveCredentials(channelId, deviceId, deviceSecret)
-                    
-                    resultObj.put("channel_id", channelId)
-                    resultObj.put("device_id", deviceId)
-                    resultObj.put("device_secret", deviceSecret)
-                    
-                    triggerPushStateChanged()
-                }
-                invoke.resolve(resultObj)
-            } else {
-                invoke.reject("Empty pairing status payload")
+        relay { PushRelayClient().getPair(relay, pairId) }.fold(invoke, "pair_not_found") { response ->
+            val status = response.optString("status").takeIf { it in PAIR_STATUSES } ?: run {
+                rejectRelay(invoke, "relay_unreachable")
+                return@fold
             }
+            val id = response.optString("pair_id").takeIf { it.isNotBlank() } ?: pairId
+            if (status == "active") {
+                val channel = response.optString("channel_id").takeIf { it.isNotBlank() }
+                val device = response.optString("device_id").takeIf { it.isNotBlank() }
+                val secret = response.optString("device_secret").takeIf { it.isNotBlank() }
+                if (channel == null || device == null || secret == null) {
+                    rejectRelay(invoke, "relay_unreachable")
+                    return@fold
+                }
+                prefs.saveCredentials(channel, device, secret)
+                prefs.savePair(id, prefs.getPairToken(), prefs.getPairCommand(), prefs.getPairExpires(), status)
+                scheduleTokenSync()
+                triggerPushStateChanged()
+                invoke.resolve(pairInfoJson(id, status, prefs.getPairToken(), prefs.getPairCommand(), prefs.getPairExpires(), channel, device))
+                return@fold
+            }
+            prefs.savePair(id, prefs.getPairToken(), prefs.getPairCommand(), prefs.getPairExpires(), status)
+            triggerPushStateChanged()
+            invoke.resolve(pairInfoJson(id, status, prefs.getPairToken(), prefs.getPairCommand(), prefs.getPairExpires()))
         }
     }
 
@@ -732,8 +787,9 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         val secret = args.secret ?: return invoke.reject("missing_secret")
 
         prefs.saveCredentials(channel, device, secret)
+        scheduleTokenSync()
         triggerPushStateChanged()
-        getPushState(invoke)
+        invoke.resolve(pushState())
     }
 
     @Command
@@ -742,25 +798,41 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         val deviceId = prefs.getDeviceId()
         val deviceSecret = prefs.getDeviceSecret()
 
-        if (deviceId != null && deviceSecret != null) {
-            val headers = mapOf(
-                "X-Device-Id" to deviceId,
-                "X-Device-Secret" to deviceSecret
-            )
-            executeAsyncHttpRequest("$relay/v1/device", "DELETE", null, headers) { _, _ -> }
+        val channel = prefs.getChannelId()
+        if (channel == null || deviceId == null || deviceSecret == null) {
+            prefs.clearCredentials()
+            prefs.clearPair()
+            triggerPushStateChanged()
+            invoke.resolve(pushState())
+            return
         }
 
-        prefs.clearAll()
-        triggerPushStateChanged()
-        getPushState(invoke)
+        val credentials = PushCredentials(channel, deviceId, deviceSecret)
+        relay { PushRelayClient().delete(relay, credentials) }.fold(invoke, "bad_device_secret", { error ->
+            if (error.code == "device_not_found") {
+                prefs.clearCredentials()
+                prefs.clearPair()
+                triggerPushStateChanged()
+                invoke.resolve(pushState())
+                true
+            } else {
+                false
+            }
+        }) {
+            prefs.clearCredentials()
+            prefs.clearPair()
+            triggerPushStateChanged()
+            invoke.resolve(pushState())
+        }
     }
 
     @Command
     fun setPushRelayURL(invoke: Invoke) {
         val args = invoke.parseArgs(UrlArgs::class.java)
-        val url = args.url
-        prefs.saveRelayUrl(url)
-        getPushState(invoke)
+        when (val result = prefs.saveRelayUrl(args.url)) {
+            is RelayUrlResult.Valid -> invoke.resolve(pushState())
+            is RelayUrlResult.Invalid -> invoke.reject(result.code)
+        }
     }
 
     @Command
@@ -778,79 +850,102 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun testPush(invoke: Invoke) {
-        val args = invoke.parseArgs(TestPushArgs::class.java)
-        val href = args.href ?: ""
         val relay = prefs.getRelayUrl()
-        val channelId = prefs.getChannelId() ?: return invoke.resolve(JSObject().put("success", false))
-
-        val payload = JSONObject().apply {
-            put("channel_id", channelId)
-            put("title", "Test Notification")
-            put("body", "This is a test notification from WhisperCode.")
-            put("href", href)
-        }
-
-        executeAsyncHttpRequest("$relay/v1/send", "POST", payload) { response, error ->
-            invoke.resolve(JSObject().put("success", error == null))
+        val credentials = credentials() ?: return invoke.reject("pair_not_found")
+        relay { PushRelayClient().test(relay, credentials) }.fold(invoke, "relay_unreachable") { response ->
+            invoke.resolve(JSObject().put("success", response.optBoolean("sent", false)))
         }
     }
 
     @Command
     fun setPushPreferences(invoke: Invoke) {
-        invoke.resolve()
+        val args = invoke.parseArgs(PushPreferencesArgs::class.java)
+        val credentials = credentials() ?: return invoke.reject("pair_not_found")
+        relay {
+            PushRelayClient().putPreferences(
+                prefs.getRelayUrl(),
+                credentials,
+                JSONObject()
+                    .put("complete", args.complete)
+                    .put("approval", args.approval)
+                    .put("question", args.question)
+                    .put("error", args.error),
+            )
+        }.fold(invoke, "relay_unreachable") {
+            invoke.resolve()
+        }
     }
 
     private fun triggerPushStateChanged() {
         if (isWebViewLoaded()) {
-            val state = JSObject().apply {
-                put("paired", prefs.getDeviceSecret() != null)
-                put("channel", prefs.getChannelId())
-            }
-            trigger("pushStateChanged", state)
+            trigger("pushStateChanged", pushState())
         }
     }
 
-    private fun executeAsyncHttpRequest(
-        urlStr: String,
-        method: String,
-        payload: JSONObject?,
-        headers: Map<String, String>? = null,
-        callback: (JSONObject?, String?) -> Unit
-    ) {
-        Thread {
-            var connection: HttpURLConnection? = null
-            try {
-                val url = URL(urlStr)
-                connection = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = method
-                    connectTimeout = 10000
-                    readTimeout = 10000
-                    headers?.forEach { (key, value) -> setRequestProperty(key, value) }
-                    
-                    if (payload != null) {
-                        doOutput = true
-                        setRequestProperty("Content-Type", "application/json")
-                        outputStream.use { os ->
-                            val bytes = payload.toString().toByteArray(Charsets.UTF_8)
-                            os.write(bytes, 0, bytes.size)
+    private fun pushState(): JSObject = pushStateJson(
+        PushStateSnapshot(
+            permission = permissionState(),
+            token = prefs.getFcmToken() != null,
+            tokenPending = prefs.isTokenPending(),
+            paired = credentials() != null,
+            relay = prefs.getRelayUrl(),
+            device = prefs.getDeviceId(),
+            pairId = prefs.getPairId(),
+            pairStatus = prefs.getPairStatus(),
+            pairExpires = prefs.getPairExpires(),
+            lastCode = prefs.getLastCode(),
+            lastError = prefs.getLastError(),
+            channel = prefs.getChannelId(),
+        ),
+    )
+
+    private fun permissionState(): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || hasNotificationPermission()) return "authorized"
+        return if (activity.getSharedPreferences(TAG, Context.MODE_PRIVATE).getBoolean("permission_requested", false)) "denied" else "not-determined"
+    }
+
+    private fun hasNotificationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    private fun credentials(): PushCredentials? {
+        val channel = prefs.getChannelId() ?: return null
+        val device = prefs.getDeviceId() ?: return null
+        val secret = prefs.getDeviceSecret() ?: return null
+        return PushCredentials(channel, device, secret)
+    }
+
+    private fun scheduleTokenSync() {
+        val token = prefs.getFcmToken() ?: return
+        prefs.setTokenPending(true)
+        TokenSyncWorker.schedule(activity, token)
+    }
+
+    private fun <T> relay(request: () -> RelayResult<T>): RelayCall<T> = RelayCall(activity, request)
+
+    private fun rejectRelay(invoke: Invoke, code: String) {
+        prefs.saveDiagnostic(code, code)
+        triggerPushStateChanged()
+        invoke.reject(code)
+    }
+
+    private inner class RelayCall<T>(private val activity: Activity, private val request: () -> RelayResult<T>) {
+        fun fold(invoke: Invoke, fallback: String, handled: ((RelayError) -> Boolean)? = null, success: (T) -> Unit) {
+            Thread {
+                when (val result = request()) {
+                    is RelayResult.Ok -> activity.runOnUiThread { success(result.value) }
+                    is RelayResult.Err -> activity.runOnUiThread {
+                        if (handled?.invoke(result.error) == true) return@runOnUiThread
+                        val code = when {
+                            result.error.code == "bad_device_secret" -> "bad_device_secret"
+                            result.error.code == "device_not_found" -> "pair_not_found"
+                            result.error.status == 404 -> "pair_not_found"
+                            result.error.status == null -> "relay_unreachable"
+                            else -> fallback
                         }
+                        rejectRelay(invoke, code)
                     }
                 }
-
-                val responseCode = connection.responseCode
-                if (responseCode in 200..299) {
-                    val body = connection.inputStream.bufferedReader().use { it.readText() }
-                    val json = if (body.trim().isNotEmpty()) JSONObject(body) else JSONObject()
-                    activity.runOnUiThread { callback(json, null) }
-                } else {
-                    val errorBody = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                    activity.runOnUiThread { callback(null, "HTTP $responseCode: $errorBody") }
-                }
-            } catch (e: Exception) {
-                activity.runOnUiThread { callback(null, e.message) }
-            } finally {
-                connection?.disconnect()
-            }
-        }.start()
+            }.start()
+        }
     }
 }
