@@ -6,6 +6,7 @@ import { Database } from "bun:sqlite"
 import { EventEmitter } from "node:events"
 import { constants, type ClientHttp2Session, type ClientHttp2Stream, type OutgoingHttpHeaders } from "node:http2"
 import { testkey } from "./apns"
+import { createAdapter as createFcmAdapter } from "./fcm"
 import { sign } from "./sign"
 import { createRelay, listen } from "./server"
 import { Store } from "./store"
@@ -355,6 +356,46 @@ describe("push relay", () => {
       expect(res.device_count).toBe(2)
       expect(apns).toBe(1)
       expect(fcm).toEqual(["fcm_token"])
+    } finally {
+      await env.stop()
+    }
+  })
+
+  test("returns a delivery failure when FCM transport rejects without deactivating the device", async () => {
+    const env = await setup({
+      fcmAdapter: createFcmAdapter({
+        mode: "live",
+        project: "project_1",
+        serviceAccount: JSON.stringify({ project_id: "project_1" }),
+        accessToken: async () => "access_1",
+        fetch: async () => Promise.reject(new Error("dns failure")),
+      }),
+    })
+    try {
+      const start = await post<Start>(env.root, "/v1/pair/start", {
+        push_provider: "fcm",
+        push_token: "fcm_token",
+        device_name: "Pixel",
+        app_version: "1",
+      })
+      const claim = await post<Claim>(env.root, "/v1/pair/claim", {
+        pair_token: start.pair_token,
+        plugin_version: "1",
+        server_label: "Mac",
+      })
+      await post(env.root, "/v1/channel/checkin", {
+        ...check(claim.channel_id),
+        sig: sign(claim.channel_secret, check(claim.channel_id)),
+      })
+      const active = await get(env.root, `/v1/pair/${start.pair_id}`)
+
+      const result = await post(env.root, "/v1/device/test", {
+        channel_id: claim.channel_id,
+        device_id: String(active.device_id),
+        device_secret: String(active.device_secret),
+      })
+      expect(result).toMatchObject({ sent: false, mode: "live", error: "fcm_transport_error" })
+      expect((await get(env.root, `/v1/pair/${start.pair_id}`)).status).toBe("active")
     } finally {
       await env.stop()
     }

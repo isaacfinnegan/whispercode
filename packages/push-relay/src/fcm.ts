@@ -24,16 +24,20 @@ export function createAdapter(opts?: Opts): PushAdapter {
       if (mode === "mock") return { sent: true, mode }
       if (mode !== "live" || !project || !accessToken)
         return { sent: false, mode: "disabled", code: "fcm_unconfigured" }
-      const res = await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(project)}/messages:send`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${await accessToken()}`, "content-type": "application/json" },
-        body: JSON.stringify({ message: payload(msg) }),
-        signal: AbortSignal.timeout(15_000),
-      })
-      if (res.ok) return { sent: true, mode }
-      const body = (await res.json().catch(() => null)) as { error?: { status?: unknown } } | null
-      const code = typeof body?.error?.status === "string" ? body.error.status : `http_${res.status}`
-      return { sent: false, mode, code, invalid: code === "UNREGISTERED" || code === "SENDER_ID_MISMATCH" }
+      try {
+        const res = await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(project)}/messages:send`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${await accessToken()}`, "content-type": "application/json" },
+          body: JSON.stringify({ message: payload(msg) }),
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (res.ok) return { sent: true, mode }
+        const body = (await res.json().catch(() => null)) as { error?: { status?: unknown } } | null
+        const code = typeof body?.error?.status === "string" ? body.error.status : `http_${res.status}`
+        return { sent: false, mode, code, invalid: code === "UNREGISTERED" || code === "SENDER_ID_MISMATCH" }
+      } catch {
+        return { sent: false, mode, code: "fcm_transport_error" }
+      }
     },
     close() {},
   }
@@ -52,7 +56,7 @@ export function payload(msg: PushMsg) {
   return {
     token: msg.token,
     data,
-    android: { priority: "high", ...(msg.collapse ? { collapse_key: msg.collapse } : {}) },
+    android: { priority: "high" },
   }
 }
 

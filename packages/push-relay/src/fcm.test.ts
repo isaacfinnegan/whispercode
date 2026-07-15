@@ -45,7 +45,7 @@ describe("push fcm", () => {
               body: "Session needs attention",
               session_id: "ses_1",
             },
-            android: { priority: "high", collapse_key: "complete:ses_1" },
+            android: { priority: "high" },
           },
         },
       },
@@ -66,6 +66,22 @@ describe("push fcm", () => {
       mode: "live",
       code: "UNREGISTERED",
       invalid: true,
+    })
+  })
+
+  test("returns a non-invalid failure when FCM transport fails", async () => {
+    const fcm = createAdapter({
+      mode: "live",
+      project: "project_1",
+      serviceAccount: JSON.stringify({ project_id: "project_1" }),
+      accessToken: async () => "access_1",
+      fetch: async () => Promise.reject(new Error("network unavailable")),
+    })
+
+    await expect(fcm.send({ delivery: "dlv_1", token: "fcm_token", kind: "test", channel: "ch_1" })).resolves.toEqual({
+      sent: false,
+      mode: "live",
+      code: "fcm_transport_error",
     })
   })
 })
