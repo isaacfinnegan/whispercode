@@ -47,15 +47,14 @@ export const createBridge = (call: Invoker, listen: ListenerRegistrar = addPlugi
       const ready = listen("mobile-bridge", type, (payload) => {
         if (!active) return
         handler(payload)
+      }).then((value) => {
+        if (active) {
+          listener = value
+          return
+        }
+        void value.unregister().catch(() => undefined)
       })
-        .then((value) => {
-          if (active) {
-            listener = value
-            return
-          }
-          void value.unregister().catch(() => undefined)
-        })
-        .catch(() => undefined)
+      void ready.catch(() => undefined)
 
       const stop = () => {
         active = false

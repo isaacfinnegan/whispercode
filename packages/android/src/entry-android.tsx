@@ -21,7 +21,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
-import { normalizePair, normalizePush, routePushHref } from "./push-native"
+import { normalizePair, normalizePush, queuePushDeepLink, routePushHref } from "./push-native"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
 import { Onboarding } from "./onboarding"
@@ -147,7 +147,9 @@ const App = () => {
   const handlePushTap = async (href: unknown, refresh = true) => {
     if (typeof href === "string") {
       routePushHref(href, handleNotificationClick, (url) => {
-        window.dispatchEvent(new CustomEvent("opencode:deep-link", { detail: { urls: [url] } }))
+        queuePushDeepLink(window, url, (href) => {
+          window.dispatchEvent(new CustomEvent("opencode:deep-link", { detail: { urls: [href] } }))
+        })
       })
     }
     emitResume()
@@ -488,7 +490,7 @@ const App = () => {
     })
 
     void initializePush(Promise.all([stopPushState.ready, stopPushReceived.ready, stopPushOpened.ready])).catch(
-      () => undefined,
+      (error) => console.warn("[entry-android] push listener initialization failed", error),
     )
 
     document.addEventListener("click", handleClick)

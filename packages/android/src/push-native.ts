@@ -93,3 +93,14 @@ export const routePushHref = (href: string, navigate: (href: string) => void, de
   else navigate(href)
   return true
 }
+
+export const queuePushDeepLink = (
+  target: { __OPENCODE__?: { deepLinks?: string[] } },
+  href: string,
+  dispatch: (href: string) => void,
+) => {
+  target.__OPENCODE__ ??= {}
+  const pending = target.__OPENCODE__.deepLinks ?? []
+  target.__OPENCODE__.deepLinks = [...pending, href]
+  dispatch(href)
+}

@@ -1,7 +1,7 @@
 // @ts-expect-error Bun test types are excluded from the production tsconfig.
 import { expect, test } from "bun:test"
 import { createBridge } from "./bridge"
-import { isPushHref, normalizePair, normalizePush, routePushHref } from "./push-native"
+import { isPushHref, normalizePair, normalizePush, queuePushDeepLink, routePushHref } from "./push-native"
 
 const push = {
   supported: true,
@@ -81,6 +81,17 @@ test("listeners expose registration readiness", async () => {
   expect(ready).toBe(true)
 })
 
+test("listeners reject readiness when registration fails", async () => {
+  const bridge = createBridge(
+    async () => null as never,
+    async () => {
+      throw new Error("listener registration failed")
+    },
+  )
+
+  await expect(bridge.on("pushOpened", () => {}).ready).rejects.toThrow("listener registration failed")
+})
+
 test("isPushHref only accepts app-relative and approved deep links", () => {
   expect(isPushHref("/session/abc")).toBe(true)
   expect(isPushHref("opencode://open-project?directory=%2Ftmp%2Fdemo")).toBe(true)
@@ -121,4 +132,17 @@ test("routePushHref uses router navigation and the deep-link event", () => {
       () => {},
     ),
   ).toBe(false)
+})
+
+test("queuePushDeepLink appends before dispatch for a cold-start layout drain", () => {
+  const target: { __OPENCODE__?: { deepLinks?: string[] } } = {}
+  const href = "opencode://open-project?directory=%2Ftmp%2Fdemo"
+  let queuedAtDispatch: string[] | undefined
+
+  queuePushDeepLink(target, href, () => {
+    queuedAtDispatch = target.__OPENCODE__?.deepLinks
+  })
+
+  expect(queuedAtDispatch).toEqual([href])
+  expect(target.__OPENCODE__?.deepLinks).toEqual([href])
 })
