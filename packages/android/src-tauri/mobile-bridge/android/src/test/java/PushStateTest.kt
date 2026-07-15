@@ -7,6 +7,13 @@ import org.junit.Test
 
 class PushStateTest {
     @Test
+    fun `late token completions are ignored after timeout or destruction`() {
+        assertTrue(isCurrentPushRequest(3, 3, false))
+        assertFalse(isCurrentPushRequest(3, 4, false))
+        assertFalse(isCurrentPushRequest(3, 3, true))
+    }
+
+    @Test
     fun `relay state emits only when the normalized URL changes`() {
         assertTrue(relayUrlChanged("https://relay.example", "https://other.example"))
         assertFalse(relayUrlChanged("https://relay.example", "https://relay.example"))

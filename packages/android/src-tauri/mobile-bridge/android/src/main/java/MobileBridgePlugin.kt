@@ -31,6 +31,8 @@ import java.net.URL
 import android.net.Uri
 import android.provider.Settings
 import android.os.Build
+import com.google.android.gms.tasks.OnCompleteListener
+import com.google.android.gms.tasks.Task
 import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONObject
 import java.util.Collections
@@ -139,6 +141,9 @@ fun pairInfoJson(
 
 fun relayUrlChanged(previous: String, current: String): Boolean = previous != current
 
+fun isCurrentPushRequest(generation: Int, currentGeneration: Int, destroyed: Boolean): Boolean =
+    !destroyed && generation == currentGeneration
+
 private data class ScanEntry(val host: String, val port: Int, val url: String)
 private data class WifiAddressInfo(val address: String, val prefixLength: Int)
 private data class PushPermissionRequest(
@@ -164,6 +169,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     companion object {
         private const val TAG = "MobileBridgePush"
+        private const val PUSH_TOKEN_TIMEOUT_MS = 15_000L
         private val PAIR_STATUSES = setOf("pending", "claimed", "active", "expired", "failed")
         private var activeInstance: MobileBridgePlugin? = null
 
@@ -178,6 +184,12 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     private var recognizer: SpeechRecognizer? = null
     private val pendingPushPermissions = mutableListOf<PushPermissionRequest>()
+    private var pushPermissionRequestInFlight = false
+    private var pushRequestGeneration = 0
+    private var pushDestroyed = false
+    private var pushTokenTask: Task<String>? = null
+    private var pushTokenListener: OnCompleteListener<String>? = null
+    private var pushTokenTimeout: Runnable? = null
     private var pendingStop: Invoke? = null
     private var stopTimeout: Runnable? = null
     private var latestText = ""
@@ -197,6 +209,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     override fun load(webView: WebView) {
         super.load(webView)
+        pushDestroyed = false
         setVoiceState("ready")
         
         prefs = SecurePreferencesManager(activity)
@@ -213,6 +226,8 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     override fun onDestroy() {
         super.onDestroy()
+        pushDestroyed = true
+        clearPushTokenRequest()
         pendingPushPermissions.forEach { request ->
             if (request.resolved.compareAndSet(false, true)) request.invoke.reject("permission_request_cancelled")
         }
@@ -694,33 +709,33 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun requestPushPermission(invoke: Invoke) {
+        if (pushDestroyed) {
+            invoke.reject("push_registration_cancelled")
+            return
+        }
+
         val request = PushPermissionRequest(invoke)
         pendingPushPermissions.add(request)
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || hasNotificationPermission()) {
             request.permissionFinished.set(true)
-        } else if (pendingPushPermissions.size == 1) {
+        } else if (!pushPermissionRequestInFlight) {
+            pushPermissionRequestInFlight = true
             activity.getSharedPreferences(TAG, Context.MODE_PRIVATE).edit().putBoolean("permission_requested", true).apply()
             requestPermissionForAlias("notifications", invoke, "onPushPermissionResult")
         }
 
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            val token = if (task.isSuccessful) task.result?.takeIf { it.isNotBlank() } else null
-            if (token != null) {
-                prefs.saveFcmToken(token)
-                prefs.setTokenPending(true)
-                TokenSyncWorker.schedule(activity, token)
-            }
-            main.post {
-                request.tokenFinished.set(true)
-                finishPushPermission(request)
-            }
+        if (pushTokenTask == null && pendingPushPermissions.any { it !== request && it.tokenFinished.get() }) {
+            request.tokenFinished.set(true)
+        } else if (pushTokenTask == null) {
+            requestPushToken()
         }
         finishPushPermission(request)
     }
 
     @PermissionCallback
     fun onPushPermissionResult(invoke: Invoke) {
+        pushPermissionRequestInFlight = false
         pendingPushPermissions.toList().forEach { request ->
             request.permissionFinished.set(true)
             finishPushPermission(request)
@@ -925,6 +940,60 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         val token = prefs.getFcmToken() ?: return
         prefs.setTokenPending(true)
         TokenSyncWorker.schedule(activity, token)
+    }
+
+    private fun requestPushToken() {
+        val generation = pushRequestGeneration + 1
+        pushRequestGeneration = generation
+        val task = try {
+            FirebaseMessaging.getInstance().token
+        } catch (_: Exception) {
+            rejectPushPermissions("push_registration_failed")
+            return
+        }
+        val listener = OnCompleteListener<String> { completed ->
+            main.post {
+                if (!isCurrentPushRequest(generation, pushRequestGeneration, pushDestroyed)) return@post
+                clearPushTokenRequest()
+                val token = if (completed.isSuccessful) completed.result?.takeIf { it.isNotBlank() } else null
+                if (token != null) {
+                    prefs.saveFcmToken(token)
+                    prefs.setTokenPending(true)
+                    TokenSyncWorker.schedule(activity, token)
+                }
+                pendingPushPermissions.toList().forEach { request ->
+                    request.tokenFinished.set(true)
+                    finishPushPermission(request)
+                }
+            }
+        }
+        pushTokenTask = task
+        pushTokenListener = listener
+        pushTokenTimeout = Runnable {
+            if (!isCurrentPushRequest(generation, pushRequestGeneration, pushDestroyed)) return@Runnable
+            rejectPushPermissions("push_registration_timeout")
+        }
+        task.addOnCompleteListener(listener)
+        main.postDelayed(pushTokenTimeout!!, PUSH_TOKEN_TIMEOUT_MS)
+    }
+
+    private fun clearPushTokenRequest() {
+        pushRequestGeneration += 1
+        pushTokenTimeout?.let(main::removeCallbacks)
+        pushTokenTimeout = null
+        val task = pushTokenTask
+        val listener = pushTokenListener
+        if (task != null && listener != null) task.removeOnCompleteListener(listener)
+        pushTokenTask = null
+        pushTokenListener = null
+    }
+
+    private fun rejectPushPermissions(code: String) {
+        clearPushTokenRequest()
+        pendingPushPermissions.toList().forEach { request ->
+            if (request.resolved.compareAndSet(false, true)) request.invoke.reject(code)
+        }
+        pendingPushPermissions.clear()
     }
 
     private fun finishPushPermission(request: PushPermissionRequest) {
