@@ -35,6 +35,7 @@ import com.google.android.gms.tasks.OnCompleteListener
 import com.google.android.gms.tasks.Task
 import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -977,19 +978,22 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
             rejectPushPermissions("push_registration_failed")
             return
         }
+        val handler = main
+        val owner = WeakReference(this)
         val listener = OnCompleteListener<String> { completed ->
-            main.post {
-                if (!isCurrentPushRequest(generation, pushRequestGeneration, pushDestroyed)) return@post
-                clearPushTokenRequest()
+            handler.post {
+                val plugin = owner.get() ?: return@post
+                if (!isCurrentPushRequest(generation, plugin.pushRequestGeneration, plugin.pushDestroyed)) return@post
+                plugin.clearPushTokenRequest()
                 val token = if (completed.isSuccessful) completed.result?.takeIf { it.isNotBlank() } else null
                 if (token != null) {
-                    prefs.saveFcmToken(token)
-                    prefs.setTokenPending(true)
-                    TokenSyncWorker.schedule(activity)
+                    plugin.prefs.saveFcmToken(token)
+                    plugin.prefs.setTokenPending(true)
+                    TokenSyncWorker.schedule(plugin.activity)
                 }
-                pendingPushPermissions.toList().forEach { request ->
+                plugin.pendingPushPermissions.toList().forEach { request ->
                     request.tokenFinished.set(true)
-                    finishPushPermission(request)
+                    plugin.finishPushPermission(request)
                 }
             }
         }
@@ -999,7 +1003,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
             if (!isCurrentPushRequest(generation, pushRequestGeneration, pushDestroyed)) return@Runnable
             rejectPushPermissions("push_registration_timeout")
         }
-        task.addOnCompleteListener(activity, listener)
+        task.addOnCompleteListener(listener)
         main.postDelayed(pushTokenTimeout!!, PUSH_TOKEN_TIMEOUT_MS)
     }
 
