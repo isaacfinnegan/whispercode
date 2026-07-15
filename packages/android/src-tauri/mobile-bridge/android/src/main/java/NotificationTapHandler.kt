@@ -1,39 +1,41 @@
 package ai.opencode.mobilebridge
 
 import android.content.Intent
-import android.util.Log
 import app.tauri.plugin.JSObject
+import java.lang.ref.WeakReference
 
 object NotificationTapHandler {
-    private const val TAG = "NotificationTap"
     private var pendingHref: String? = null
-    private var bridgePlugin: MobileBridgePlugin? = null
+    private var bridgePlugin: WeakReference<MobileBridgePlugin>? = null
 
     fun setPluginInstance(plugin: MobileBridgePlugin) {
-        this.bridgePlugin = plugin
-        pendingHref?.let { href ->
-            Log.d(TAG, "Plugin ready. Flushing pending deep link: $href")
-            dispatchHref(href)
-            pendingHref = null
-        }
+        bridgePlugin = WeakReference(plugin)
+    }
+
+    fun clearPluginInstance(plugin: MobileBridgePlugin) {
+        if (bridgePlugin?.get() === plugin) bridgePlugin = null
+    }
+
+    fun takePendingHref(): String? {
+        val href = pendingHref
+        pendingHref = null
+        return href
     }
 
     fun handleIntent(intent: Intent?) {
         val href = intent?.getStringExtra("push_href") ?: return
-        Log.d(TAG, "handleIntent: received push_href=$href")
-        val plugin = bridgePlugin
+        val plugin = bridgePlugin?.get()
         if (plugin != null && plugin.isWebViewLoaded()) {
-            dispatchHref(href)
+            dispatchHref(plugin, href)
         } else {
-            Log.d(TAG, "handleIntent: webview not loaded yet. Caching link.")
             pendingHref = href
         }
     }
 
-    private fun dispatchHref(href: String) {
+    private fun dispatchHref(plugin: MobileBridgePlugin, href: String) {
         val payload = JSObject().apply {
             put("href", href)
         }
-        bridgePlugin?.trigger("pushOpened", payload)
+        plugin.trigger("pushOpened", payload)
     }
 }

@@ -226,6 +226,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     override fun onDestroy() {
         super.onDestroy()
+        NotificationTapHandler.clearPluginInstance(this)
         pushDestroyed = true
         clearPushTokenRequest()
         pendingPushPermissions.forEach { request ->
@@ -704,7 +705,9 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun getPushState(invoke: Invoke) {
-        invoke.resolve(pushState())
+        val state = pushState()
+        NotificationTapHandler.takePendingHref()?.let { state.put("pendingHref", it) }
+        invoke.resolve(state)
     }
 
     @Command
@@ -939,7 +942,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     private fun scheduleTokenSync() {
         val token = prefs.getFcmToken() ?: return
         prefs.setTokenPending(true)
-        TokenSyncWorker.schedule(activity, token)
+        TokenSyncWorker.schedule(activity)
     }
 
     private fun requestPushToken() {
@@ -959,7 +962,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
                 if (token != null) {
                     prefs.saveFcmToken(token)
                     prefs.setTokenPending(true)
-                    TokenSyncWorker.schedule(activity, token)
+                    TokenSyncWorker.schedule(activity)
                 }
                 pendingPushPermissions.toList().forEach { request ->
                     request.tokenFinished.set(true)

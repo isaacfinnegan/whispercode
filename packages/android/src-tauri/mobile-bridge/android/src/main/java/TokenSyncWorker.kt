@@ -1,27 +1,67 @@
 package ai.opencode.mobilebridge
 
 import android.content.Context
-import android.util.Log
 import androidx.work.*
-import java.io.OutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 
+internal enum class TokenSyncResult { SUCCESS, RETRY, FAILURE }
+
+internal interface TokenSyncStore {
+    fun currentToken(): String?
+    fun credentials(): PushCredentials?
+    fun relayUrl(): String
+    fun clearCredentials()
+    fun setTokenPending(pending: Boolean)
+}
+
+internal interface TokenRelay {
+    fun putToken(relay: String, credentials: PushCredentials, token: String): RelayResult<JSONObject>
+}
+
+internal class PushRelayTokenClient : TokenRelay {
+    override fun putToken(relay: String, credentials: PushCredentials, token: String): RelayResult<JSONObject> =
+        PushRelayClient().putToken(relay, credentials, token)
+}
+
+internal class TokenSync(private val store: TokenSyncStore, private val relay: TokenRelay) {
+    fun sync(): TokenSyncResult {
+        val token = store.currentToken()?.takeIf { it.isNotBlank() } ?: return TokenSyncResult.FAILURE
+        val credentials = store.credentials() ?: return TokenSyncResult.SUCCESS
+        if (credentials.channelId.isBlank() || credentials.deviceId.isBlank() || credentials.deviceSecret.isBlank()) {
+            return TokenSyncResult.FAILURE
+        }
+        return when (val result = relay.putToken(store.relayUrl(), credentials, token)) {
+            is RelayResult.Ok -> {
+                store.setTokenPending(false)
+                TokenSyncResult.SUCCESS
+            }
+            is RelayResult.Err -> {
+                val status = result.error.status
+                when {
+                    result.error.code in setOf("bad_device_secret", "device_not_found") -> {
+                        store.clearCredentials()
+                        TokenSyncResult.FAILURE
+                    }
+                    status == null || status == 408 || status == 429 || status >= 500 ->
+                        TokenSyncResult.RETRY
+                    else -> TokenSyncResult.FAILURE
+                }
+            }
+        }
+    }
+}
+
 class TokenSyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     companion object {
-        private const val TAG = "TokenSyncWorker"
         private const val WORK_NAME = "PushTokenSyncWork"
 
-        fun schedule(context: Context, token: String) {
-            val data = workDataOf("fcm_token" to token)
+        fun schedule(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
             val syncRequest = OneTimeWorkRequestBuilder<TokenSyncWorker>()
-                .setInputData(data)
                 .setConstraints(constraints)
                 .setBackoffCriteria(
                     BackoffPolicy.EXPONENTIAL,
@@ -36,62 +76,29 @@ class TokenSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 syncRequest
             )
         }
+
+        fun schedule(context: Context, @Suppress("UNUSED_PARAMETER") token: String) = schedule(context)
     }
 
     override suspend fun doWork(): Result {
-        val token = inputData.getString("fcm_token") ?: return Result.failure()
         val prefs = SecurePreferencesManager(applicationContext)
-        val channelId = prefs.getChannelId()
-        val deviceId = prefs.getDeviceId()
-        val deviceSecret = prefs.getDeviceSecret()
-        val relayUrl = prefs.getRelayUrl()
+        val store = object : TokenSyncStore {
+            override fun currentToken(): String? = prefs.getFcmToken()
+            override fun credentials(): PushCredentials? {
+                val channel = prefs.getChannelId() ?: return null
+                val device = prefs.getDeviceId() ?: return null
+                val secret = prefs.getDeviceSecret() ?: return null
+                return PushCredentials(channel, device, secret)
+            }
 
-        if (channelId == null || deviceId == null || deviceSecret == null) {
-            Log.i(TAG, "Device not paired. Saved token locally for future pairing.")
-            return Result.success()
+            override fun relayUrl(): String = prefs.getRelayUrl()
+            override fun clearCredentials() = prefs.clearCredentials()
+            override fun setTokenPending(pending: Boolean) = prefs.setTokenPending(pending)
         }
-
-        return try {
-            val url = URL("$relayUrl/v1/device")
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "PUT"
-                connectTimeout = 15000
-                readTimeout = 15000
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("X-Device-Id", deviceId)
-                setRequestProperty("X-Device-Secret", deviceSecret)
-            }
-
-            val payload = JSONObject().apply {
-                put("channel_id", channelId)
-                put("apns_token", token)
-                put("sandbox", false)
-            }
-
-            connection.outputStream.use { os ->
-                val input = payload.toString().toByteArray(Charsets.UTF_8)
-                os.write(input, 0, input.size)
-            }
-
-            val responseCode = connection.responseCode
-            connection.disconnect()
-
-            if (responseCode in 200..299) {
-                Log.i(TAG, "Token sync completed successfully with status: $responseCode")
-                prefs.savePendingToken(null)
-                Result.success()
-            } else if (responseCode == 401 || responseCode == 403) {
-                Log.e(TAG, "Authentication failed with relay ($responseCode). Discarding pairing credentials.")
-                prefs.clearAll()
-                Result.failure()
-            } else {
-                Log.w(TAG, "Server returned temporary failure status: $responseCode. Retrying...")
-                Result.retry()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Network connection failure during sync. Re-queuing job.", e)
-            Result.retry()
+        return when (TokenSync(store, PushRelayTokenClient()).sync()) {
+            TokenSyncResult.SUCCESS -> Result.success()
+            TokenSyncResult.RETRY -> Result.retry()
+            TokenSyncResult.FAILURE -> Result.failure()
         }
     }
 }
