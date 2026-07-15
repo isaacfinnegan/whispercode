@@ -74,6 +74,46 @@ class SecurePreferencesManagerTest {
     }
 
     @Test
+    fun `saveRelayUrl resets relay scoped state when the normalized relay changes`() {
+        val prefs = SecurePreferencesManager(context)
+        prefs.saveCredentials("channel", "device", "secret")
+        prefs.saveFcmToken("fcm-token")
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+
+        val result = prefs.saveRelayUrl("https://relay.example.com/")
+
+        assertEquals(RelayUrlResult.Valid("https://relay.example.com"), result)
+        assertNull(prefs.getChannelId())
+        assertNull(prefs.getPairId())
+        assertEquals("fcm-token", prefs.getFcmToken())
+        assertTrue(prefs.isTokenPending())
+        assertEquals("https://relay.example.com", prefs.getRelayUrl())
+    }
+
+    @Test
+    fun `saveRelayUrl preserves relay scoped state when the normalized relay is unchanged`() {
+        val prefs = SecurePreferencesManager(context)
+        prefs.saveRelayUrl("https://relay.example.com")
+        prefs.saveCredentials("channel", "device", "secret")
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+
+        val result = prefs.saveRelayUrl("https://relay.example.com/")
+
+        assertEquals(RelayUrlResult.Valid("https://relay.example.com"), result)
+        assertEquals("channel", prefs.getChannelId())
+        assertEquals("pair", prefs.getPairId())
+    }
+
+    @Test
+    fun `saveRelayUrl returns stable errors for invalid public relays`() {
+        val prefs = SecurePreferencesManager(context)
+
+        assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.saveRelayUrl("http://relay.example.com"))
+        assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.saveRelayUrl("https://user:pass@relay.example.com"))
+        assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.saveRelayUrl("https://relay.example.com/#fragment"))
+    }
+
+    @Test
     fun `pair state survives manager recreation`() {
         SecurePreferencesManager(context).savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
 

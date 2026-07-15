@@ -144,9 +144,11 @@ class SecurePreferencesManager(private val context: Context) {
         return RelayUrlResult.Valid(parsed.normalize().toString().trimEnd('/'))
     }
 
-    fun saveRelayUrl(url: String?) {
+    fun saveRelayUrl(url: String?): RelayUrlResult {
         val result = normalizeRelayUrl(url)
-        if (result is RelayUrlResult.Valid) sharedPreferences?.edit()?.putString(KEY_RELAY_URL, result.url)?.apply()
+        if (result !is RelayUrlResult.Valid) return result
+        if (getRelayUrl() == result.url) return result
+        return resetForRelay(result.url)
     }
 
     fun getRelayUrl(): String {
