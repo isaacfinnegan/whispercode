@@ -40,6 +40,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::cancel_scan,
             commands::share,
             commands::get_push_state,
+            #[cfg(target_os = "android")]
             commands::push_listeners_ready,
             commands::request_push_permission,
             commands::open_system_settings,

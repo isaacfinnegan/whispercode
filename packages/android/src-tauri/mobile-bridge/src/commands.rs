@@ -41,6 +41,7 @@ pub(crate) async fn get_push_state<R: Runtime>(app: AppHandle<R>) -> Result<serd
     app.mobile_bridge().get_push_state()
 }
 
+#[cfg(target_os = "android")]
 #[command]
 pub(crate) async fn push_listeners_ready<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     app.mobile_bridge().push_listeners_ready()

@@ -61,6 +61,7 @@ impl<R: Runtime> MobileBridge<R> {
             .map_err(Into::into)
     }
 
+    #[cfg(target_os = "android")]
     pub fn push_listeners_ready(&self) -> crate::Result<()> {
         self.0
             .run_mobile_plugin("pushListenersReady", ())
