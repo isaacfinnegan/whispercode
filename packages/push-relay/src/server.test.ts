@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
+import { Database } from "bun:sqlite"
 import { EventEmitter } from "node:events"
 import { constants, type ClientHttp2Session, type ClientHttp2Stream, type OutgoingHttpHeaders } from "node:http2"
 import { testkey } from "./apns"
@@ -204,6 +205,156 @@ describe("push relay", () => {
       })
       expect(bad.status).toBe(400)
       expect((await bad.json()).error).toBe("bad_push_provider")
+    } finally {
+      await env.stop()
+    }
+  })
+
+  test("rejects contradictory provider token shapes on pair start and token update", async () => {
+    const env = await setup()
+    try {
+      for (const body of [
+        { apns_token: "apns", push_token: "fcm", device_name: "iPhone", app_version: "1" },
+        { push_provider: "apns", apns_token: "apns", push_token: "fcm", device_name: "iPhone", app_version: "1" },
+        { push_provider: "fcm", push_token: "fcm", apns_token: "apns", device_name: "Pixel", app_version: "1" },
+      ]) {
+        const res = await fetch(new URL("/v1/pair/start", env.root), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toBe("bad_request")
+      }
+
+      const start = await post<Start>(env.root, "/v1/pair/start", {
+        apns_token: "apns",
+        device_name: "iPhone",
+        app_version: "1",
+      })
+      const claim = await post<Claim>(env.root, "/v1/pair/claim", {
+        pair_token: start.pair_token,
+        plugin_version: "1",
+        server_label: "Mac",
+      })
+      const active = await get(env.root, `/v1/pair/${start.pair_id}`)
+      const res = await fetch(new URL("/v1/device/token", env.root), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          channel_id: claim.channel_id,
+          device_id: active.device_id,
+          device_secret: active.device_secret,
+          push_provider: "fcm",
+          push_token: "fcm",
+          apns_token: "apns",
+        }),
+      })
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe("bad_request")
+    } finally {
+      await env.stop()
+    }
+  })
+
+  test("migrates the legacy SQLite schema and scopes token uniqueness by provider", async () => {
+    const next = await tmp()
+    const legacy = new Database(next.file, { create: true })
+    legacy.exec(`
+      CREATE TABLE pair_request (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, apns_token TEXT NOT NULL, device_name TEXT NOT NULL, app_version TEXT NOT NULL, status TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, channel_id TEXT, device_id TEXT);
+      CREATE TABLE channel (id TEXT PRIMARY KEY, secret TEXT NOT NULL, server_label TEXT NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER, revoked_at INTEGER);
+      CREATE TABLE device (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, secret TEXT NOT NULL, apns_token TEXT NOT NULL, prefs_json TEXT NOT NULL, last_seen_at INTEGER, revoked_at INTEGER, FOREIGN KEY(channel_id) REFERENCES channel(id));
+      CREATE UNIQUE INDEX device_channel_token_active_idx ON device(channel_id, apns_token) WHERE revoked_at IS NULL;
+    `)
+    legacy.exec(`INSERT INTO channel VALUES ('ch', 'secret', 'server', 1, NULL, NULL)`)
+    legacy.exec(
+      `INSERT INTO pair_request VALUES ('pair', 'hash', 'legacy', 'iPhone', '1', 'pending', 1, 1, NULL, NULL)`,
+    )
+    legacy.exec(`INSERT INTO device VALUES ('apns', 'ch', 'secret', 'shared', '{}', NULL, NULL)`)
+    legacy.close()
+
+    const db = new Store({ file: next.file })
+    try {
+      expect(db.db.prepare(`SELECT push_provider, push_token FROM pair_request WHERE id = 'pair'`).get()).toEqual({
+        push_provider: "apns",
+        push_token: "legacy",
+      })
+      expect(db.db.prepare(`SELECT push_provider, push_token FROM device WHERE id = 'apns'`).get()).toEqual({
+        push_provider: "apns",
+        push_token: "shared",
+      })
+      db.db.exec(
+        `INSERT INTO device (id, channel_id, secret, apns_token, push_provider, push_token, prefs_json) VALUES ('fcm', 'ch', 'secret', 'shared', 'fcm', 'shared', '{}')`,
+      )
+      expect(() =>
+        db.db.exec(
+          `INSERT INTO device (id, channel_id, secret, apns_token, push_provider, push_token, prefs_json) VALUES ('apns-duplicate', 'ch', 'secret', 'shared', 'apns', 'shared', '{}')`,
+        ),
+      ).toThrow()
+    } finally {
+      db.close()
+      await fs.rm(next.dir, { recursive: true, force: true })
+    }
+  })
+
+  test("fans out to APNs and FCM adapters once each", async () => {
+    let apns = 0
+    const fcm: string[] = []
+    const env = await setup({
+      mode: "live",
+      team: "TEAM123",
+      kid: "KEY123",
+      topic: "dev.whispercode.app",
+      key: testkey(),
+      dial: stub(() => {
+        apns++
+        return { status: 200 }
+      }),
+      fcmAdapter: {
+        async send(msg) {
+          fcm.push(msg.token)
+          return { sent: true, mode: "live" }
+        },
+        close() {},
+      },
+    })
+    try {
+      const apple = await post<Start>(env.root, "/v1/pair/start", {
+        apns_token: "apns_token",
+        device_name: "iPhone",
+        app_version: "1",
+      })
+      const channel = await post<Claim>(env.root, "/v1/pair/claim", {
+        pair_token: apple.pair_token,
+        plugin_version: "1",
+        server_label: "Mac",
+      })
+      await post(env.root, "/v1/channel/checkin", {
+        ...check(channel.channel_id),
+        sig: sign(channel.channel_secret, check(channel.channel_id)),
+      })
+      const android = await post<Start>(env.root, "/v1/pair/start", {
+        push_provider: "fcm",
+        push_token: "fcm_token",
+        device_name: "Pixel",
+        app_version: "1",
+      })
+      await post(env.root, "/v1/pair/claim", {
+        pair_token: android.pair_token,
+        plugin_version: "1",
+        server_label: "Mac",
+        channel_id: channel.channel_id,
+        channel_secret: channel.channel_secret,
+      })
+
+      const body = publish(channel.channel_id, "mixed_fanout")
+      const res = await post(env.root, "/v1/events/publish", {
+        ...body,
+        sig: sign(channel.channel_secret, body),
+      })
+      expect(res.device_count).toBe(2)
+      expect(apns).toBe(1)
+      expect(fcm).toEqual(["fcm_token"])
     } finally {
       await env.stop()
     }

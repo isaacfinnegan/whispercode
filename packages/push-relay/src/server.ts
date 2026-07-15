@@ -252,7 +252,11 @@ function need(body: Record<string, unknown>, keys: string[]) {
 function needPush(body: Record<string, unknown>) {
   const provider = body.push_provider ?? "apns"
   if (provider !== "apns" && provider !== "fcm") throw new RelayErr(400, "bad_push_provider")
-  if (provider === "fcm") return need(body, ["push_token"])
+  if (provider === "fcm") {
+    if (body.apns_token !== undefined) throw new RelayErr(400, "bad_request", "unexpected apns_token")
+    return need(body, ["push_token"])
+  }
+  if (body.push_token !== undefined) throw new RelayErr(400, "bad_request", "unexpected push_token")
   return need(body, ["apns_token"])
 }
 
