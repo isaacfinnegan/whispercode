@@ -13,7 +13,9 @@ Never log the service account JSON value or registration tokens. If FCM configur
 ## Local mock
 
 ```sh
-WHISPEROPENCODE_PUSH_APNS_MODE=mock WHISPEROPENCODE_PUSH_FCM_MODE=mock rtk bun run --cwd packages/push-relay dev
+WHISPEROPENCODE_PUSH_APNS_MODE=mock \
+WHISPEROPENCODE_PUSH_FCM_MODE=mock \
+rtk bun run --cwd packages/push-relay dev
 ```
 
 `/health` returns `{ "ok": true }`.
