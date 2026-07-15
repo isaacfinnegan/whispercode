@@ -173,13 +173,8 @@ class SecurePreferencesManager(private val context: Context) {
     }
 
     fun saveFcmToken(token: String?) {
-        sharedPreferences?.edit()?.apply {
-            putString(KEY_FCM_TOKEN, token)
-            if (token != null && sharedPreferences?.getString(KEY_LAST_ERROR, null)?.contains(token) == true) {
-                remove(KEY_LAST_ERROR)
-            }
-            apply()
-        }
+        sharedPreferences?.edit()?.putString(KEY_FCM_TOKEN, token)?.apply()
+        clearDiagnosticContaining(token)
     }
 
     fun getFcmToken(): String? = sharedPreferences?.getString(KEY_FCM_TOKEN, null)
@@ -199,6 +194,7 @@ class SecurePreferencesManager(private val context: Context) {
             putString(KEY_PAIR_STATUS, pairStatus)
             apply()
         }
+        clearDiagnosticContaining(pairToken)
     }
 
     fun getPairId(): String? = sharedPreferences?.getString(KEY_PAIR_ID, null)
@@ -218,13 +214,22 @@ class SecurePreferencesManager(private val context: Context) {
     }
 
     fun saveDiagnostic(code: String?, message: String?) {
-        val tokens = listOf(getFcmToken(), getPairToken()).filterNotNull().filter { it.isNotEmpty() }
-        val error = message?.trim()?.takeIf { value -> value.isNotEmpty() && tokens.none { value.contains(it) } }
         sharedPreferences?.edit()?.apply {
-            putString(KEY_LAST_CODE, code?.trim()?.takeIf { it.isNotEmpty() })
-            putString(KEY_LAST_ERROR, error)
+            putString(KEY_LAST_CODE, sanitizeDiagnostic(code))
+            putString(KEY_LAST_ERROR, sanitizeDiagnostic(message))
             apply()
         }
+    }
+
+    private fun sanitizeDiagnostic(value: String?): String? {
+        val text = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val tokens = listOf(getFcmToken(), getPairToken()).filterNotNull().filter { it.isNotEmpty() }
+        return text.takeIf { candidate -> tokens.none { candidate.contains(it) } }
+    }
+
+    private fun clearDiagnosticContaining(token: String?) {
+        if (token.isNullOrEmpty()) return
+        if (getLastCode()?.contains(token) == true || getLastError()?.contains(token) == true) clearDiagnostic()
     }
 
     fun getLastCode(): String? = sharedPreferences?.getString(KEY_LAST_CODE, null)

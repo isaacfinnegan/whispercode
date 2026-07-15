@@ -151,6 +151,43 @@ class SecurePreferencesManagerTest {
     }
 
     @Test
+    fun `FCM token arrival clears an earlier diagnostic containing the token`() {
+        val prefs = SecurePreferencesManager(context)
+        prefs.saveDiagnostic("fcm-token", "Token registration failed: fcm-token")
+
+        prefs.saveFcmToken("fcm-token")
+
+        assertNull(prefs.getLastCode())
+        assertNull(prefs.getLastError())
+    }
+
+    @Test
+    fun `pair token arrival clears an earlier diagnostic containing the token`() {
+        val prefs = SecurePreferencesManager(context)
+        prefs.saveDiagnostic("pair-token", "Pair authorization failed: pair-token")
+
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+
+        assertNull(prefs.getLastCode())
+        assertNull(prefs.getLastError())
+    }
+
+    @Test
+    fun `diagnostic code excludes known FCM and pair tokens`() {
+        val prefs = SecurePreferencesManager(context)
+        prefs.saveFcmToken("fcm-token")
+
+        prefs.saveDiagnostic("sync-fcm-token", "Network unavailable")
+        assertNull(prefs.getLastCode())
+        assertEquals("Network unavailable", prefs.getLastError())
+
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+        prefs.saveDiagnostic("pair-pair-token", "Pair failed")
+        assertNull(prefs.getLastCode())
+        assertEquals("Pair failed", prefs.getLastError())
+    }
+
+    @Test
     fun `diagnostics survive manager recreation`() {
         SecurePreferencesManager(context).saveDiagnostic("network_error", "Network unavailable")
 
