@@ -87,13 +87,18 @@ class SecurePreferencesManagerTest {
     }
 
     @Test
-    fun `diagnostics set clear and exclude the FCM token`() {
+    fun `diagnostics set clear and exclude FCM and pair tokens`() {
         val prefs = SecurePreferencesManager(context)
         prefs.saveFcmToken("fcm-token")
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
 
         prefs.saveDiagnostic("sync_failed", "fcm-token")
 
         assertEquals("sync_failed", prefs.getLastCode())
+        assertNull(prefs.getLastError())
+
+        prefs.saveDiagnostic("pair_failed", "pair-token")
+        assertEquals("pair_failed", prefs.getLastCode())
         assertNull(prefs.getLastError())
 
         prefs.saveDiagnostic("network_error", "Network unavailable")
@@ -103,6 +108,70 @@ class SecurePreferencesManagerTest {
         prefs.clearDiagnostic()
         assertNull(prefs.getLastCode())
         assertNull(prefs.getLastError())
+    }
+
+    @Test
+    fun `diagnostics survive manager recreation`() {
+        SecurePreferencesManager(context).saveDiagnostic("network_error", "Network unavailable")
+
+        val recreated = SecurePreferencesManager(context)
+
+        assertEquals("network_error", recreated.getLastCode())
+        assertEquals("Network unavailable", recreated.getLastError())
+    }
+
+    @Test
+    fun `clearPair preserves relay FCM token and pending state`() {
+        val prefs = SecurePreferencesManager(context)
+        prefs.saveRelayUrl("https://relay.example.com")
+        prefs.saveFcmToken("fcm-token")
+        prefs.setTokenPending(true)
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+
+        prefs.clearPair()
+
+        assertNull(prefs.getPairId())
+        assertEquals("https://relay.example.com", prefs.getRelayUrl())
+        assertEquals("fcm-token", prefs.getFcmToken())
+        assertTrue(prefs.isTokenPending())
+    }
+
+    @Test
+    fun `clearDiagnostic preserves relay FCM token and pending state`() {
+        val prefs = SecurePreferencesManager(context)
+        prefs.saveRelayUrl("https://relay.example.com")
+        prefs.saveFcmToken("fcm-token")
+        prefs.setTokenPending(true)
+        prefs.saveDiagnostic("network_error", "Network unavailable")
+
+        prefs.clearDiagnostic()
+
+        assertNull(prefs.getLastCode())
+        assertNull(prefs.getLastError())
+        assertEquals("https://relay.example.com", prefs.getRelayUrl())
+        assertEquals("fcm-token", prefs.getFcmToken())
+        assertTrue(prefs.isTokenPending())
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun `legacy clearAll preserves relay FCM token and pending state`() {
+        val prefs = SecurePreferencesManager(context)
+        prefs.saveRelayUrl("https://relay.example.com")
+        prefs.saveFcmToken("fcm-token")
+        prefs.setTokenPending(true)
+        prefs.saveCredentials("channel", "device", "secret")
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+        prefs.saveDiagnostic("network_error", "Network unavailable")
+
+        prefs.clearAll()
+
+        assertNull(prefs.getChannelId())
+        assertNull(prefs.getPairId())
+        assertNull(prefs.getLastCode())
+        assertEquals("https://relay.example.com", prefs.getRelayUrl())
+        assertEquals("fcm-token", prefs.getFcmToken())
+        assertTrue(prefs.isTokenPending())
     }
 
     @Test

@@ -205,8 +205,8 @@ class SecurePreferencesManager(private val context: Context) {
     }
 
     fun saveDiagnostic(code: String?, message: String?) {
-        val token = getFcmToken()
-        val error = message?.trim()?.takeIf { it.isNotEmpty() && (token.isNullOrEmpty() || !it.contains(token)) }
+        val tokens = listOf(getFcmToken(), getPairToken()).filterNotNull().filter { it.isNotEmpty() }
+        val error = message?.trim()?.takeIf { value -> value.isNotEmpty() && tokens.none { value.contains(it) } }
         sharedPreferences?.edit()?.apply {
             putString(KEY_LAST_CODE, code?.trim()?.takeIf { it.isNotEmpty() })
             putString(KEY_LAST_ERROR, error)
