@@ -1219,11 +1219,13 @@ export async function runPushSetup(input: PushSetupInput): Promise<PushSetupResu
     throw fail("unsupported", "Push pairing is unavailable on this device.")
   }
 
-  let push = await pull(platform)
+  let push: PushState | undefined
   let phase: PushPhase | undefined
-  note(input, `start ${pushText(push)}`)
 
   try {
+    push = await pull(platform)
+    note(input, `start ${pushText(push)}`)
+
     if (push?.permission === "unsupported") {
       throw fail("unsupported", "Notifications are unavailable on this device.")
     }

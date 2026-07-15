@@ -366,6 +366,34 @@ describe("claimPush", () => {
 })
 
 describe("runPushSetup", () => {
+  test("normalizes synchronous initial push state failures", async () => {
+    await runPushSetup({
+      platform: {
+        fetch: globalThis.fetch,
+        pushState: () => {
+          throw new Error("Apple Push state failed on this iPhone")
+        },
+        getPushState: async () => undefined as never,
+        getPushPairing: async () => undefined,
+        beginPushPairing: async () => {
+          throw new Error("should not start pairing")
+        },
+      },
+      server: { type: "http", http: { url: "http://localhost:4096" } } as any,
+    }).then(
+      () => {
+        throw new Error("expected push setup to fail")
+      },
+      (err) => {
+        expect(err).toBeInstanceOf(PushFail)
+        expect((err as PushFail).issue).toMatchObject({
+          code: "unknown",
+          message: "mobile push state failed on this device",
+        })
+      },
+    )
+  })
+
   test("surfaces a structured permission issue", async () => {
     const platform = {
       fetch: globalThis.fetch,
