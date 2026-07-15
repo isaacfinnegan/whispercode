@@ -79,17 +79,31 @@ class PushRelayClientTest {
     }
 
     @Test
-    fun `putPreferences sends credentials and supplied preferences`() {
+    fun `putPreferences nests exactly the supplied preferences`() {
         server.enqueue(jsonResponse())
 
-        client.putPreferences(relay(), credentials(), JSONObject().put("enabled", true))
+        client.putPreferences(
+            relay(),
+            credentials(),
+            JSONObject()
+                .put("complete", true)
+                .put("approval", false)
+                .put("question", true)
+                .put("error", false)
+        )
 
         val request = server.takeRequest()
         val body = JSONObject(request.body.readUtf8())
         assertEquals("PUT", request.method)
         assertEquals("/v1/device/preferences", request.path)
         assertCredentials(body)
-        assertTrue(body.getBoolean("enabled"))
+        assertEquals(setOf("channel_id", "device_id", "device_secret", "prefs"), body.keys().asSequence().toSet())
+        val prefs = body.getJSONObject("prefs")
+        assertEquals(setOf("complete", "approval", "question", "error"), prefs.keys().asSequence().toSet())
+        assertTrue(prefs.getBoolean("complete"))
+        assertFalse(prefs.getBoolean("approval"))
+        assertTrue(prefs.getBoolean("question"))
+        assertFalse(prefs.getBoolean("error"))
         assertNull(request.getHeader("X-Device-Id"))
         assertNull(request.getHeader("X-Device-Secret"))
     }

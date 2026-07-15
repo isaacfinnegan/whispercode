@@ -42,9 +42,7 @@ class PushRelayClient {
     }
 
     fun putPreferences(relay: String, credentials: PushCredentials, prefs: JSONObject): RelayResult<JSONObject> {
-        val body = authenticated(credentials)
-        for (key in prefs.keys()) body.put(key, prefs.get(key))
-        return request(relay, "/v1/device/preferences", "PUT", body)
+        return request(relay, "/v1/device/preferences", "PUT", authenticated(credentials).put("prefs", prefs))
     }
 
     fun test(relay: String, credentials: PushCredentials): RelayResult<JSONObject> {
