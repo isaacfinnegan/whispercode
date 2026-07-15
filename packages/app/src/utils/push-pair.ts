@@ -347,14 +347,14 @@ export function pushIssue(push?: PushState): PushIssue | undefined {
     return issue("unsupported", "Notifications are unavailable on this device.")
   }
   if (push?.permission === "denied") {
-    return issue("permission_denied", "Turn on notifications for WhisperCode in the iPhone Settings app.")
+    return issue("permission_denied", "Turn on notifications for WhisperCode in the device Settings app.")
   }
 
   switch (push?.diag?.lastCode) {
     case "apns_register_failed":
-      return issue("apns_register_failed", "Apple push registration failed. Try again in a moment.")
+      return issue("apns_register_failed", "Mobile push registration failed. Try again in a moment.")
     case "missing_token":
-      return issue("missing_token", "WhisperCode could not get an Apple push token yet. Try again in a moment.")
+      return issue("missing_token", "WhisperCode could not get a mobile push token yet. Try again in a moment.")
     case "bad_relay":
       return issue("relay_invalid", "The push relay URL is invalid.")
     case "relay_rate_limited":
@@ -375,7 +375,7 @@ export function pushIssue(push?: PushState): PushIssue | undefined {
     case "repair_needed":
     case "device_not_found":
     case "bad_device_secret":
-      return issue("repair_needed", "This iPhone needs to re-pair with the OpenCode host.")
+      return issue("repair_needed", "This device needs to re-pair with the OpenCode host.")
   }
 }
 
@@ -421,7 +421,7 @@ function errIssue(err: unknown, push?: PushState, phase?: PushPhase): PushIssue 
     return issue("apns_register_timeout", message)
   }
   if (lower.includes("apns token unavailable")) {
-    return issue("missing_token", "WhisperCode could not get an Apple push token yet. Try again in a moment.")
+    return issue("missing_token", "WhisperCode could not get a mobile push token yet. Try again in a moment.")
   }
   if (lower.includes("apple push token")) {
     return issue("missing_token", message)
@@ -468,7 +468,7 @@ function errIssue(err: unknown, push?: PushState, phase?: PushPhase): PushIssue 
   if (next) return next
 
   if (phase === "register") {
-    return issue("apns_register_timeout", message || "WhisperCode is still waiting for Apple push registration.")
+    return issue("apns_register_timeout", message || "WhisperCode is still waiting for mobile push registration.")
   }
 
   return issue("unknown", message || "Notification setup failed. Try again.")
@@ -501,7 +501,7 @@ async function waitPush(input: PushSetupInput) {
       throw new PushFail(issue)
     }
     if (push?.permission === "denied") {
-      throw fail("permission_denied", "Turn on notifications for WhisperCode in the iPhone Settings app.")
+      throw fail("permission_denied", "Turn on notifications for WhisperCode in the device Settings app.")
     }
     if (push?.allowed && push.registered) return push
     if (Date.now() >= end) {
@@ -511,7 +511,7 @@ async function waitPush(input: PushSetupInput) {
       if (issue) {
         throw new PushFail(issue)
       }
-      throw fail("apns_register_timeout", "WhisperCode is still waiting for Apple push registration.")
+      throw fail("apns_register_timeout", "WhisperCode is still waiting for mobile push registration.")
     }
     await wait(WAIT_GAP)
   }
@@ -1130,7 +1130,7 @@ export async function claimPush(input: {
       }
       if (pair?.status === "expired") {
         stream.close()
-        throw fail("pair_expired", "This pairing request expired before the host finished pairing this iPhone.")
+        throw fail("pair_expired", "This pairing request expired before the host finished pairing this device.")
       }
       if (done) break
       await Promise.race([stream.done, wait(CLAIM_POLL)])
@@ -1161,7 +1161,7 @@ export async function claimPush(input: {
       return { ok: true, pair }
     }
     if (pair?.status === "expired") {
-      throw fail("pair_expired", "This pairing request expired before the host finished pairing this iPhone.")
+      throw fail("pair_expired", "This pairing request expired before the host finished pairing this device.")
     }
     if (pair?.status === "failed") {
       throw fail("pair_failed", pair.message || "The relay reported that push pairing failed.")
@@ -1196,7 +1196,7 @@ export async function claimPush(input: {
   note(input, "claim fail no_runner")
   throw fail(
     "host_install_failed",
-    `The OpenCode host could not finish pairing this iPhone. Run ${hostCmd(input.token, relay, mode)} or ${hostCmd(input.token, relay, mode, "bunx")} on the host and try again.`,
+    `The OpenCode host could not finish pairing this device. Run ${hostCmd(input.token, relay, mode)} or ${hostCmd(input.token, relay, mode, "bunx")} on the host and try again.`,
   )
 }
 
@@ -1217,7 +1217,7 @@ export async function runPushSetup(input: PushSetupInput): Promise<PushSetupResu
 
     if (!push?.allowed) {
       if (push?.permission === "denied") {
-        throw fail("permission_denied", "Turn on notifications for WhisperCode in the iPhone Settings app.")
+        throw fail("permission_denied", "Turn on notifications for WhisperCode in the device Settings app.")
       }
       if (!input.ask || !platform.requestPushPermission) {
         throw fail("permission_required", "Enable notifications for WhisperCode to finish setup.")
@@ -1231,7 +1231,7 @@ export async function runPushSetup(input: PushSetupInput): Promise<PushSetupResu
         throw fail(
           push.permission === "denied" ? "permission_denied" : "permission_required",
           push.permission === "denied"
-            ? "Turn on notifications for WhisperCode in the iPhone Settings app."
+            ? "Turn on notifications for WhisperCode in the device Settings app."
             : "Enable notifications for WhisperCode to finish setup.",
         )
       }
@@ -1393,17 +1393,17 @@ export async function runPushSetup(input: PushSetupInput): Promise<PushSetupResu
     }
 
     if (done?.status === "expired") {
-      throw fail("pair_expired", "This pairing request expired before the iPhone finished syncing.")
+      throw fail("pair_expired", "This pairing request expired before the device finished syncing.")
     }
     if (done?.status === "failed") {
-      throw fail("pair_failed", done.message || "The OpenCode host could not finish pairing this iPhone.")
+      throw fail("pair_failed", done.message || "The OpenCode host could not finish pairing this device.")
     }
     if (limitedHit) {
       throw fail("relay_rate_limited", limitMessage())
     }
     throw fail(
       "pair_claim_timeout",
-      "The OpenCode host claimed the pair, but this iPhone has not finished syncing yet.",
+      "The OpenCode host claimed the pair, but this device has not finished syncing yet.",
     )
   } catch (err) {
     note(input, `fail phase=${phase ?? "-"} err=${text(err)}`)

@@ -744,6 +744,33 @@ describe("runPushSetup", () => {
 })
 
 describe("pushIssue", () => {
+  test("uses provider-neutral wording for native push issues", () => {
+    expect(pushIssue(push({ permission: "denied", allowed: false }))?.message).toBe(
+      "Turn on notifications for WhisperCode in the device Settings app.",
+    )
+    expect(
+      pushIssue(
+        push({
+          diag: { lastCode: "apns_register_failed" },
+        }),
+      )?.message,
+    ).toBe("Mobile push registration failed. Try again in a moment.")
+    expect(
+      pushIssue(
+        push({
+          diag: { lastCode: "missing_token" },
+        }),
+      )?.message,
+    ).toBe("WhisperCode could not get a mobile push token yet. Try again in a moment.")
+    expect(
+      pushIssue(
+        push({
+          diag: { lastCode: "repair_needed" },
+        }),
+      )?.message,
+    ).toBe("This device needs to re-pair with the OpenCode host.")
+  })
+
   test("surfaces native APNs failures from current push diagnostics", () => {
     const issue = pushIssue({
       ...push({ allowed: true, registered: false }),
@@ -772,11 +799,11 @@ describe("pushIssue", () => {
 })
 
 describe("mergePushIssue", () => {
-  test("drops stale permission issues once iPhone notification access is restored", () => {
+  test("drops stale permission issues once device notification access is restored", () => {
     const issue = mergePushIssue(
       {
         code: "permission_denied",
-        message: "Turn on notifications for WhisperCode in the iPhone Settings app.",
+        message: "Turn on notifications for WhisperCode in the device Settings app.",
         action: "settings",
       },
       push(),
