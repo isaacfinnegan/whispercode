@@ -28,9 +28,9 @@ internal class RelayCleanupScheduling(
     private val enqueue: (String) -> Unit,
 ) {
     fun schedule(): Boolean {
-        val channel = prefs.getChannelId() ?: return false
-        val device = prefs.getDeviceId() ?: return false
-        val secret = prefs.getDeviceSecret() ?: return false
+        val channel = prefs.getChannelId() ?: return true
+        val device = prefs.getDeviceId() ?: return true
+        val secret = prefs.getDeviceSecret() ?: return true
         val pending = prefs.savePendingRelayCleanup(prefs.getRelayUrl(), PushCredentials(channel, device, secret)) ?: return false
         enqueue(pending.id)
         return true
@@ -77,8 +77,9 @@ class RelayCleanupWorker(context: Context, params: WorkerParameters) : Coroutine
     }
 
     override suspend fun doWork(): Result {
+        val prefs = SecurePreferencesManager(applicationContext)
         val cleanupID = inputData.getString(INPUT_CLEANUP_ID) ?: return Result.success()
-        return when (RelayCleanup(SecurePreferencesManager(applicationContext), PushRelayCleanupClient()).cleanup(cleanupID)) {
+        return when (RelayCleanup(prefs, PushRelayCleanupClient()).cleanup(cleanupID)) {
         RelayCleanupResult.SUCCESS -> Result.success()
         RelayCleanupResult.RETRY -> Result.retry()
         }

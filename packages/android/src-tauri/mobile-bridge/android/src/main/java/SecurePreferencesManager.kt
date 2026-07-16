@@ -46,6 +46,10 @@ class SecurePreferencesManager private constructor(
         private const val KEY_CLEANUP_PREFIX = "push.cleanup"
 
         private const val LEGACY_KEY_PENDING_TOKEN = "push.pending_token"
+        private const val LEGACY_KEY_CLEANUP_RELAY_URL = "push.cleanup.relay_url"
+        private const val LEGACY_KEY_CLEANUP_CHANNEL = "push.cleanup.channel"
+        private const val LEGACY_KEY_CLEANUP_DEVICE = "push.cleanup.device"
+        private const val LEGACY_KEY_CLEANUP_SECRET = "push.cleanup.secret"
         private const val INVALID_RELAY_URL = "invalid_relay_url"
     }
 
@@ -84,6 +88,24 @@ class SecurePreferencesManager private constructor(
                     .remove(LEGACY_KEY_PENDING_TOKEN)
                     .apply()
             }
+        }
+        val relayUrl = prefs.getString(LEGACY_KEY_CLEANUP_RELAY_URL, null)
+        val channel = prefs.getString(LEGACY_KEY_CLEANUP_CHANNEL, null)
+        val device = prefs.getString(LEGACY_KEY_CLEANUP_DEVICE, null)
+        val secret = prefs.getString(LEGACY_KEY_CLEANUP_SECRET, null)
+        if (relayUrl != null && channel != null && device != null && secret != null) {
+            val snapshot = RelayCleanupSnapshot(UUID.randomUUID().toString(), relayUrl, PushCredentials(channel, device, secret))
+            val key = "$KEY_CLEANUP_PREFIX.${snapshot.id}"
+            prefs.edit()
+                .putString("$key.relay_url", snapshot.relayUrl)
+                .putString("$key.channel", snapshot.credentials.channelId)
+                .putString("$key.device", snapshot.credentials.deviceId)
+                .putString("$key.secret", snapshot.credentials.deviceSecret)
+                .remove(LEGACY_KEY_CLEANUP_RELAY_URL)
+                .remove(LEGACY_KEY_CLEANUP_CHANNEL)
+                .remove(LEGACY_KEY_CLEANUP_DEVICE)
+                .remove(LEGACY_KEY_CLEANUP_SECRET)
+                .commit()
         }
         getRelayUrl()
     }

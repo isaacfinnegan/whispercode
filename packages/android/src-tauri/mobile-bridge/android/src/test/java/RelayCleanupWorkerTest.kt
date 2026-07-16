@@ -3,6 +3,7 @@ package ai.opencode.mobilebridge
 import android.content.Context
 import android.content.SharedPreferences
 import java.lang.reflect.Proxy
+import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -54,6 +55,27 @@ class RelayCleanupWorkerTest {
             ),
             prefs.getPendingRelayCleanup(cleanupID!!),
         )
+    }
+
+    @Test
+    fun `changing relay before pairing skips cleanup and resets active push state`() {
+        val prefs = prefs()
+        prefs.saveRelayUrl("https://old-relay.example")
+        prefs.saveFcmToken("fcm-token")
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+        var enqueued = false
+
+        assertTrue(RelayCleanupScheduling(prefs) { enqueued = true }.schedule())
+        val result = prefs.saveRelayUrl("https://new-relay.example")
+
+        assertFalse(enqueued)
+        assertFalse(store.all.keys.any { it.matches(Regex("push\\.cleanup\\.[^.]+\\.relay_url")) })
+        assertEquals(RelayUrlResult.Valid("https://new-relay.example"), result)
+        assertEquals("https://new-relay.example", prefs.getRelayUrl())
+        assertNull(prefs.getChannelId())
+        assertNull(prefs.getPairId())
+        assertEquals("fcm-token", prefs.getFcmToken())
+        assertTrue(prefs.isTokenPending())
     }
 
     @Test
@@ -141,6 +163,41 @@ class RelayCleanupWorkerTest {
 
         assertEquals(RelayCleanupResult.SUCCESS, result)
         assertNull(prefs.getPendingRelayCleanup(pending.id))
+    }
+
+    @Test
+    fun `legacy cleanup is migrated to an ID entry and cleared by cleanup`() {
+        store.edit()
+            .putString("push.cleanup.relay_url", "https://old-relay.example")
+            .putString("push.cleanup.channel", "channel")
+            .putString("push.cleanup.device", "device")
+            .putString("push.cleanup.secret", "secret")
+            .commit()
+
+        val prefs = prefs()
+        val relayKey = store.all.keys.first { it.matches(Regex("push\\.cleanup\\.[^.]+\\.relay_url")) }
+        val cleanupID = relayKey.removePrefix("push.cleanup.").removeSuffix(".relay_url")
+
+        UUID.fromString(cleanupID)
+        assertFalse(store.contains("push.cleanup.relay_url"))
+        assertFalse(store.contains("push.cleanup.channel"))
+        assertFalse(store.contains("push.cleanup.device"))
+        assertFalse(store.contains("push.cleanup.secret"))
+        assertEquals(
+            RelayCleanupSnapshot(
+                cleanupID,
+                "https://old-relay.example",
+                PushCredentials("channel", "device", "secret"),
+            ),
+            prefs.getPendingRelayCleanup(cleanupID),
+        )
+
+        val result = RelayCleanup(prefs, object : RelayCleanupRelay {
+            override fun deleteDevice(relay: String, credentials: PushCredentials): RelayResult<*> = RelayResult.Ok(Unit)
+        }).cleanup(cleanupID)
+
+        assertEquals(RelayCleanupResult.SUCCESS, result)
+        assertNull(prefs.getPendingRelayCleanup(cleanupID))
     }
 
     @Test
