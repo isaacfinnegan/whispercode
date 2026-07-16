@@ -8,6 +8,7 @@ import androidx.security.crypto.MasterKey
 import java.io.File
 import java.net.URI
 import java.security.KeyStore
+import java.util.UUID
 
 sealed class RelayUrlResult {
     data class Valid(val url: String) : RelayUrlResult()
@@ -15,7 +16,7 @@ sealed class RelayUrlResult {
     data class Invalid(val code: String) : RelayUrlResult()
 }
 
-data class RelayCleanupSnapshot(val relayUrl: String, val credentials: PushCredentials)
+data class RelayCleanupSnapshot(val id: String, val relayUrl: String, val credentials: PushCredentials)
 
 class SecurePreferencesManager private constructor(
     private val context: Context,
@@ -42,10 +43,7 @@ class SecurePreferencesManager private constructor(
         private const val KEY_PAIR_STATUS = "push.pair_status"
         private const val KEY_LAST_CODE = "push.last_code"
         private const val KEY_LAST_ERROR = "push.last_error"
-        private const val KEY_CLEANUP_RELAY_URL = "push.cleanup.relay_url"
-        private const val KEY_CLEANUP_CHANNEL = "push.cleanup.channel"
-        private const val KEY_CLEANUP_DEVICE = "push.cleanup.device"
-        private const val KEY_CLEANUP_SECRET = "push.cleanup.secret"
+        private const val KEY_CLEANUP_PREFIX = "push.cleanup"
 
         private const val LEGACY_KEY_PENDING_TOKEN = "push.pending_token"
         private const val INVALID_RELAY_URL = "invalid_relay_url"
@@ -135,31 +133,40 @@ class SecurePreferencesManager private constructor(
         sharedPreferences?.edit()?.remove(KEY_CHANNEL)?.remove(KEY_DEVICE)?.remove(KEY_SECRET)?.apply()
     }
 
-    fun savePendingRelayCleanup(relayUrl: String, credentials: PushCredentials) {
-        sharedPreferences?.edit()?.apply {
-            putString(KEY_CLEANUP_RELAY_URL, relayUrl)
-            putString(KEY_CLEANUP_CHANNEL, credentials.channelId)
-            putString(KEY_CLEANUP_DEVICE, credentials.deviceId)
-            putString(KEY_CLEANUP_SECRET, credentials.deviceSecret)
-            apply()
+    fun savePendingRelayCleanup(relayUrl: String, credentials: PushCredentials): RelayCleanupSnapshot? {
+        val prefs = sharedPreferences ?: return null
+        val snapshot = RelayCleanupSnapshot(UUID.randomUUID().toString(), relayUrl, credentials)
+        val key = "$KEY_CLEANUP_PREFIX.${snapshot.id}"
+        return snapshot.takeIf {
+            prefs.edit()
+                .putString("$key.relay_url", relayUrl)
+                .putString("$key.channel", credentials.channelId)
+                .putString("$key.device", credentials.deviceId)
+                .putString("$key.secret", credentials.deviceSecret)
+                .commit()
         }
     }
 
-    fun getPendingRelayCleanup(): RelayCleanupSnapshot? {
-        val relayUrl = sharedPreferences?.getString(KEY_CLEANUP_RELAY_URL, null) ?: return null
-        val channel = sharedPreferences?.getString(KEY_CLEANUP_CHANNEL, null) ?: return null
-        val device = sharedPreferences?.getString(KEY_CLEANUP_DEVICE, null) ?: return null
-        val secret = sharedPreferences?.getString(KEY_CLEANUP_SECRET, null) ?: return null
-        return RelayCleanupSnapshot(relayUrl, PushCredentials(channel, device, secret))
+    fun getPendingRelayCleanup(id: String): RelayCleanupSnapshot? {
+        val prefs = sharedPreferences ?: return null
+        val key = "$KEY_CLEANUP_PREFIX.$id"
+        val relayUrl = prefs.getString("$key.relay_url", null) ?: return null
+        val channel = prefs.getString("$key.channel", null) ?: return null
+        val device = prefs.getString("$key.device", null) ?: return null
+        val secret = prefs.getString("$key.secret", null) ?: return null
+        return RelayCleanupSnapshot(id, relayUrl, PushCredentials(channel, device, secret))
     }
 
-    fun clearPendingRelayCleanup() {
-        sharedPreferences?.edit()
-            ?.remove(KEY_CLEANUP_RELAY_URL)
-            ?.remove(KEY_CLEANUP_CHANNEL)
-            ?.remove(KEY_CLEANUP_DEVICE)
-            ?.remove(KEY_CLEANUP_SECRET)
-            ?.apply()
+    fun clearPendingRelayCleanup(snapshot: RelayCleanupSnapshot): Boolean {
+        if (getPendingRelayCleanup(snapshot.id) != snapshot) return true
+        val prefs = sharedPreferences ?: return false
+        val key = "$KEY_CLEANUP_PREFIX.${snapshot.id}"
+        return prefs.edit()
+            .remove("$key.relay_url")
+            .remove("$key.channel")
+            .remove("$key.device")
+            .remove("$key.secret")
+            .commit()
     }
 
     fun normalizeRelayUrl(url: String?): RelayUrlResult {

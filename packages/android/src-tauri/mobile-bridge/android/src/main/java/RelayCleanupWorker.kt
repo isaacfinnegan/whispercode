@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -24,14 +25,15 @@ internal class PushRelayCleanupClient : RelayCleanupRelay {
 
 internal class RelayCleanupScheduling(
     private val prefs: SecurePreferencesManager,
-    private val enqueue: () -> Unit,
+    private val enqueue: (String) -> Unit,
 ) {
-    fun schedule() {
-        val channel = prefs.getChannelId() ?: return
-        val device = prefs.getDeviceId() ?: return
-        val secret = prefs.getDeviceSecret() ?: return
-        prefs.savePendingRelayCleanup(prefs.getRelayUrl(), PushCredentials(channel, device, secret))
-        enqueue()
+    fun schedule(): Boolean {
+        val channel = prefs.getChannelId() ?: return false
+        val device = prefs.getDeviceId() ?: return false
+        val secret = prefs.getDeviceSecret() ?: return false
+        val pending = prefs.savePendingRelayCleanup(prefs.getRelayUrl(), PushCredentials(channel, device, secret)) ?: return false
+        enqueue(pending.id)
+        return true
     }
 }
 
@@ -39,19 +41,17 @@ internal class RelayCleanup(
     private val prefs: SecurePreferencesManager,
     private val relay: RelayCleanupRelay,
 ) {
-    fun cleanup(): RelayCleanupResult {
-        val pending = prefs.getPendingRelayCleanup() ?: return RelayCleanupResult.SUCCESS
+    fun cleanup(id: String): RelayCleanupResult {
+        val pending = prefs.getPendingRelayCleanup(id) ?: return RelayCleanupResult.SUCCESS
         return when (val result = relay.deleteDevice(pending.relayUrl, pending.credentials)) {
             is RelayResult.Ok -> {
-                prefs.clearPendingRelayCleanup()
-                RelayCleanupResult.SUCCESS
+                if (prefs.clearPendingRelayCleanup(pending)) RelayCleanupResult.SUCCESS else RelayCleanupResult.RETRY
             }
             is RelayResult.Err -> {
-                if (result.error.status == null || result.error.status in 500..599) {
+                if (result.error.status == null || result.error.status == 408 || result.error.status in 500..599) {
                     RelayCleanupResult.RETRY
                 } else {
-                    prefs.clearPendingRelayCleanup()
-                    RelayCleanupResult.SUCCESS
+                    if (prefs.clearPendingRelayCleanup(pending)) RelayCleanupResult.SUCCESS else RelayCleanupResult.RETRY
                 }
             }
         }
@@ -61,21 +61,26 @@ internal class RelayCleanup(
 class RelayCleanupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     companion object {
         private const val WORK_NAME = "PushRelayCleanupWork"
+        private const val INPUT_CLEANUP_ID = "cleanup_id"
 
-        fun schedule(context: Context) {
+        fun schedule(context: Context, cleanupID: String) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
             val request = OneTimeWorkRequestBuilder<RelayCleanupWorker>()
+                .setInputData(Data.Builder().putString(INPUT_CLEANUP_ID, cleanupID).build())
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork("$WORK_NAME:$cleanupID", ExistingWorkPolicy.KEEP, request)
         }
     }
 
-    override suspend fun doWork(): Result = when (RelayCleanup(SecurePreferencesManager(applicationContext), PushRelayCleanupClient()).cleanup()) {
+    override suspend fun doWork(): Result {
+        val cleanupID = inputData.getString(INPUT_CLEANUP_ID) ?: return Result.success()
+        return when (RelayCleanup(SecurePreferencesManager(applicationContext), PushRelayCleanupClient()).cleanup(cleanupID)) {
         RelayCleanupResult.SUCCESS -> Result.success()
         RelayCleanupResult.RETRY -> Result.retry()
+        }
     }
 }

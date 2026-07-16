@@ -1,7 +1,10 @@
 package ai.opencode.mobilebridge
 
 import android.content.Context
+import android.content.SharedPreferences
+import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -30,70 +33,150 @@ class RelayCleanupWorkerTest {
         val prefs = prefs()
         prefs.saveRelayUrl("https://old-relay.example/")
         prefs.saveCredentials("channel", "device", "secret")
-        var enqueued = false
+        var cleanupID: String? = null
 
-        RelayCleanupScheduling(prefs) {
-            enqueued = true
+        assertTrue(RelayCleanupScheduling(prefs) { id ->
+            cleanupID = id
             assertEquals("https://old-relay.example", prefs.getRelayUrl())
             assertEquals("channel", prefs.getChannelId())
             assertEquals("device", prefs.getDeviceId())
             assertEquals("secret", prefs.getDeviceSecret())
-        }.schedule()
+        }.schedule())
         prefs.saveRelayUrl("https://new-relay.example")
 
-        assertTrue(enqueued)
+        assertNotNull(cleanupID)
         assertNull(prefs.getChannelId())
         assertEquals(
             RelayCleanupSnapshot(
+                cleanupID!!,
                 "https://old-relay.example",
                 PushCredentials("channel", "device", "secret"),
             ),
-            prefs.getPendingRelayCleanup(),
+            prefs.getPendingRelayCleanup(cleanupID!!),
         )
     }
 
     @Test
-    fun `temporary deletion failure retains pending cleanup for retry`() {
+    fun `two relay changes retain independent cleanups when the first worker completes`() {
         val prefs = prefs()
-        prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))
+        prefs.saveRelayUrl("https://first-relay.example")
+        prefs.saveCredentials("first-channel", "first-device", "first-secret")
+        var firstID: String? = null
+        assertTrue(RelayCleanupScheduling(prefs) { firstID = it }.schedule())
+        prefs.saveRelayUrl("https://second-relay.example")
+        prefs.saveCredentials("second-channel", "second-device", "second-secret")
+        var secondID: String? = null
+        assertTrue(RelayCleanupScheduling(prefs) { secondID = it }.schedule())
+
+        val result = RelayCleanup(prefs, object : RelayCleanupRelay {
+            override fun deleteDevice(relay: String, credentials: PushCredentials): RelayResult<*> = RelayResult.Ok(Unit)
+        }).cleanup(firstID!!)
+
+        assertEquals(RelayCleanupResult.SUCCESS, result)
+        assertNull(prefs.getPendingRelayCleanup(firstID!!))
+        assertEquals(
+            RelayCleanupSnapshot(
+                secondID!!,
+                "https://second-relay.example",
+                PushCredentials("second-channel", "second-device", "second-secret"),
+            ),
+            prefs.getPendingRelayCleanup(secondID!!),
+        )
+    }
+
+    @Test
+    fun `temporary deletion failures retain their cleanup for retry`() {
+        val prefs = prefs()
+        val pending = prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))!!
 
         val result = RelayCleanup(prefs, object : RelayCleanupRelay {
             override fun deleteDevice(relay: String, credentials: PushCredentials): RelayResult<*> =
                 RelayResult.Err(RelayError(500, "http_error", null))
-        }).cleanup()
+        }).cleanup(pending.id)
 
         assertEquals(RelayCleanupResult.RETRY, result)
-        assertNotNull(prefs.getPendingRelayCleanup())
+        assertNotNull(prefs.getPendingRelayCleanup(pending.id))
         assertNull(prefs.getLastCode())
         assertNull(prefs.getLastError())
+    }
+
+    @Test
+    fun `request timeout retains pending cleanup for retry`() {
+        val prefs = prefs()
+        val pending = prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))!!
+
+        val result = RelayCleanup(prefs, object : RelayCleanupRelay {
+            override fun deleteDevice(relay: String, credentials: PushCredentials): RelayResult<*> =
+                RelayResult.Err(RelayError(408, "http_error", null))
+        }).cleanup(pending.id)
+
+        assertEquals(RelayCleanupResult.RETRY, result)
+        assertNotNull(prefs.getPendingRelayCleanup(pending.id))
     }
 
     @Test
     fun `client deletion failures clear pending cleanup without retry`() {
         listOf(400, 429).forEach { status ->
             val prefs = prefs()
-            prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))
+            val pending = prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))!!
 
             val result = RelayCleanup(prefs, object : RelayCleanupRelay {
                 override fun deleteDevice(relay: String, credentials: PushCredentials): RelayResult<*> =
                     RelayResult.Err(RelayError(status, "http_error", null))
-            }).cleanup()
+            }).cleanup(pending.id)
 
             assertEquals("status $status", RelayCleanupResult.SUCCESS, result)
-            assertNull("status $status", prefs.getPendingRelayCleanup())
+            assertNull("status $status", prefs.getPendingRelayCleanup(pending.id))
         }
     }
 
     @Test
     fun `successful deletion clears pending cleanup`() {
         val prefs = prefs()
-        prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))
+        val pending = prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))!!
 
         val result = RelayCleanup(prefs, object : RelayCleanupRelay {
             override fun deleteDevice(relay: String, credentials: PushCredentials): RelayResult<*> = RelayResult.Ok(Unit)
-        }).cleanup()
+        }).cleanup(pending.id)
 
         assertEquals(RelayCleanupResult.SUCCESS, result)
-        assertNull(prefs.getPendingRelayCleanup())
+        assertNull(prefs.getPendingRelayCleanup(pending.id))
+    }
+
+    @Test
+    fun `failed cleanup persistence neither enqueues nor resets active relay credentials`() {
+        val active = prefs()
+        active.saveRelayUrl("https://old-relay.example")
+        active.saveCredentials("channel", "device", "secret")
+        val failing = SecurePreferencesManager.fromPreferences(context, failingCommitPreferences(store))
+        var enqueued = false
+
+        val scheduled = RelayCleanupScheduling(failing) { enqueued = true }.schedule()
+
+        assertFalse(scheduled)
+        assertFalse(enqueued)
+        assertEquals("https://old-relay.example", active.getRelayUrl())
+        assertEquals("channel", active.getChannelId())
+        assertEquals("device", active.getDeviceId())
+        assertEquals("secret", active.getDeviceSecret())
+    }
+
+    private fun failingCommitPreferences(delegate: SharedPreferences): SharedPreferences {
+        val editor = Proxy.newProxyInstance(
+            javaClass.classLoader,
+            arrayOf(SharedPreferences.Editor::class.java),
+        ) { proxy, method, _ ->
+            when (method.name) {
+                "commit" -> false
+                "apply" -> null
+                else -> proxy
+            }
+        } as SharedPreferences.Editor
+        return Proxy.newProxyInstance(
+            javaClass.classLoader,
+            arrayOf(SharedPreferences::class.java),
+        ) { _, method, args ->
+            if (method.name == "edit") editor else method.invoke(delegate, *(args ?: emptyArray()))
+        } as SharedPreferences
     }
 }
