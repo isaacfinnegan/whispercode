@@ -6,7 +6,7 @@ type Credentials = Record<string, unknown> & { project_id?: string }
 type Opts = {
   projectID?: string
   serviceAccountJSON?: string
-  accessToken?: () => Promise<string>
+  accessToken?: () => Promise<string | null | undefined>
   fetch?: (url: string, init?: RequestInit) => Promise<Response>
   timeout?: number
 }
@@ -30,12 +30,14 @@ export function createFcmAdapter(opts?: Opts): PushAdapter {
       if (!projectID || !accessToken) return { ok: false, invalid: false, code: "fcm_unconfigured" }
 
       try {
+        const authorization = await accessToken()
+        if (!authorization) return transportError()
         const response = await fetch(
           `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectID)}/messages:send`,
           {
             method: "POST",
             headers: {
-              authorization: `Bearer ${await accessToken()}`,
+              authorization: `Bearer ${authorization}`,
               "content-type": "application/json",
             },
             body: JSON.stringify({ message: payload(token, message) }),
@@ -87,6 +89,7 @@ function classify(status: number, body?: FcmError): PushResult {
   const details = Array.isArray(body?.error?.details) ? body.error.details : []
   const codes = details.flatMap((detail) => {
     if (!detail || typeof detail !== "object") return []
+    if (!("@type" in detail) || detail["@type"] !== "type.googleapis.com/google.firebase.fcm.v1.FcmError") return []
     const code = "errorCode" in detail ? detail.errorCode : undefined
     return typeof code === "string" ? [code] : []
   })

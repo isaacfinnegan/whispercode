@@ -128,6 +128,29 @@ describe("createFcmAdapter", () => {
     })
   })
 
+  test("does not trust INVALID_ARGUMENT errorCode from arbitrary details", async () => {
+    const adapter = createFcmAdapter({
+      projectID: "project-1",
+      accessToken: async () => "access-token",
+      fetch: async () =>
+        Response.json(
+          {
+            error: {
+              status: "INVALID_ARGUMENT",
+              details: [{ "@type": "example.com/UnrelatedError", errorCode: "INVALID_ARGUMENT" }],
+            },
+          },
+          { status: 400 },
+        ),
+    })
+
+    await expect(adapter.send("secret-registration-token", message)).resolves.toEqual({
+      ok: false,
+      invalid: false,
+      code: "fcm_invalid_argument",
+    })
+  })
+
   test("does not over-classify generic INVALID_ARGUMENT responses", async () => {
     const adapter = createFcmAdapter({
       projectID: "project-1",
@@ -140,5 +163,24 @@ describe("createFcmAdapter", () => {
       invalid: false,
       code: "fcm_invalid_argument",
     })
+  })
+
+  test.each([null, undefined, ""])("does not fetch when OAuth returns %p", async (token) => {
+    let calls = 0
+    const adapter = createFcmAdapter({
+      projectID: "project-1",
+      accessToken: async () => token,
+      fetch: async () => {
+        calls++
+        return Response.json({ name: "message-1" })
+      },
+    })
+
+    await expect(adapter.send("secret-registration-token", message)).resolves.toEqual({
+      ok: false,
+      invalid: false,
+      code: "fcm_transport_error",
+    })
+    expect(calls).toBe(0)
   })
 })
