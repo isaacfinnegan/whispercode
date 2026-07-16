@@ -35,6 +35,8 @@ export type CLIIO = {
 export type CmdDependencies = {
   deliver: (item: Item, device: DeviceRegistration) => Promise<DirectResult>
   configured: () => boolean
+  convert: (value: string | Uint8Array) => Buffer
+  concat: (chunks: Buffer[]) => Buffer
 }
 
 export type Opts = {
@@ -58,7 +60,7 @@ export async function run(cmd: string | undefined, opts: Opts, io = processIO(),
     case "pair":
       return pair(next)
     case "register":
-      return register(next)
+      return register(next, dependencies)
     case "unregister":
       return unregister(next)
     case "status":
@@ -77,9 +79,9 @@ export async function run(cmd: string | undefined, opts: Opts, io = processIO(),
   }
 }
 
-async function register(opts: Opts) {
+async function register(opts: Opts, dependencies: Partial<CmdDependencies>) {
   if (!opts.stdin) return directOut(opts, { ok: false, error: "missing_stdin" })
-  const line = await readRegisterLine(opts.io!.stdin)
+  const line = await readRegisterLine(opts.io!.stdin, dependencies.convert, dependencies.concat)
   if (!line.ok) return directOut(opts, line)
 
   let value: unknown
@@ -447,12 +449,16 @@ function processIO(): CLIIO {
 
 async function readRegisterLine(
   input: AsyncIterable<string | Uint8Array>,
+  convert = (value: string | Uint8Array): Buffer => Buffer.from(value),
+  concat = (chunks: Buffer[]): Buffer => Buffer.concat(chunks),
 ): Promise<{ ok: true; value: string } | { ok: false; error: string }> {
   const chunks: Buffer[] = []
   let bytes = 0
   try {
     for await (const value of input) {
-      const chunk = Buffer.from(value)
+      const length = typeof value === "string" ? Buffer.byteLength(value) : value.byteLength
+      if (length > MAX_REGISTER_BYTES - bytes) return { ok: false, error: "input_too_large" }
+      const chunk = convert(value)
       const newline = chunk.indexOf(0x0a)
       if (newline === -1) {
         bytes += chunk.length
@@ -469,7 +475,7 @@ async function readRegisterLine(
       if ((stream.readableLength ?? 0) > 0) return { ok: false, error: "trailing_input" }
       chunks.push(chunk.subarray(0, newline))
       try {
-        return { ok: true, value: new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)) }
+        return { ok: true, value: new TextDecoder("utf-8", { fatal: true }).decode(concat(chunks)) }
       } catch {
         return { ok: false, error: "invalid_input" }
       }

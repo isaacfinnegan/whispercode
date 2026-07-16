@@ -245,6 +245,28 @@ describe("direct push cmd", () => {
     })
   })
 
+  test("register uses the injected bounded conversion seam", async () => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const memory = memoryIO(`${JSON.stringify(registration())}\n`)
+    let conversions = 0
+    let concatenations = 0
+
+    const result = await run("register", parse(["register", "--stdin"]), memory.io, {
+      convert: (value) => {
+        conversions++
+        return Buffer.from(value)
+      },
+      concat: (chunks) => {
+        concatenations++
+        return Buffer.concat(chunks)
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(conversions).toBe(1)
+    expect(concatenations).toBe(1)
+  })
+
   test("register requires --stdin", async () => {
     process.env.OPENCODE_TEST_HOME = await tmp()
     const memory = memoryIO(`${JSON.stringify(registration())}\n`)
@@ -291,6 +313,61 @@ describe("direct push cmd", () => {
       ok: false,
       error: "input_too_large",
     })
+  })
+
+  test("register rejects a huge chunk before conversion or concatenation", async () => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const memory = memoryIO("", [new Uint8Array(4 * 1024 * 1024)])
+    let conversions = 0
+    let concatenations = 0
+
+    const result = await run("register", parse(["register", "--stdin"]), memory.io, {
+      convert: (value) => {
+        conversions++
+        return Buffer.from(value)
+      },
+      concat: (chunks) => {
+        concatenations++
+        return Buffer.concat(chunks)
+      },
+    })
+
+    expect(result).toEqual({ ok: false, error: "input_too_large" })
+    expect(conversions).toBe(0)
+    expect(concatenations).toBe(0)
+  })
+
+  test("register returns after one newline while stdin remains open", async () => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const memory = memoryIO()
+    const line = `${JSON.stringify(registration())}\n`
+    let calls = 0
+    let returned = false
+    memory.io.stdin = {
+      [Symbol.asyncIterator]() {
+        return {
+          next() {
+            calls++
+            if (calls === 1) return Promise.resolve({ done: false as const, value: line })
+            return new Promise<IteratorResult<string>>(() => undefined)
+          },
+          return() {
+            returned = true
+            return Promise.resolve({ done: true as const, value: undefined })
+          },
+        }
+      },
+    }
+
+    const result = await Promise.race([
+      run("register", parse(["register", "--stdin"]), memory.io),
+      Bun.sleep(100).then(() => "timeout" as const),
+    ])
+
+    expect(result).not.toBe("timeout")
+    expect(result).toMatchObject({ ok: true, device: "device-1" })
+    expect(calls).toBe(1)
+    expect(returned).toBe(true)
   })
 
   test.each([
