@@ -875,9 +875,20 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     fun setPushRelayURL(invoke: Invoke) {
         val args = invoke.parseArgs(UrlArgs::class.java)
         val previous = prefs.getRelayUrl()
-        when (val result = prefs.saveRelayUrl(args.url)) {
+        when (val result = prefs.normalizeRelayUrl(args.url)) {
             is RelayUrlResult.Valid -> {
-                if (relayUrlChanged(previous, result.url)) triggerPushStateChanged()
+                if (relayUrlChanged(previous, result.url)) {
+                    credentials()?.let { credentials ->
+                        Thread {
+                            try {
+                                PushRelayClient().delete(previous, credentials)
+                            } catch (_: Throwable) {
+                            }
+                        }.start()
+                    }
+                    prefs.saveRelayUrl(result.url)
+                    triggerPushStateChanged()
+                }
                 invoke.resolve(pushState())
             }
             is RelayUrlResult.Invalid -> invoke.reject(result.code)

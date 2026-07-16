@@ -318,4 +318,12 @@ class SecurePreferencesManagerTest {
         assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.normalizeRelayUrl("https://user:pass@relay.example.com"))
         assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.normalizeRelayUrl("https://relay.example.com/#fragment"))
     }
+
+    @Test
+    fun `relay validation rejects URLs with query strings`() {
+        val prefs = manager()
+
+        assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.normalizeRelayUrl("https://relay.example.com?x"))
+        assertEquals(RelayUrlResult.Invalid("invalid_relay_url"), prefs.saveRelayUrl("https://relay.example.com?x"))
+    }
 }

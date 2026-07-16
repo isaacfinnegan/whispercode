@@ -138,7 +138,7 @@ class SecurePreferencesManager private constructor(
         }
         val scheme = parsed.scheme?.lowercase()
         val host = parsed.host?.lowercase()
-        if (scheme !in setOf("https", "http") || host == null || parsed.userInfo != null || parsed.fragment != null) {
+        if (scheme !in setOf("https", "http") || host == null || parsed.userInfo != null || parsed.query != null || parsed.fragment != null) {
             return RelayUrlResult.Invalid(INVALID_RELAY_URL)
         }
         if (scheme == "http" && host !in setOf("localhost", "127.0.0.1", "10.0.2.2")) {
