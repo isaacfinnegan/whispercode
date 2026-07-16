@@ -9,6 +9,18 @@ const COMMANDS: &[&str] = &[
     "scan_network",
     "cancel_scan",
     "share",
+    "get_push_state",
+    "push_listeners_ready",
+    "push_listeners_not_ready",
+    "request_push_permission",
+    "open_system_settings",
+    "test_push",
+    "begin_push_pairing",
+    "get_push_pairing",
+    "set_push_preferences",
+    "set_push_relay_url",
+    "set_push_credentials",
+    "clear_push_pairing",
 ];
 
 fn main() {
