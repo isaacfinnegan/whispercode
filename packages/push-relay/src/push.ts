@@ -1,3 +1,5 @@
+export type { PushAdapter as ProviderPushAdapter, PushMessage, PushResult } from "@whispercode/push-provider"
+
 export type PushProvider = "apns" | "fcm"
 
 export type PushMsg = {

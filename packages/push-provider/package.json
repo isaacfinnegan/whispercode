@@ -1,16 +1,18 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@whispercode/push-relay",
+  "name": "@whispercode/push-provider",
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "dev": "bun run src/index.ts",
-    "typecheck": "tsgo --noEmit",
-    "test": "bun test src"
+    "test": "bun test src",
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@whispercode/push-provider": "workspace:*"
+    "google-auth-library": "10.5.0"
   },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
