@@ -69,6 +69,22 @@ class RelayCleanupWorkerTest {
     }
 
     @Test
+    fun `client deletion failures clear pending cleanup without retry`() {
+        listOf(400, 429).forEach { status ->
+            val prefs = prefs()
+            prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))
+
+            val result = RelayCleanup(prefs, object : RelayCleanupRelay {
+                override fun deleteDevice(relay: String, credentials: PushCredentials): RelayResult<*> =
+                    RelayResult.Err(RelayError(status, "http_error", null))
+            }).cleanup()
+
+            assertEquals("status $status", RelayCleanupResult.SUCCESS, result)
+            assertNull("status $status", prefs.getPendingRelayCleanup())
+        }
+    }
+
+    @Test
     fun `successful deletion clears pending cleanup`() {
         val prefs = prefs()
         prefs.savePendingRelayCleanup("https://old-relay.example", PushCredentials("channel", "device", "secret"))

@@ -47,11 +47,11 @@ internal class RelayCleanup(
                 RelayCleanupResult.SUCCESS
             }
             is RelayResult.Err -> {
-                if (result.error.code in setOf("bad_device_secret", "device_not_found") || result.error.status in setOf(401, 403, 404)) {
+                if (result.error.status == null || result.error.status in 500..599) {
+                    RelayCleanupResult.RETRY
+                } else {
                     prefs.clearPendingRelayCleanup()
                     RelayCleanupResult.SUCCESS
-                } else {
-                    RelayCleanupResult.RETRY
                 }
             }
         }
