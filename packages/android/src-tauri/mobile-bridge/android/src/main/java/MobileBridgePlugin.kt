@@ -878,14 +878,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         when (val result = prefs.normalizeRelayUrl(args.url)) {
             is RelayUrlResult.Valid -> {
                 if (relayUrlChanged(previous, result.url)) {
-                    credentials()?.let { credentials ->
-                        Thread {
-                            try {
-                                PushRelayClient().delete(previous, credentials)
-                            } catch (_: Throwable) {
-                            }
-                        }.start()
-                    }
+                    RelayCleanupScheduling(prefs) { RelayCleanupWorker.schedule(activity) }.schedule()
                     prefs.saveRelayUrl(result.url)
                     triggerPushStateChanged()
                 }

@@ -15,6 +15,8 @@ sealed class RelayUrlResult {
     data class Invalid(val code: String) : RelayUrlResult()
 }
 
+data class RelayCleanupSnapshot(val relayUrl: String, val credentials: PushCredentials)
+
 class SecurePreferencesManager private constructor(
     private val context: Context,
     private var sharedPreferences: SharedPreferences?,
@@ -40,6 +42,10 @@ class SecurePreferencesManager private constructor(
         private const val KEY_PAIR_STATUS = "push.pair_status"
         private const val KEY_LAST_CODE = "push.last_code"
         private const val KEY_LAST_ERROR = "push.last_error"
+        private const val KEY_CLEANUP_RELAY_URL = "push.cleanup.relay_url"
+        private const val KEY_CLEANUP_CHANNEL = "push.cleanup.channel"
+        private const val KEY_CLEANUP_DEVICE = "push.cleanup.device"
+        private const val KEY_CLEANUP_SECRET = "push.cleanup.secret"
 
         private const val LEGACY_KEY_PENDING_TOKEN = "push.pending_token"
         private const val INVALID_RELAY_URL = "invalid_relay_url"
@@ -127,6 +133,33 @@ class SecurePreferencesManager private constructor(
 
     fun clearCredentials() {
         sharedPreferences?.edit()?.remove(KEY_CHANNEL)?.remove(KEY_DEVICE)?.remove(KEY_SECRET)?.apply()
+    }
+
+    fun savePendingRelayCleanup(relayUrl: String, credentials: PushCredentials) {
+        sharedPreferences?.edit()?.apply {
+            putString(KEY_CLEANUP_RELAY_URL, relayUrl)
+            putString(KEY_CLEANUP_CHANNEL, credentials.channelId)
+            putString(KEY_CLEANUP_DEVICE, credentials.deviceId)
+            putString(KEY_CLEANUP_SECRET, credentials.deviceSecret)
+            apply()
+        }
+    }
+
+    fun getPendingRelayCleanup(): RelayCleanupSnapshot? {
+        val relayUrl = sharedPreferences?.getString(KEY_CLEANUP_RELAY_URL, null) ?: return null
+        val channel = sharedPreferences?.getString(KEY_CLEANUP_CHANNEL, null) ?: return null
+        val device = sharedPreferences?.getString(KEY_CLEANUP_DEVICE, null) ?: return null
+        val secret = sharedPreferences?.getString(KEY_CLEANUP_SECRET, null) ?: return null
+        return RelayCleanupSnapshot(relayUrl, PushCredentials(channel, device, secret))
+    }
+
+    fun clearPendingRelayCleanup() {
+        sharedPreferences?.edit()
+            ?.remove(KEY_CLEANUP_RELAY_URL)
+            ?.remove(KEY_CLEANUP_CHANNEL)
+            ?.remove(KEY_CLEANUP_DEVICE)
+            ?.remove(KEY_CLEANUP_SECRET)
+            ?.apply()
     }
 
     fun normalizeRelayUrl(url: String?): RelayUrlResult {
