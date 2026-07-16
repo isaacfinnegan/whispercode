@@ -31,8 +31,13 @@ export type DeviceRegistrationInput = Pick<
 export type DeviceStatus = Omit<DeviceRegistration, "token">
 
 type DeviceFile = { version: 1; devices: DeviceRegistration[] }
+type LockOwner = { owner: string; pid: number; createdAt: number }
 
 let mutations: Promise<void> = Promise.resolve()
+
+const LOCK_WAIT_MS = 2_000
+const LOCK_STALE_MS = 30_000
+const LOCK_STEP_MS = 20
 
 function fail(scope: "registration" | "registry", field: string, reason: string): never {
   throw new Error(`invalid device ${scope}: ${field} ${reason}`)
@@ -42,20 +47,27 @@ function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+function errno(value: unknown): string | undefined {
+  if (!object(value) || typeof value.code !== "string") return
+  return value.code
+}
+
 function id(value: unknown, scope: "registration" | "registry", field = "id"): asserts value is string {
   if (typeof value !== "string" || Buffer.byteLength(value, "utf8") === 0)
     fail(scope, field, "must be a non-empty string")
   if (Buffer.byteLength(value, "utf8") > 128) fail(scope, field, "must be at most 128 UTF-8 bytes")
 }
 
-function preferences(
-  value: unknown,
-  scope: "registration" | "registry",
-  field = "prefs",
-): asserts value is DevicePreferences {
+function preferences(value: unknown, scope: "registration" | "registry", field = "prefs"): DevicePreferences {
   if (!object(value)) fail(scope, field, "must be an object")
   for (const key of ["complete", "approval", "question", "error"] as const) {
     if (typeof value[key] !== "boolean") fail(scope, `${field}.${key}`, "must be boolean")
+  }
+  return {
+    complete: value.complete as boolean,
+    approval: value.approval as boolean,
+    question: value.question as boolean,
+    error: value.error as boolean,
   }
 }
 
@@ -72,11 +84,12 @@ function registration(value: unknown, scope: "registration" | "registry", prefix
   const bytes = Buffer.byteLength(value.token, "utf8")
   if (bytes < 32 || bytes > 8192) fail(scope, field("token"), "must be 32..8192 UTF-8 bytes")
   integer(value.tokenGeneration, scope, field("tokenGeneration"))
-  preferences(value.prefs, scope, field("prefs"))
+  const prefs = preferences(value.prefs, scope, field("prefs"))
   if (typeof value.active !== "boolean") fail(scope, field("active"), "must be boolean")
   integer(value.createdAt, scope, field("createdAt"))
   integer(value.updatedAt, scope, field("updatedAt"))
   if (value.lastSuccessAt !== undefined) integer(value.lastSuccessAt, scope, field("lastSuccessAt"))
+  let lastError: DeviceRegistration["lastError"]
   if (value.lastError !== undefined) {
     if (!object(value.lastError)) fail(scope, field("lastError"), "must be an object")
     if (typeof value.lastError.code !== "string" || value.lastError.code.length === 0) {
@@ -86,8 +99,21 @@ function registration(value: unknown, scope: "registration" | "registry", prefix
       fail(scope, field("lastError.code"), "must not contain the device token")
     }
     integer(value.lastError.at, scope, field("lastError.at"))
+    lastError = { code: value.lastError.code, at: value.lastError.at }
   }
-  return value as DeviceRegistration
+  const result: DeviceRegistration = {
+    id: value.id,
+    provider: "fcm",
+    token: value.token,
+    tokenGeneration: value.tokenGeneration,
+    prefs,
+    active: value.active,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  }
+  if (value.lastSuccessAt !== undefined) result.lastSuccessAt = value.lastSuccessAt
+  if (lastError !== undefined) result.lastError = lastError
+  return result
 }
 
 function input(value: DeviceRegistrationInput): DeviceRegistrationInput {
@@ -98,8 +124,14 @@ function input(value: DeviceRegistrationInput): DeviceRegistrationInput {
   const bytes = Buffer.byteLength(value.token, "utf8")
   if (bytes < 32 || bytes > 8192) fail("registration", "token", "must be 32..8192 UTF-8 bytes")
   integer(value.tokenGeneration, "registration", "tokenGeneration")
-  preferences(value.prefs, "registration")
-  return value
+  const prefs = preferences(value.prefs, "registration")
+  return {
+    id: value.id,
+    provider: "fcm",
+    token: value.token,
+    tokenGeneration: value.tokenGeneration,
+    prefs,
+  }
 }
 
 function code(value: string, token: string): string {
@@ -151,8 +183,106 @@ async function write(value: DeviceFile): Promise<void> {
   }
 }
 
+function lockOwner(value: unknown): LockOwner | undefined {
+  if (!object(value)) return
+  if (typeof value.owner !== "string" || !Number.isInteger(value.pid) || !Number.isInteger(value.createdAt)) return
+  return { owner: value.owner, pid: value.pid as number, createdAt: value.createdAt as number }
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (cause) {
+    return errno(cause) !== "ESRCH"
+  }
+}
+
+async function stale(lock: string): Promise<boolean> {
+  const file = path.join(lock, "owner.json")
+  const data = await Promise.all([
+    fs
+      .readFile(file, "utf8")
+      .then(JSON.parse)
+      .then(lockOwner, () => undefined),
+    fs.stat(file).catch(() => undefined),
+  ])
+  const [owner, stat] = data
+  if (!owner || !stat) return false
+  if (Date.now() - Math.max(owner.createdAt, stat.mtimeMs) <= LOCK_STALE_MS) return false
+  return !alive(owner.pid)
+}
+
+async function clearStale(lock: string): Promise<void> {
+  const breaker = `${lock}.breaker`
+  const claimed = await fs.mkdir(breaker, { mode: 0o700 }).then(
+    () => true,
+    async (cause: unknown) => {
+      if (errno(cause) === "EEXIST") {
+        const stat = await fs.stat(breaker).catch(() => undefined)
+        if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+          await fs.rm(breaker, { recursive: true, force: true }).catch(() => undefined)
+        }
+        return false
+      }
+      throw cause
+    },
+  )
+  if (!claimed) return
+  try {
+    if (await stale(lock)) await fs.rm(lock, { recursive: true, force: true })
+  } finally {
+    await fs.rm(breaker, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+async function acquire(): Promise<() => Promise<void>> {
+  const lock = `${deviceFile()}.lock`
+  const owner: LockOwner = { owner: randomUUID(), pid: process.pid, createdAt: Date.now() }
+  const stop = Date.now() + LOCK_WAIT_MS
+  await fs.mkdir(path.dirname(lock), { recursive: true, mode: 0o700 })
+
+  while (true) {
+    const created = await fs.mkdir(lock, { mode: 0o700 }).then(
+      () => true,
+      (cause: unknown) => {
+        if (errno(cause) === "EEXIST") return false
+        throw cause
+      },
+    )
+    if (created) {
+      const file = path.join(lock, "owner.json")
+      try {
+        await fs.writeFile(file, JSON.stringify(owner), { flag: "wx", mode: 0o600 })
+      } catch (cause) {
+        await fs.rm(lock, { recursive: true, force: true }).catch(() => undefined)
+        throw new Error("unable to create device registry lock", { cause })
+      }
+      return async () => {
+        const current = await fs
+          .readFile(file, "utf8")
+          .then(JSON.parse)
+          .then(lockOwner, () => undefined)
+        if (current?.owner !== owner.owner) throw new Error("unable to release device registry lock safely")
+        await fs.rm(lock, { recursive: true })
+      }
+    }
+
+    await clearStale(lock)
+    if (Date.now() >= stop) throw new Error("device registry is busy")
+    await Bun.sleep(LOCK_STEP_MS)
+  }
+}
+
 function mutate<T>(action: (value: DeviceFile) => Promise<T>): Promise<T> {
-  const next = mutations.then(async () => action(await read()))
+  const next = mutations.then(async () => {
+    const release = await acquire()
+    try {
+      return await action(await read())
+    } finally {
+      await release()
+    }
+  })
   mutations = next.then(
     () => undefined,
     () => undefined,
@@ -161,7 +291,17 @@ function mutate<T>(action: (value: DeviceFile) => Promise<T>): Promise<T> {
 }
 
 function project(device: DeviceRegistration): DeviceStatus {
-  const { token: _, ...value } = device
+  const value: DeviceStatus = {
+    id: device.id,
+    provider: device.provider,
+    tokenGeneration: device.tokenGeneration,
+    prefs: preferences(device.prefs, "registry"),
+    active: device.active,
+    createdAt: device.createdAt,
+    updatedAt: device.updatedAt,
+  }
+  if (device.lastSuccessAt !== undefined) value.lastSuccessAt = device.lastSuccessAt
+  if (device.lastError !== undefined) value.lastError = { code: device.lastError.code, at: device.lastError.at }
   return value
 }
 
@@ -174,18 +314,24 @@ export function status(): Promise<DeviceStatus[]> {
 }
 
 export async function register(value: DeviceRegistrationInput): Promise<DeviceStatus> {
-  input(value)
+  const next = input(value)
   return await mutate(async (file) => {
     const now = Date.now()
-    const index = file.devices.findIndex((device) => device.id === value.id)
+    const index = file.devices.findIndex((device) => device.id === next.id)
     const previous = file.devices[index]
     const device: DeviceRegistration = {
-      ...previous,
-      ...value,
-      prefs: { ...value.prefs },
+      id: next.id,
+      provider: next.provider,
+      token: next.token,
+      tokenGeneration: next.tokenGeneration,
+      prefs: next.prefs,
       active: true,
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
+    }
+    if (previous?.lastSuccessAt !== undefined) device.lastSuccessAt = previous.lastSuccessAt
+    if (previous?.lastError !== undefined) {
+      device.lastError = { code: previous.lastError.code, at: previous.lastError.at }
     }
     if (index === -1) file.devices.push(device)
     else file.devices[index] = device
@@ -196,11 +342,11 @@ export async function register(value: DeviceRegistrationInput): Promise<DeviceSt
 
 export function updatePreferences(deviceID: string, value: DevicePreferences): Promise<DeviceStatus | undefined> {
   id(deviceID, "registration")
-  preferences(value, "registration")
+  const prefs = preferences(value, "registration")
   return mutate(async (file) => {
     const device = file.devices.find((item) => item.id === deviceID)
     if (!device) return
-    device.prefs = { ...value }
+    device.prefs = prefs
     device.updatedAt = Date.now()
     await write(file)
     return project(device)

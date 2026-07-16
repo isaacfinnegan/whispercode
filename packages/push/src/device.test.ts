@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
+import { pathToFileURL } from "url"
 import {
   deactivate,
   loadDevices,
@@ -34,6 +35,23 @@ async function home() {
   dirs.push(dir)
   process.env.OPENCODE_TEST_HOME = dir
   return dir
+}
+
+async function waitFor(files: string[]) {
+  const stop = Date.now() + 5_000
+  while (Date.now() < stop) {
+    const found = await Promise.all(
+      files.map((file) =>
+        fs.stat(file).then(
+          () => true,
+          () => false,
+        ),
+      ),
+    )
+    if (found.every(Boolean)) return
+    await Bun.sleep(10)
+  }
+  throw new Error("timed out waiting for registry workers")
 }
 
 function input(id = "device-1", token = "t".repeat(32)): DeviceRegistrationInput {
@@ -198,6 +216,62 @@ describe("push device registry", () => {
     expect(error).not.toContain(secret)
   })
 
+  test("drops unknown fields from persisted registrations", async () => {
+    await home()
+    await fs.mkdir(path.dirname(deviceFile()), { recursive: true })
+    await fs.writeFile(
+      deviceFile(),
+      JSON.stringify({
+        version: 1,
+        unknown: "drop",
+        devices: [
+          {
+            ...input(),
+            prefs: { ...prefs, unknown: true },
+            active: true,
+            createdAt: 1,
+            updatedAt: 2,
+            lastError: { code: "temporary", at: 3, unknown: "drop" },
+            unknown: "drop",
+          },
+        ],
+      }),
+    )
+
+    expect(await loadDevices()).toEqual({
+      version: 1,
+      devices: [
+        {
+          ...input(),
+          prefs,
+          active: true,
+          createdAt: 1,
+          updatedAt: 2,
+          lastError: { code: "temporary", at: 3 },
+        },
+      ],
+    })
+  })
+
+  test("drops unknown fields from registration input", async () => {
+    await home()
+    const value = {
+      ...input(),
+      prefs: { ...prefs, unknown: true },
+      unknown: "drop",
+    } as DeviceRegistrationInput
+
+    await register(value)
+
+    expect((await loadDevices()).devices[0]).toEqual({
+      ...input(),
+      prefs,
+      active: true,
+      createdAt: expect.any(Number),
+      updatedAt: expect.any(Number),
+    })
+  })
+
   test("serializes concurrent mutations without losing registrations", async () => {
     await home()
     const count = 20
@@ -210,4 +284,96 @@ describe("push device registry", () => {
     expect(data.devices).toHaveLength(count)
     expect(new Set(data.devices.map((device) => device.id)).size).toBe(count)
   })
+
+  test("serializes registrations across processes", async () => {
+    const dir = await home()
+    const gate = path.join(dir, "gate")
+    const module = pathToFileURL(path.join(import.meta.dir, "device.ts")).href
+    const ready = Array.from({ length: 12 }, (_, index) => path.join(dir, `ready-${index}`))
+    const workers = ready.map((file, index) => {
+      const value = input(`process-${index}`, `${index}`.padEnd(32, "x"))
+      const script = [
+        `import fs from "fs/promises"`,
+        `import { register } from ${JSON.stringify(module)}`,
+        `process.env.OPENCODE_TEST_HOME = ${JSON.stringify(dir)}`,
+        `await fs.writeFile(${JSON.stringify(file)}, "")`,
+        `while (!(await fs.stat(${JSON.stringify(gate)}).then(() => true, () => false))) await Bun.sleep(5)`,
+        `await register(${JSON.stringify(value)})`,
+      ].join(";")
+      return Bun.spawn([process.execPath, "-e", script], {
+        cwd: import.meta.dir,
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+    })
+
+    try {
+      await waitFor(ready)
+      await fs.writeFile(gate, "go")
+      const results = await Promise.all(
+        workers.map(async (worker) => ({
+          code: await worker.exited,
+          stderr: await new Response(worker.stderr).text(),
+        })),
+      )
+      expect(results).toEqual(Array.from({ length: workers.length }, () => ({ code: 0, stderr: "" })))
+    } finally {
+      workers.forEach((worker) => worker.kill())
+    }
+
+    const data = await loadDevices()
+    expect(data.devices).toHaveLength(workers.length)
+    expect(new Set(data.devices.map((device) => device.id)).size).toBe(workers.length)
+  }, 20_000)
+
+  test("recovers a stale lock owned by a dead process", async () => {
+    await home()
+    const lock = `${deviceFile()}.lock`
+    const old = new Date(Date.now() - 60_000)
+    await fs.mkdir(lock, { recursive: true })
+    const meta = path.join(lock, "owner.json")
+    await fs.writeFile(meta, JSON.stringify({ owner: "stale", pid: 2_147_483_647, createdAt: old.getTime() }))
+    await fs.utimes(meta, old, old)
+    await fs.mkdir(`${lock}.breaker`)
+    await fs.utimes(`${lock}.breaker`, old, old)
+
+    await register(input())
+
+    expect(
+      await fs.stat(lock).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    expect(
+      await fs.stat(`${lock}.breaker`).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    expect((await loadDevices()).devices).toHaveLength(1)
+  })
+
+  test("does not remove a stale-looking lock owned by a live process", async () => {
+    await home()
+    const lock = `${deviceFile()}.lock`
+    const old = new Date(Date.now() - 60_000)
+    await fs.mkdir(lock, { recursive: true })
+    const meta = path.join(lock, "owner.json")
+    await fs.writeFile(meta, JSON.stringify({ owner: "live", pid: process.pid, createdAt: old.getTime() }))
+    await fs.utimes(meta, old, old)
+
+    const error = await register(input("device-1", "secret-device-token-".padEnd(32, "x"))).catch((cause: unknown) =>
+      String(cause),
+    )
+
+    expect(error).toContain("device registry is busy")
+    expect(error).not.toContain("secret-device-token")
+    expect(
+      await fs.stat(lock).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(true)
+  }, 10_000)
 })
