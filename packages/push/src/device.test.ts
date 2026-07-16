@@ -54,6 +54,25 @@ async function waitFor(files: string[]) {
   throw new Error("timed out waiting for registry workers")
 }
 
+async function processStart(pid = process.pid) {
+  if (process.platform === "linux") {
+    const stat = await fs.readFile(`/proc/${pid}/stat`, "utf8")
+    return `linux:${
+      stat
+        .slice(stat.lastIndexOf(")") + 2)
+        .trim()
+        .split(/\s+/)[19]
+    }`
+  }
+  if (process.platform === "darwin") {
+    const proc = Bun.spawn(["ps", "-o", "lstart=", "-p", String(pid)], { stdout: "pipe", stderr: "ignore" })
+    const value = (await new Response(proc.stdout).text()).trim()
+    await proc.exited
+    return `darwin:${value}`
+  }
+  return null
+}
+
 function input(id = "device-1", token = "t".repeat(32)): DeviceRegistrationInput {
   return {
     id,
@@ -174,6 +193,35 @@ describe("push device registry", () => {
 
     expect(stat.mode & 0o777).toBe(0o600)
     expect(saved).toMatchObject({ version: 1, devices: [{ id: "device-1" }] })
+  })
+
+  test("removes token-bearing temporary files when persistence fails", async () => {
+    const dir = await home()
+    const token = "secret-device-token-".padEnd(32, "x")
+    const module = pathToFileURL(path.join(import.meta.dir, "device.ts")).href
+    const script = [
+      `import fs from "fs/promises"`,
+      `const originalOpen = fs.open.bind(fs)`,
+      `fs.open = async (file, ...args) => { const handle = await originalOpen(file, ...args); if (String(file).includes(".tmp")) handle.sync = async () => { throw new Error("injected sync failure") }; return handle }`,
+      `const { register } = await import(${JSON.stringify(module)})`,
+      `process.env.OPENCODE_TEST_HOME = ${JSON.stringify(dir)}`,
+      `const token = ${JSON.stringify(token)}`,
+      `const error = await register(${JSON.stringify(input("device-failure", token))}).catch((cause) => String(cause))`,
+      `if (error.includes(token)) throw new Error("token leaked")`,
+    ].join(";")
+    const proc = Bun.spawn([process.execPath, "-e", script], {
+      cwd: import.meta.dir,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const result = { code: await proc.exited, stderr: await new Response(proc.stderr).text() }
+    const root = path.dirname(deviceFile())
+    const files = await fs.readdir(root)
+    const contents = await Promise.all(files.map((file) => fs.readFile(path.join(root, file), "utf8").catch(() => "")))
+
+    expect(result).toEqual({ code: 0, stderr: "" })
+    expect(files.some((file) => file.endsWith(".tmp"))).toBe(false)
+    expect(contents.join("\n")).not.toContain(token)
   })
 
   test("rejects invalid registration fields without exposing tokens", async () => {
@@ -404,12 +452,111 @@ describe("push device registry", () => {
     }
   }, 20_000)
 
+  test("a delayed reclaimed breaker cannot remove a newer lock", async () => {
+    const dir = await home()
+    const lock = `${deviceFile()}.lock`
+    const breaker = `${lock}.breaker`
+    const module = pathToFileURL(path.join(import.meta.dir, "device.ts")).href
+    const readyA = path.join(dir, "breaker-ready-a")
+    const readyB = path.join(dir, "breaker-ready-b")
+    const gateA = path.join(dir, "breaker-gate-a")
+    const gateB = path.join(dir, "breaker-gate-b")
+    const old = new Date(Date.now() - 60_000)
+    await fs.mkdir(path.dirname(lock), { recursive: true })
+    await fs.writeFile(
+      lock,
+      JSON.stringify({ owner: "dead", pid: 2_147_483_647, createdAt: old.getTime(), processStart: "missing" }),
+    )
+    await fs.utimes(lock, old, old)
+
+    const scriptA = [
+      `import fs from "fs/promises"`,
+      `const lock = ${JSON.stringify(lock)}`,
+      `const breaker = ${JSON.stringify(breaker)}`,
+      `const originalWriteFile = fs.writeFile.bind(fs)`,
+      `const originalReadFile = fs.readFile.bind(fs)`,
+      `const originalRm = fs.rm.bind(fs)`,
+      `let reads = 0`,
+      `const pause = async () => { await originalWriteFile(${JSON.stringify(readyA)}, ""); while (!(await fs.stat(${JSON.stringify(gateA)}).then(() => true, () => false))) await Bun.sleep(5) }`,
+      `fs.readFile = async (file, ...args) => { if (String(file) === breaker && ++reads === 2) await pause(); return originalReadFile(file, ...args) }`,
+      `fs.rm = async (file, ...args) => { if (String(file) === lock) await pause(); return originalRm(file, ...args) }`,
+      `const { register } = await import(${JSON.stringify(module)})`,
+      `process.env.OPENCODE_TEST_HOME = ${JSON.stringify(dir)}`,
+      `await register(${JSON.stringify(input("breaker-delayed", "c".repeat(32)))})`,
+    ].join(";")
+    const scriptB = [
+      `import fs from "fs/promises"`,
+      `const originalWriteFile = fs.writeFile.bind(fs)`,
+      `const originalOpen = fs.open.bind(fs)`,
+      `const pause = async () => { await originalWriteFile(${JSON.stringify(readyB)}, ""); while (!(await fs.stat(${JSON.stringify(gateB)}).then(() => true, () => false))) await Bun.sleep(5) }`,
+      `fs.open = async (file, ...args) => { const handle = await originalOpen(file, ...args); if (String(file).includes(".tmp")) { const write = handle.writeFile.bind(handle); handle.writeFile = async (...writeArgs) => { await pause(); return write(...writeArgs) } } return handle }`,
+      `const { register } = await import(${JSON.stringify(module)})`,
+      `process.env.OPENCODE_TEST_HOME = ${JSON.stringify(dir)}`,
+      `await register(${JSON.stringify(input("breaker-newer", "d".repeat(32)))})`,
+    ].join(";")
+    const delayed = Bun.spawn([process.execPath, "-e", scriptA], {
+      cwd: import.meta.dir,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    let newer: ReturnType<typeof Bun.spawn> | undefined
+
+    try {
+      await waitFor([readyA])
+      const stat = await fs.stat(breaker)
+      if (stat.isDirectory()) {
+        await fs.utimes(breaker, old, old)
+      } else {
+        const owner = JSON.parse(await fs.readFile(breaker, "utf8"))
+        await fs.writeFile(breaker, JSON.stringify({ ...owner, createdAt: old.getTime(), processStart: "different" }))
+        await fs.utimes(breaker, old, old)
+      }
+      newer = Bun.spawn([process.execPath, "-e", scriptB], {
+        cwd: import.meta.dir,
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      await waitFor([readyB])
+      await fs.writeFile(gateA, "go")
+      await Bun.sleep(100)
+      expect(
+        await fs.stat(lock).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(true)
+      await fs.writeFile(gateB, "go")
+      const results = await Promise.all(
+        [delayed, newer].map(async (worker) => ({
+          code: await worker.exited,
+          stderr: await new Response(worker.stderr).text(),
+        })),
+      )
+      expect(results).toEqual([
+        { code: 0, stderr: "" },
+        { code: 0, stderr: "" },
+      ])
+      expect((await loadDevices()).devices.map((device) => device.id).sort()).toEqual([
+        "breaker-delayed",
+        "breaker-newer",
+      ])
+    } finally {
+      await fs.writeFile(gateA, "go").catch(() => undefined)
+      await fs.writeFile(gateB, "go").catch(() => undefined)
+      delayed.kill()
+      newer?.kill()
+    }
+  }, 20_000)
+
   test("recovers a stale lock owned by a dead process", async () => {
     await home()
     const lock = `${deviceFile()}.lock`
     const old = new Date(Date.now() - 60_000)
     await fs.mkdir(path.dirname(lock), { recursive: true })
-    await fs.writeFile(lock, JSON.stringify({ owner: "stale", pid: 2_147_483_647, createdAt: old.getTime() }))
+    await fs.writeFile(
+      lock,
+      JSON.stringify({ owner: "stale", pid: 2_147_483_647, createdAt: old.getTime(), processStart: "missing" }),
+    )
     await fs.utimes(lock, old, old)
     await fs.mkdir(`${lock}.breaker`)
     await fs.utimes(`${lock}.breaker`, old, old)
@@ -493,7 +640,10 @@ describe("push device registry", () => {
     const lock = `${deviceFile()}.lock`
     const old = new Date(Date.now() - 60_000)
     await fs.mkdir(path.dirname(lock), { recursive: true })
-    await fs.writeFile(lock, JSON.stringify({ owner: "live", pid: process.pid, createdAt: old.getTime() }))
+    await fs.writeFile(
+      lock,
+      JSON.stringify({ owner: "live", pid: process.pid, createdAt: old.getTime(), processStart: await processStart() }),
+    )
     await fs.utimes(lock, old, old)
 
     const error = await register(input("device-1", "secret-device-token-".padEnd(32, "x"))).catch((cause: unknown) =>
@@ -509,4 +659,54 @@ describe("push device registry", () => {
       ),
     ).toBe(true)
   }, 10_000)
+
+  test("recovers a stale lock when the pid belongs to a different process start", async () => {
+    await home()
+    const lock = `${deviceFile()}.lock`
+    const old = new Date(Date.now() - 60_000)
+    await fs.mkdir(path.dirname(lock), { recursive: true })
+    await fs.writeFile(
+      lock,
+      JSON.stringify({ owner: "reused", pid: process.pid, createdAt: old.getTime(), processStart: "different" }),
+    )
+    await fs.utimes(lock, old, old)
+
+    await register(input())
+
+    expect((await loadDevices()).devices).toHaveLength(1)
+  })
+
+  test("recovers stale locks with invalid pids", async () => {
+    for (const pid of [0, -1, 1.5]) {
+      await home()
+      const lock = `${deviceFile()}.lock`
+      const old = new Date(Date.now() - 60_000)
+      await fs.mkdir(path.dirname(lock), { recursive: true })
+      await fs.writeFile(lock, JSON.stringify({ owner: "invalid", pid, createdAt: old.getTime(), processStart: "bad" }))
+      await fs.utimes(lock, old, old)
+
+      await register(input(`device-${pid}`))
+    }
+  })
+
+  test("recovers a stale lock with an implausibly future timestamp", async () => {
+    await home()
+    const lock = `${deviceFile()}.lock`
+    const old = new Date(Date.now() - 60_000)
+    await fs.mkdir(path.dirname(lock), { recursive: true })
+    await fs.writeFile(
+      lock,
+      JSON.stringify({
+        owner: "future",
+        pid: 2_147_483_647,
+        createdAt: Date.now() + 24 * 60 * 60 * 1_000,
+        processStart: "missing",
+      }),
+    )
+    await fs.utimes(lock, old, old)
+
+    await register(input())
+
+    expect((await loadDevices()).devices).toHaveLength(1)
+  })
 })

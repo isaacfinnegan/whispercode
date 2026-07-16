@@ -31,13 +31,14 @@ export type DeviceRegistrationInput = Pick<
 export type DeviceStatus = Omit<DeviceRegistration, "token">
 
 type DeviceFile = { version: 1; devices: DeviceRegistration[] }
-type LockOwner = { owner: string; pid: number; createdAt: number }
+type LockOwner = { owner: string; pid: number; createdAt: number; processStart: string | null }
 
 let mutations: Promise<void> = Promise.resolve()
 
 const LOCK_WAIT_MS = 2_000
 const LOCK_STALE_MS = 30_000
 const LOCK_STEP_MS = 20
+const LOCK_CLOCK_SKEW_MS = 60_000
 
 function fail(scope: "registration" | "registry", field: string, reason: string): never {
   throw new Error(`invalid device ${scope}: ${field} ${reason}`)
@@ -167,26 +168,48 @@ async function write(value: DeviceFile): Promise<void> {
   const dir = path.dirname(file)
   const temp = path.join(dir, `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`)
   await fs.mkdir(dir, { recursive: true, mode: 0o700 })
-  const handle = await fs.open(temp, "wx", 0o600)
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined
+  let renamed = false
   try {
+    handle = await fs.open(temp, "wx", 0o600)
     await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`)
     await handle.sync()
-  } finally {
     await handle.close()
-  }
-  try {
+    handle = undefined
     await fs.chmod(temp, 0o600)
     await fs.rename(temp, file)
+    renamed = true
+    const directory = await fs.open(dir, "r")
+    try {
+      await directory.sync().catch((cause: unknown) => {
+        if (["EINVAL", "ENOTSUP", "ENOSYS"].includes(errno(cause) ?? "")) return
+        throw cause
+      })
+    } finally {
+      await directory.close()
+    }
   } catch (cause) {
-    await fs.rm(temp, { force: true }).catch(() => undefined)
     throw new Error("unable to persist device registry", { cause })
+  } finally {
+    await handle?.close().catch(() => undefined)
+    if (!renamed) await fs.rm(temp, { force: true }).catch(() => undefined)
   }
 }
 
 function lockOwner(value: unknown): LockOwner | undefined {
   if (!object(value)) return
-  if (typeof value.owner !== "string" || !Number.isInteger(value.pid) || !Number.isInteger(value.createdAt)) return
-  return { owner: value.owner, pid: value.pid as number, createdAt: value.createdAt as number }
+  if (typeof value.owner !== "string" || value.owner.length === 0) return
+  if (!Number.isInteger(value.pid) || (value.pid as number) <= 0) return
+  if (!Number.isFinite(value.createdAt) || (value.createdAt as number) < 0) return
+  if ((value.createdAt as number) > Date.now() + LOCK_CLOCK_SKEW_MS) return
+  if (value.processStart !== null && (typeof value.processStart !== "string" || value.processStart.length === 0)) return
+  if ((process.platform === "darwin" || process.platform === "linux") && value.processStart === null) return
+  return {
+    owner: value.owner,
+    pid: value.pid as number,
+    createdAt: value.createdAt as number,
+    processStart: value.processStart,
+  }
 }
 
 function alive(pid: number): boolean {
@@ -196,6 +219,42 @@ function alive(pid: number): boolean {
   } catch (cause) {
     return errno(cause) !== "ESRCH"
   }
+}
+
+async function processStart(pid: number): Promise<string | undefined> {
+  if (process.platform === "linux") {
+    return fs
+      .readFile(`/proc/${pid}/stat`, "utf8")
+      .then(
+        (value) =>
+          value
+            .slice(value.lastIndexOf(")") + 2)
+            .trim()
+            .split(/\s+/)[19],
+      )
+      .then(
+        (value) => (value ? `linux:${value}` : undefined),
+        () => undefined,
+      )
+  }
+  if (process.platform === "darwin") {
+    try {
+      const proc = Bun.spawn(["ps", "-o", "lstart=", "-p", String(pid)], { stdout: "pipe", stderr: "ignore" })
+      const value = (await new Response(proc.stdout).text()).trim()
+      if ((await proc.exited) !== 0 || !value) return
+      return `darwin:${value}`
+    } catch {
+      return
+    }
+  }
+}
+
+async function newLockOwner(): Promise<LockOwner> {
+  const start = await processStart(process.pid)
+  if ((process.platform === "darwin" || process.platform === "linux") && start === undefined) {
+    throw new Error("unable to identify device registry lock owner")
+  }
+  return { owner: randomUUID(), pid: process.pid, createdAt: Date.now(), processStart: start ?? null }
 }
 
 async function stale(lock: string): Promise<boolean> {
@@ -211,35 +270,71 @@ async function stale(lock: string): Promise<boolean> {
   ])
   if (!owner || !metadata) return Date.now() - canonical.mtimeMs > LOCK_STALE_MS
   if (Date.now() - Math.max(owner.createdAt, metadata.mtimeMs) <= LOCK_STALE_MS) return false
-  return !alive(owner.pid)
+  if (!alive(owner.pid)) return true
+  if (owner.processStart === null) return false
+  const current = await processStart(owner.pid)
+  if (current === undefined) return false
+  return current !== owner.processStart
+}
+
+async function claim(file: string, owner: LockOwner) {
+  const handle = await fs.open(file, "wx", 0o600).catch((cause: unknown) => {
+    if (errno(cause) === "EEXIST" || errno(cause) === "EISDIR") return
+    throw cause
+  })
+  if (!handle) return
+  try {
+    await handle.writeFile(JSON.stringify(owner))
+    await handle.sync()
+  } catch (cause) {
+    await handle.close().catch(() => undefined)
+    throw new Error("unable to create device registry lock", { cause })
+  }
+  const held = await handle.stat()
+  const owned = async () => {
+    const [current, canonical] = await Promise.all([
+      fs
+        .readFile(file, "utf8")
+        .then(JSON.parse)
+        .then(lockOwner, () => undefined),
+      fs.stat(file).catch(() => undefined),
+    ])
+    return current?.owner === owner.owner && canonical?.dev === held.dev && canonical.ino === held.ino
+  }
+  if (!(await owned())) {
+    await handle.close().catch(() => undefined)
+    return
+  }
+  return {
+    owned,
+    release: async () => {
+      try {
+        if (await owned()) await fs.rm(file)
+      } finally {
+        await handle.close().catch(() => undefined)
+      }
+    },
+  }
 }
 
 async function clearStale(lock: string): Promise<void> {
   const breaker = `${lock}.breaker`
-  const claimed = await fs.mkdir(breaker, { mode: 0o700 }).then(
-    () => true,
-    async (cause: unknown) => {
-      if (errno(cause) === "EEXIST") {
-        const stat = await fs.stat(breaker).catch(() => undefined)
-        if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          await fs.rm(breaker, { recursive: true, force: true }).catch(() => undefined)
-        }
-        return false
-      }
-      throw cause
-    },
-  )
-  if (!claimed) return
+  const owner = await newLockOwner()
+  const lease = await claim(breaker, owner)
+  if (!lease) {
+    if (await stale(breaker)) await fs.rm(breaker, { recursive: true, force: true }).catch(() => undefined)
+    return
+  }
   try {
-    if (await stale(lock)) await fs.rm(lock, { recursive: true, force: true })
+    if ((await stale(lock)) && (await lease.owned())) await fs.rm(lock, { recursive: true, force: true })
   } finally {
-    await fs.rm(breaker, { recursive: true, force: true }).catch(() => undefined)
+    await lease.release()
   }
 }
 
 async function acquire(): Promise<() => Promise<void>> {
   const lock = `${deviceFile()}.lock`
-  const owner: LockOwner = { owner: randomUUID(), pid: process.pid, createdAt: Date.now() }
+  const owner = await newLockOwner()
   const stop = Date.now() + LOCK_WAIT_MS
   await fs.mkdir(path.dirname(lock), { recursive: true, mode: 0o700 })
 
