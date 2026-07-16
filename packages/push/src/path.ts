@@ -27,6 +27,10 @@ export function stateFile() {
   return path.join(stateDir(), "whisperopencode-push.json")
 }
 
+export function deviceFile() {
+  return path.join(stateDir(), "whisperopencode-push-devices.json")
+}
+
 export function logFile() {
   return path.join(stateDir(), "whisperopencode-push.ndjson")
 }
