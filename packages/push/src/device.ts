@@ -199,20 +199,18 @@ function alive(pid: number): boolean {
 }
 
 async function stale(lock: string): Promise<boolean> {
-  const file = path.join(lock, "owner.json")
-  const data = await Promise.all([
+  const canonical = await fs.stat(lock).catch(() => undefined)
+  if (!canonical) return false
+  const file = canonical.isDirectory() ? path.join(lock, "owner.json") : lock
+  const [owner, metadata] = await Promise.all([
     fs
       .readFile(file, "utf8")
       .then(JSON.parse)
       .then(lockOwner, () => undefined),
     fs.stat(file).catch(() => undefined),
   ])
-  const [owner, stat] = data
-  if (!owner || !stat) {
-    const dir = await fs.stat(lock).catch(() => undefined)
-    return !!dir && Date.now() - dir.mtimeMs > LOCK_STALE_MS
-  }
-  if (Date.now() - Math.max(owner.createdAt, stat.mtimeMs) <= LOCK_STALE_MS) return false
+  if (!owner || !metadata) return Date.now() - canonical.mtimeMs > LOCK_STALE_MS
+  if (Date.now() - Math.max(owner.createdAt, metadata.mtimeMs) <= LOCK_STALE_MS) return false
   return !alive(owner.pid)
 }
 
@@ -246,28 +244,50 @@ async function acquire(): Promise<() => Promise<void>> {
   await fs.mkdir(path.dirname(lock), { recursive: true, mode: 0o700 })
 
   while (true) {
-    const created = await fs.mkdir(lock, { mode: 0o700 }).then(
-      () => true,
+    const handle = await fs.open(lock, "wx", 0o600).then(
+      (value) => value,
       (cause: unknown) => {
-        if (errno(cause) === "EEXIST") return false
+        if (errno(cause) === "EEXIST" || errno(cause) === "EISDIR") return
         throw cause
       },
     )
-    if (created) {
-      const file = path.join(lock, "owner.json")
+    if (handle) {
       try {
-        await fs.writeFile(file, JSON.stringify(owner), { flag: "wx", mode: 0o600 })
+        await handle.writeFile(JSON.stringify(owner))
+        await handle.sync()
       } catch (cause) {
-        await fs.rm(lock, { recursive: true, force: true }).catch(() => undefined)
+        await handle.close().catch(() => undefined)
         throw new Error("unable to create device registry lock", { cause })
       }
-      return async () => {
-        const current = await fs
-          .readFile(file, "utf8")
+
+      const [current, held, canonical] = await Promise.all([
+        fs
+          .readFile(lock, "utf8")
           .then(JSON.parse)
-          .then(lockOwner, () => undefined)
-        if (current?.owner !== owner.owner) throw new Error("unable to release device registry lock safely")
-        await fs.rm(lock, { recursive: true })
+          .then(lockOwner, () => undefined),
+        handle.stat(),
+        fs.stat(lock).catch(() => undefined),
+      ])
+      if (current?.owner !== owner.owner || !canonical || canonical.dev !== held.dev || canonical.ino !== held.ino) {
+        await handle.close().catch(() => undefined)
+      } else {
+        return async () => {
+          try {
+            const [latest, pathStat] = await Promise.all([
+              fs
+                .readFile(lock, "utf8")
+                .then(JSON.parse)
+                .then(lockOwner, () => undefined),
+              fs.stat(lock).catch(() => undefined),
+            ])
+            if (latest?.owner !== owner.owner || !pathStat || pathStat.dev !== held.dev || pathStat.ino !== held.ino) {
+              throw new Error("unable to release device registry lock safely")
+            }
+            await fs.rm(lock)
+          } finally {
+            await handle.close().catch(() => undefined)
+          }
+        }
       }
     }
 

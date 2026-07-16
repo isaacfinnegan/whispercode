@@ -326,14 +326,91 @@ describe("push device registry", () => {
     expect(new Set(data.devices.map((device) => device.id)).size).toBe(workers.length)
   }, 20_000)
 
+  test("a delayed reclaimed claimant cannot remove a newer lock", async () => {
+    const dir = await home()
+    const lock = `${deviceFile()}.lock`
+    const module = pathToFileURL(path.join(import.meta.dir, "device.ts")).href
+    const readyA = path.join(dir, "ready-a")
+    const readyB = path.join(dir, "ready-b")
+    const gateA = path.join(dir, "gate-a")
+    const gateB = path.join(dir, "gate-b")
+    const valueA = input("delayed", "a".repeat(32))
+    const valueB = input("newer", "b".repeat(32))
+    const scriptA = [
+      `import fs from "fs/promises"`,
+      `const lock = ${JSON.stringify(lock)}`,
+      `const originalWriteFile = fs.writeFile.bind(fs)`,
+      `const originalOpen = fs.open.bind(fs)`,
+      `const pause = async () => { await originalWriteFile(${JSON.stringify(readyA)}, ""); while (!(await fs.stat(${JSON.stringify(gateA)}).then(() => true, () => false))) await Bun.sleep(5) }`,
+      `fs.writeFile = async (file, ...args) => { if (String(file).endsWith("/owner.json")) await pause(); return originalWriteFile(file, ...args) }`,
+      `fs.open = async (file, ...args) => { const handle = await originalOpen(file, ...args); if (String(file) === lock && args[0] === "wx") { const write = handle.writeFile.bind(handle); handle.writeFile = async (...writeArgs) => { await pause(); return write(...writeArgs) } } return handle }`,
+      `const { register } = await import(${JSON.stringify(module)})`,
+      `process.env.OPENCODE_TEST_HOME = ${JSON.stringify(dir)}`,
+      `await register(${JSON.stringify(valueA)})`,
+    ].join(";")
+    const scriptB = [
+      `import fs from "fs/promises"`,
+      `const originalWriteFile = fs.writeFile.bind(fs)`,
+      `const originalOpen = fs.open.bind(fs)`,
+      `const pause = async () => { await originalWriteFile(${JSON.stringify(readyB)}, ""); while (!(await fs.stat(${JSON.stringify(gateB)}).then(() => true, () => false))) await Bun.sleep(5) }`,
+      `fs.open = async (file, ...args) => { const handle = await originalOpen(file, ...args); if (String(file).includes(".tmp")) { const write = handle.writeFile.bind(handle); handle.writeFile = async (...writeArgs) => { await pause(); return write(...writeArgs) } } return handle }`,
+      `const { register } = await import(${JSON.stringify(module)})`,
+      `process.env.OPENCODE_TEST_HOME = ${JSON.stringify(dir)}`,
+      `await register(${JSON.stringify(valueB)})`,
+    ].join(";")
+    const delayed = Bun.spawn([process.execPath, "-e", scriptA], {
+      cwd: import.meta.dir,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    let newer: ReturnType<typeof Bun.spawn> | undefined
+
+    try {
+      await waitFor([readyA])
+      const old = new Date(Date.now() - 60_000)
+      await fs.utimes(lock, old, old)
+      newer = Bun.spawn([process.execPath, "-e", scriptB], {
+        cwd: import.meta.dir,
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      await waitFor([readyB])
+      await fs.writeFile(gateA, "go")
+      await Bun.sleep(100)
+      expect(
+        await fs.stat(lock).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(true)
+      await fs.writeFile(gateB, "go")
+
+      const results = await Promise.all(
+        [delayed, newer].map(async (worker) => ({
+          code: await worker.exited,
+          stderr: await new Response(worker.stderr).text(),
+        })),
+      )
+      expect(results).toEqual([
+        { code: 0, stderr: "" },
+        { code: 0, stderr: "" },
+      ])
+      expect((await loadDevices()).devices.map((device) => device.id).sort()).toEqual(["delayed", "newer"])
+    } finally {
+      await fs.writeFile(gateA, "go").catch(() => undefined)
+      await fs.writeFile(gateB, "go").catch(() => undefined)
+      delayed.kill()
+      newer?.kill()
+    }
+  }, 20_000)
+
   test("recovers a stale lock owned by a dead process", async () => {
     await home()
     const lock = `${deviceFile()}.lock`
     const old = new Date(Date.now() - 60_000)
-    await fs.mkdir(lock, { recursive: true })
-    const meta = path.join(lock, "owner.json")
-    await fs.writeFile(meta, JSON.stringify({ owner: "stale", pid: 2_147_483_647, createdAt: old.getTime() }))
-    await fs.utimes(meta, old, old)
+    await fs.mkdir(path.dirname(lock), { recursive: true })
+    await fs.writeFile(lock, JSON.stringify({ owner: "stale", pid: 2_147_483_647, createdAt: old.getTime() }))
+    await fs.utimes(lock, old, old)
     await fs.mkdir(`${lock}.breaker`)
     await fs.utimes(`${lock}.breaker`, old, old)
 
@@ -358,7 +435,8 @@ describe("push device registry", () => {
     await home()
     const lock = `${deviceFile()}.lock`
     const old = new Date(Date.now() - 60_000)
-    await fs.mkdir(lock, { recursive: true })
+    await fs.mkdir(path.dirname(lock), { recursive: true })
+    await fs.writeFile(lock, "")
     await fs.utimes(lock, old, old)
 
     await register(input())
@@ -376,8 +454,8 @@ describe("push device registry", () => {
     await home()
     const lock = `${deviceFile()}.lock`
     const old = new Date(Date.now() - 60_000)
-    await fs.mkdir(lock, { recursive: true })
-    await fs.writeFile(path.join(lock, "owner.json"), "not-json")
+    await fs.mkdir(path.dirname(lock), { recursive: true })
+    await fs.writeFile(lock, "not-json")
     await fs.utimes(lock, old, old)
 
     await register(input())
@@ -395,7 +473,8 @@ describe("push device registry", () => {
     await home()
     const lock = `${deviceFile()}.lock`
     const token = "secret-device-token-".padEnd(32, "x")
-    await fs.mkdir(lock, { recursive: true })
+    await fs.mkdir(path.dirname(lock), { recursive: true })
+    await fs.writeFile(lock, "")
 
     const error = await register(input("device-1", token)).catch((cause: unknown) => String(cause))
 
@@ -413,10 +492,9 @@ describe("push device registry", () => {
     await home()
     const lock = `${deviceFile()}.lock`
     const old = new Date(Date.now() - 60_000)
-    await fs.mkdir(lock, { recursive: true })
-    const meta = path.join(lock, "owner.json")
-    await fs.writeFile(meta, JSON.stringify({ owner: "live", pid: process.pid, createdAt: old.getTime() }))
-    await fs.utimes(meta, old, old)
+    await fs.mkdir(path.dirname(lock), { recursive: true })
+    await fs.writeFile(lock, JSON.stringify({ owner: "live", pid: process.pid, createdAt: old.getTime() }))
+    await fs.utimes(lock, old, old)
 
     const error = await register(input("device-1", "secret-device-token-".padEnd(32, "x"))).catch((cause: unknown) =>
       String(cause),
