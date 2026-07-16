@@ -1,16 +1,8 @@
 package ai.opencode.mobilebridge
 
 import android.content.Context
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import java.util.concurrent.TimeUnit
 
 internal enum class RelayCleanupResult { SUCCESS, RETRY }
 
@@ -60,25 +52,14 @@ internal class RelayCleanup(
 
 class RelayCleanupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     companion object {
-        private const val WORK_NAME = "PushRelayCleanupWork"
-        private const val INPUT_CLEANUP_ID = "cleanup_id"
-
         fun schedule(context: Context, cleanupID: String) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-            val request = OneTimeWorkRequestBuilder<RelayCleanupWorker>()
-                .setInputData(Data.Builder().putString(INPUT_CLEANUP_ID, cleanupID).build())
-                .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("$WORK_NAME:$cleanupID", ExistingWorkPolicy.KEEP, request)
+            RelayCleanupWorkScheduler.schedule(context, cleanupID)
         }
     }
 
     override suspend fun doWork(): Result {
         val prefs = SecurePreferencesManager(applicationContext)
-        val cleanupID = inputData.getString(INPUT_CLEANUP_ID) ?: return Result.success()
+        val cleanupID = inputData.getString(RelayCleanupWorkScheduler.INPUT_CLEANUP_ID) ?: return Result.success()
         return when (RelayCleanup(prefs, PushRelayCleanupClient()).cleanup(cleanupID)) {
         RelayCleanupResult.SUCCESS -> Result.success()
         RelayCleanupResult.RETRY -> Result.retry()

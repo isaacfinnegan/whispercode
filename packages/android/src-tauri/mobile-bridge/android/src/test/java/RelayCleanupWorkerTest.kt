@@ -166,19 +166,21 @@ class RelayCleanupWorkerTest {
     }
 
     @Test
-    fun `legacy cleanup is migrated to an ID entry and cleared by cleanup`() {
+    fun `legacy cleanup is migrated to a scheduled ID entry and cleared by cleanup`() {
         store.edit()
             .putString("push.cleanup.relay_url", "https://old-relay.example")
             .putString("push.cleanup.channel", "channel")
             .putString("push.cleanup.device", "device")
             .putString("push.cleanup.secret", "secret")
             .commit()
+        var scheduledID: String? = null
 
-        val prefs = prefs()
+        val prefs = SecurePreferencesManager.fromPreferences(context, store) { scheduledID = it }
         val relayKey = store.all.keys.first { it.matches(Regex("push\\.cleanup\\.[^.]+\\.relay_url")) }
         val cleanupID = relayKey.removePrefix("push.cleanup.").removeSuffix(".relay_url")
 
         UUID.fromString(cleanupID)
+        assertEquals(cleanupID, scheduledID)
         assertFalse(store.contains("push.cleanup.relay_url"))
         assertFalse(store.contains("push.cleanup.channel"))
         assertFalse(store.contains("push.cleanup.device"))

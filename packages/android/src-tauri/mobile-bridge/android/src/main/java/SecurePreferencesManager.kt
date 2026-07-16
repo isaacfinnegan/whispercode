@@ -21,10 +21,14 @@ data class RelayCleanupSnapshot(val id: String, val relayUrl: String, val creden
 class SecurePreferencesManager private constructor(
     private val context: Context,
     private var sharedPreferences: SharedPreferences?,
+    private val scheduleCleanup: (String) -> Unit,
 ) {
     companion object {
-        internal fun fromPreferences(context: Context, preferences: SharedPreferences): SecurePreferencesManager =
-            SecurePreferencesManager(context, preferences).also { it.migrateLegacyState() }
+        internal fun fromPreferences(
+            context: Context,
+            preferences: SharedPreferences,
+            scheduleCleanup: (String) -> Unit = { RelayCleanupWorkScheduler.schedule(context, it) },
+        ): SecurePreferencesManager = SecurePreferencesManager(context, preferences, scheduleCleanup).also { it.migrateLegacyState() }
 
         private const val TAG = "SecurePrefs"
         private const val SECURE_FILE_NAME = "whisper_secure_prefs"
@@ -53,7 +57,7 @@ class SecurePreferencesManager private constructor(
         private const val INVALID_RELAY_URL = "invalid_relay_url"
     }
 
-    constructor(context: Context) : this(context, null) {
+    constructor(context: Context) : this(context, null, { RelayCleanupWorkScheduler.schedule(context, it) }) {
         initializePreferences()
         migrateLegacyState()
     }
@@ -96,7 +100,7 @@ class SecurePreferencesManager private constructor(
         if (relayUrl != null && channel != null && device != null && secret != null) {
             val snapshot = RelayCleanupSnapshot(UUID.randomUUID().toString(), relayUrl, PushCredentials(channel, device, secret))
             val key = "$KEY_CLEANUP_PREFIX.${snapshot.id}"
-            prefs.edit()
+            if (prefs.edit()
                 .putString("$key.relay_url", snapshot.relayUrl)
                 .putString("$key.channel", snapshot.credentials.channelId)
                 .putString("$key.device", snapshot.credentials.deviceId)
@@ -106,6 +110,9 @@ class SecurePreferencesManager private constructor(
                 .remove(LEGACY_KEY_CLEANUP_DEVICE)
                 .remove(LEGACY_KEY_CLEANUP_SECRET)
                 .commit()
+            ) {
+                scheduleCleanup(snapshot.id)
+            }
         }
         getRelayUrl()
     }
