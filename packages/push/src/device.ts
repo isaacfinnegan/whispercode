@@ -482,11 +482,16 @@ export function unregister(deviceID: string): Promise<boolean> {
   })
 }
 
-export function deactivate(deviceID: string, errorCode: string): Promise<DeviceStatus | undefined> {
+export function deactivate(
+  deviceID: string,
+  errorCode: string,
+  expectedGeneration: number,
+): Promise<DeviceStatus | undefined> {
   id(deviceID, "registration")
+  integer(expectedGeneration, "registration", "tokenGeneration")
   return mutate(async (file) => {
     const device = file.devices.find((item) => item.id === deviceID)
-    if (!device) return
+    if (!device || device.tokenGeneration !== expectedGeneration) return
     const now = Date.now()
     device.active = false
     device.updatedAt = now
@@ -496,11 +501,12 @@ export function deactivate(deviceID: string, errorCode: string): Promise<DeviceS
   })
 }
 
-export function recordSuccess(deviceID: string): Promise<DeviceStatus | undefined> {
+export function recordSuccess(deviceID: string, expectedGeneration: number): Promise<DeviceStatus | undefined> {
   id(deviceID, "registration")
+  integer(expectedGeneration, "registration", "tokenGeneration")
   return mutate(async (file) => {
     const device = file.devices.find((item) => item.id === deviceID)
-    if (!device) return
+    if (!device || device.tokenGeneration !== expectedGeneration) return
     const now = Date.now()
     device.updatedAt = now
     device.lastSuccessAt = now
@@ -510,11 +516,16 @@ export function recordSuccess(deviceID: string): Promise<DeviceStatus | undefine
   })
 }
 
-export function recordError(deviceID: string, errorCode: string): Promise<DeviceStatus | undefined> {
+export function recordError(
+  deviceID: string,
+  errorCode: string,
+  expectedGeneration: number,
+): Promise<DeviceStatus | undefined> {
   id(deviceID, "registration")
+  integer(expectedGeneration, "registration", "tokenGeneration")
   return mutate(async (file) => {
     const device = file.devices.find((item) => item.id === deviceID)
-    if (!device) return
+    if (!device || device.tokenGeneration !== expectedGeneration) return
     const now = Date.now()
     device.updatedAt = now
     device.lastError = { code: code(errorCode, device.token), at: now }

@@ -136,7 +136,7 @@ describe("push device registry", () => {
     await home()
     await register(input())
 
-    const next = await deactivate("device-1", "invalid_token")
+    const next = await deactivate("device-1", "invalid_token", 1)
 
     expect(next).toMatchObject({ active: false, lastError: { code: "invalid_token", at: expect.any(Number) } })
     expect((await loadDevices()).devices[0]).toMatchObject({
@@ -149,12 +149,45 @@ describe("push device registry", () => {
     await home()
     await register(input())
 
-    const failed = await recordError("device-1", "temporary")
-    const succeeded = await recordSuccess("device-1")
+    const failed = await recordError("device-1", "temporary", 1)
+    const succeeded = await recordSuccess("device-1", 1)
 
     expect(failed?.lastError).toMatchObject({ code: "temporary", at: expect.any(Number) })
     expect(succeeded?.lastSuccessAt).toEqual(expect.any(Number))
     expect(succeeded?.lastError).toBeUndefined()
+  })
+
+  test("ignores delivery results from an older token generation", async () => {
+    await home()
+    await Promise.all([register(input("success")), register(input("error")), register(input("invalid"))])
+    await Promise.all(
+      ["success", "error", "invalid"].map((deviceID) => {
+        const next = input(deviceID, `${deviceID}-rotated`.padEnd(32, "x"))
+        next.tokenGeneration = 2
+        return register(next)
+      }),
+    )
+
+    await Promise.all([
+      recordSuccess("success", 1),
+      recordError("error", "delivery_failed", 1),
+      deactivate("invalid", "invalid_token", 1),
+    ])
+    const devices = (await loadDevices()).devices.sort((a, b) => a.id.localeCompare(b.id))
+
+    expect(
+      devices.map((device) => ({
+        id: device.id,
+        tokenGeneration: device.tokenGeneration,
+        active: device.active,
+        lastSuccessAt: device.lastSuccessAt,
+        lastError: device.lastError,
+      })),
+    ).toEqual([
+      { id: "error", tokenGeneration: 2, active: true, lastSuccessAt: undefined, lastError: undefined },
+      { id: "invalid", tokenGeneration: 2, active: true, lastSuccessAt: undefined, lastError: undefined },
+      { id: "success", tokenGeneration: 2, active: true, lastSuccessAt: undefined, lastError: undefined },
+    ])
   })
 
   test("returns sanitized status without tokens", async () => {
@@ -176,7 +209,7 @@ describe("push device registry", () => {
     const token = "secret-device-token-".padEnd(32, "x")
     await register(input("device-1", token))
 
-    const error = await deactivate("device-1", `invalid_${token}`).catch((cause: unknown) => String(cause))
+    const error = await deactivate("device-1", `invalid_${token}`, 1).catch((cause: unknown) => String(cause))
 
     expect(error).toContain("error code")
     expect(error).not.toContain(token)

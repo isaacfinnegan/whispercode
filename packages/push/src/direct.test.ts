@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import type { PushMessage, PushResult } from "@whispercode/push-provider"
-import { deliverDirect } from "./direct"
+import { DIRECT_CONCURRENCY, deliverDirect } from "./direct"
 import {
   loadDevices,
   recordError,
@@ -76,7 +76,7 @@ describe("direct push delivery", () => {
     const disabled = device("disabled", { prefs: { ...prefs, complete: false } })
     const inactive = device("inactive", { active: false })
     const sent: string[] = []
-    const updated: string[] = []
+    const updated: Array<[string, number]> = []
 
     const result = await deliverDirect(item("complete"), {
       devices: async () => [enabled, enabled, disabled, inactive],
@@ -86,13 +86,13 @@ describe("direct push delivery", () => {
           return { ok: true, invalid: false, code: "ok" }
         },
       },
-      update: async (id) => {
-        updated.push(id)
+      update: async (id, generation) => {
+        updated.push([id, generation])
       },
     })
 
     expect(sent).toEqual([enabled.token])
-    expect(updated).toEqual([enabled.id])
+    expect(updated).toEqual([[enabled.id, enabled.tokenGeneration]])
     expect(result).toEqual({ attempted: 1, delivered: 1, failed: 0 })
   })
 
@@ -125,6 +125,29 @@ describe("direct push delivery", () => {
     })
 
     expect(result).toEqual({ attempted: 0, delivered: 0, failed: 0 })
+  })
+
+  test("bounds concurrent provider sends", async () => {
+    const devices = Array.from({ length: DIRECT_CONCURRENCY * 2 + 3 }, (_, index) => device(`bounded-${index}`))
+    let active = 0
+    let maximum = 0
+
+    const result = await deliverDirect(item("complete"), {
+      devices: async () => devices,
+      adapter: {
+        send: async () => {
+          active++
+          maximum = Math.max(maximum, active)
+          await Bun.sleep(5)
+          active--
+          return { ok: true, invalid: false, code: "ok" }
+        },
+      },
+      update: async () => undefined,
+    })
+
+    expect(maximum).toBe(DIRECT_CONCURRENCY)
+    expect(result).toEqual({ attempted: devices.length, delivered: devices.length, failed: 0 })
   })
 
   test("counts a provider success as delivered when its registry update throws", async () => {
@@ -199,7 +222,7 @@ describe("direct push delivery", () => {
   test("records success and clears the previous registry error", async () => {
     await home()
     await register(input("success"))
-    await recordError("success", "previous_error")
+    await recordError("success", "previous_error", 1)
 
     const result = await deliverDirect(item("complete"), {
       adapter: { send: async () => ({ ok: true, invalid: false, code: "provider_detail" }) },
@@ -210,6 +233,44 @@ describe("direct push delivery", () => {
     expect(saved.active).toBe(true)
     expect(saved.lastSuccessAt).toEqual(expect.any(Number))
     expect(saved.lastError).toBeUndefined()
+  })
+
+  test("does not apply an in-flight result after the device rotates its token", async () => {
+    await home()
+    await register(input("rotated"))
+    let started!: () => void
+    let release!: () => void
+    const sending = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const delivery = deliverDirect(item("complete"), {
+      adapter: {
+        send: async () => {
+          started()
+          await gate
+          return { ok: true, invalid: false, code: "ok" }
+        },
+      },
+    })
+
+    await sending
+    const rotated = input("rotated")
+    rotated.token = "rotated-new-token".padEnd(32, "x")
+    rotated.tokenGeneration = 2
+    await register(rotated)
+    release()
+
+    expect(await delivery).toEqual({ attempted: 1, delivered: 1, failed: 0 })
+    expect((await loadDevices()).devices[0]).toMatchObject({
+      token: rotated.token,
+      tokenGeneration: 2,
+      active: true,
+    })
+    expect((await loadDevices()).devices[0]?.lastSuccessAt).toBeUndefined()
+    expect((await loadDevices()).devices[0]?.lastError).toBeUndefined()
   })
 
   test("deactivates invalid tokens but keeps transient and thrown failures active", async () => {
