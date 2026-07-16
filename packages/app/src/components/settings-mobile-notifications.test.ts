@@ -2,6 +2,7 @@
 // settings diagnostics and toast behavior.
 
 import { describe, expect, test } from "bun:test"
+import { dict } from "../i18n/en"
 import { PushFail } from "../utils/push-pair"
 import { shouldToastPairErr } from "./settings-mobile-notifications-helpers"
 import { diagRows } from "./settings-mobile-notifications-data"
@@ -65,5 +66,14 @@ describe("settings mobile notifications", () => {
     expect(text.includes('data-action="settings-push-relay"')).toBe(false)
     expect(text.includes('data-action="settings-push-host"')).toBe(false)
     expect(text.includes('data-action="settings-push-diagnostics"')).toBe(true)
+  })
+
+  test("uses provider-neutral mobile push settings copy", () => {
+    const copy = Object.entries(dict)
+      .filter(([key]) => key.startsWith("settings.general.notifications.push."))
+      .map(([, value]) => value)
+      .join("\n")
+
+    expect(copy).not.toMatch(/\b(?:Apple|APNs|iPhone)\b/i)
   })
 })

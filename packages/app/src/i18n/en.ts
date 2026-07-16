@@ -1027,16 +1027,16 @@ export const dict = {
   // strings used by the shared app package and native wrappers.
   "settings.general.notifications.push.permission.title": "Push permission",
   "settings.general.notifications.push.permission.pending":
-    "Checking whether WhisperCode can show notifications on this iPhone",
+    "Checking whether WhisperCode can show notifications on this device",
   "settings.general.notifications.push.permission.notDetermined":
     "Enable generic alerts for responses, approvals, questions, and errors",
   "settings.general.notifications.push.permission.denied":
-    "Turn on notifications for WhisperCode in the iPhone Settings app",
+    "Turn on notifications for WhisperCode in the device Settings app",
   "settings.general.notifications.push.permission.registering":
-    "Permission is granted. WhisperCode is finishing registration with Apple.",
-  "settings.general.notifications.push.permission.authorized": "Ready for generic alerts on this iPhone",
-  "settings.general.notifications.push.permission.provisional": "Ready for quiet generic alerts on this iPhone",
-  "settings.general.notifications.push.permission.ephemeral": "Ready for temporary generic alerts on this iPhone",
+    "Permission is granted. WhisperCode is finishing mobile push registration.",
+  "settings.general.notifications.push.permission.authorized": "Ready for generic alerts on this device",
+  "settings.general.notifications.push.permission.provisional": "Ready for quiet generic alerts on this device",
+  "settings.general.notifications.push.permission.ephemeral": "Ready for temporary generic alerts on this device",
   "settings.general.notifications.push.permission.unsupported": "Notifications are unavailable on this device",
   "settings.general.notifications.push.permission.ios":
     "If you skipped notification setup during onboarding, you can finish it here. WhisperCode will guide you through permissions and install an OpenCode plugin on your server.",
@@ -1056,21 +1056,21 @@ export const dict = {
     "Connect to a server first, or enter a custom relay URL for pairing and background push delivery.",
   "settings.general.notifications.push.relay.action.auto": "Use Default",
   "settings.general.notifications.push.pairing.title": "Phone pairing",
-  "settings.general.notifications.push.pairing.pending": "Checking whether this iPhone is paired to a push channel.",
+  "settings.general.notifications.push.pairing.pending": "Checking whether this device is paired to a push channel.",
   "settings.general.notifications.push.pairing.server":
     "Connect to an OpenCode server first so WhisperCode can finish pairing.",
   "settings.general.notifications.push.pairing.unpaired":
-    "Tap Set Up once and WhisperCode will request permission, install an OpenCode plugin on your server, and pair this iPhone automatically.",
+    "Tap Set Up once and WhisperCode will request permission, install an OpenCode plugin on your server, and pair this device automatically.",
   "settings.general.notifications.push.pairing.paired":
-    "This iPhone is paired to your OpenCode host. WhisperCode will repair the connection automatically if it drifts.",
+    "This device is paired to your OpenCode host. WhisperCode will repair the connection automatically if it drifts.",
   "settings.general.notifications.push.pairing.retry":
-    "WhisperCode has a pending pair request for this iPhone. Tap Finish Setup to resume and verify the host install.",
+    "WhisperCode has a pending pair request for this device. Tap Finish Setup to resume and verify the host install.",
   "settings.general.notifications.push.pairing.step.permission":
-    "Requesting notification permission from iPhone Settings.",
-  "settings.general.notifications.push.pairing.step.register": "Waiting for Apple push registration to finish.",
-  "settings.general.notifications.push.pairing.step.begin": "Preparing a secure pairing request for this iPhone.",
-  "settings.general.notifications.push.pairing.step.claim": "Connecting this iPhone to the OpenCode host.",
-  "settings.general.notifications.push.pairing.step.finish": "Finishing pairing on this iPhone.",
+    "Requesting notification permission from device Settings.",
+  "settings.general.notifications.push.pairing.step.register": "Waiting for mobile push registration to finish.",
+  "settings.general.notifications.push.pairing.step.begin": "Preparing a secure pairing request for this device.",
+  "settings.general.notifications.push.pairing.step.claim": "Connecting this device to the OpenCode host.",
+  "settings.general.notifications.push.pairing.step.finish": "Finishing pairing on this device.",
   "settings.general.notifications.push.pairing.action.setup": "Set Up",
   "settings.general.notifications.push.pairing.action.finish": "Finish Setup",
   "settings.general.notifications.push.pairing.action.repair": "Repair",
@@ -1079,10 +1079,10 @@ export const dict = {
   "settings.general.notifications.push.pairing.action.clearing": "Removing...",
   "settings.general.notifications.push.pairing.toast.cleared.title": "Pairing removed",
   "settings.general.notifications.push.pairing.toast.cleared.description":
-    "Stored push channel credentials were removed from this iPhone.",
-  "settings.general.notifications.push.pairing.toast.paired.title": "iPhone paired",
+    "Stored push channel credentials were removed from this device.",
+  "settings.general.notifications.push.pairing.toast.paired.title": "Device paired",
   "settings.general.notifications.push.pairing.toast.paired.description":
-    "WhisperCode can now keep this iPhone connected to the OpenCode host for push delivery.",
+    "WhisperCode can now keep this device connected to the OpenCode host for push delivery.",
   "settings.general.notifications.push.action.enable": "Enable",
   "settings.general.notifications.push.action.openSettings": "Open Settings",
   "settings.general.notifications.push.action.enabled": "Enabled",
@@ -1117,10 +1117,10 @@ export const dict = {
     "Copy the command manually from WhisperCode and run it on the OpenCode host.",
   "settings.general.notifications.push.toast.sent.title": "Test notification scheduled",
   "settings.general.notifications.push.toast.sent.description":
-    "Lock your iPhone or leave the app open to verify the banner and tap flow.",
+    "Lock your device or leave the app open to verify the banner and tap flow.",
   "settings.general.notifications.push.toast.failed.title": "Could not send test notification",
   "settings.general.notifications.push.toast.failed.description":
-    "Enable iPhone notifications for WhisperCode and try again.",
+    "Enable device notifications for WhisperCode and try again.",
   "notification.push.route.title": "OpenCode notification",
   "notification.push.route.server": "WhisperCode could not match this notification to a connected server yet.",
   "notification.push.route.session": "WhisperCode could not restore that session yet, so it opened the server home.",
