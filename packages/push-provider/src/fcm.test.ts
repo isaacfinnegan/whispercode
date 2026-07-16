@@ -81,7 +81,6 @@ describe("createFcmAdapter", () => {
   test.each([
     ["UNREGISTERED", "fcm_unregistered"],
     ["SENDER_ID_MISMATCH", "fcm_sender_id_mismatch"],
-    ["INVALID_ARGUMENT", "fcm_invalid_argument"],
   ])("marks token-specific %s responses invalid", async (errorCode, code) => {
     const adapter = createFcmAdapter({
       projectID: "project-1",
@@ -102,6 +101,34 @@ describe("createFcmAdapter", () => {
       ok: false,
       invalid: true,
       code,
+    })
+  })
+
+  test("does not classify trusted FCM INVALID_ARGUMENT as token-invalid", async () => {
+    const adapter = createFcmAdapter({
+      projectID: "project-1",
+      accessToken: async () => "access-token",
+      fetch: async () =>
+        Response.json(
+          {
+            error: {
+              status: "INVALID_ARGUMENT",
+              details: [
+                {
+                  "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError",
+                  errorCode: "INVALID_ARGUMENT",
+                },
+              ],
+            },
+          },
+          { status: 400 },
+        ),
+    })
+
+    await expect(adapter.send("secret-registration-token", message)).resolves.toEqual({
+      ok: false,
+      invalid: false,
+      code: "fcm_invalid_argument",
     })
   })
 
@@ -181,6 +208,26 @@ describe("createFcmAdapter", () => {
       invalid: false,
       code: "fcm_transport_error",
     })
+    expect(calls).toBe(0)
+  })
+
+  test("times out stalled OAuth acquisition without fetching", async () => {
+    let calls = 0
+    const adapter = createFcmAdapter({
+      projectID: "project-1",
+      timeout: 10,
+      accessToken: () => new Promise(() => {}),
+      fetch: async () => {
+        calls++
+        return Response.json({ name: "message-1" })
+      },
+    })
+
+    const result = await Promise.race([
+      adapter.send("secret-registration-token", message),
+      Bun.sleep(100).then(() => "test_timeout" as const),
+    ])
+    expect(result).toEqual({ ok: false, invalid: false, code: "fcm_transport_error" })
     expect(calls).toBe(0)
   })
 })

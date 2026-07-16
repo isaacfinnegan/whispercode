@@ -29,28 +29,43 @@ export function createFcmAdapter(opts?: Opts): PushAdapter {
     async send(token, message) {
       if (!projectID || !accessToken) return { ok: false, invalid: false, code: "fcm_unconfigured" }
 
+      const controller = new AbortController()
+      let timer: ReturnType<typeof setTimeout> | undefined
       try {
-        const authorization = await accessToken()
-        if (!authorization) return transportError()
-        const response = await fetch(
-          `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectID)}/messages:send`,
-          {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${authorization}`,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({ message: payload(token, message) }),
-            signal: AbortSignal.timeout(opts?.timeout ?? 15_000),
-          },
-        )
-        if (response.ok) return { ok: true, invalid: false, code: "ok" }
-        if (response.status === 408 || response.status >= 500) return transportError()
+        return await Promise.race([
+          (async () => {
+            const authorization = await accessToken()
+            if (!authorization) return transportError()
+            const response = await fetch(
+              `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectID)}/messages:send`,
+              {
+                method: "POST",
+                headers: {
+                  authorization: `Bearer ${authorization}`,
+                  "content-type": "application/json",
+                },
+                body: JSON.stringify({ message: payload(token, message) }),
+                signal: controller.signal,
+              },
+            )
+            if (response.ok) return { ok: true, invalid: false, code: "ok" }
+            if (response.status === 408 || response.status >= 500) return transportError()
 
-        const body = (await response.json().catch(() => undefined)) as FcmError | undefined
-        return classify(response.status, body)
+            const body = (await response.json().catch(() => undefined)) as FcmError | undefined
+            return classify(response.status, body)
+          })(),
+          new Promise<PushResult>((resolve) => {
+            timer = setTimeout(() => {
+              controller.abort()
+              resolve(transportError())
+            }, opts?.timeout ?? 15_000)
+          }),
+        ])
       } catch {
         return transportError()
+      } finally {
+        clearTimeout(timer)
+        controller.abort()
       }
     },
   }
@@ -97,7 +112,7 @@ function classify(status: number, body?: FcmError): PushResult {
 
   if (code === "UNREGISTERED") return { ok: false, invalid: true, code: "fcm_unregistered" }
   if (code === "SENDER_ID_MISMATCH") return { ok: false, invalid: true, code: "fcm_sender_id_mismatch" }
-  if (codes.includes("INVALID_ARGUMENT") || tokenViolation(details)) {
+  if (tokenViolation(details)) {
     return { ok: false, invalid: true, code: "fcm_invalid_argument" }
   }
   if (state === "INVALID_ARGUMENT") return { ok: false, invalid: false, code: "fcm_invalid_argument" }
