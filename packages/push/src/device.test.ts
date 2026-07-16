@@ -354,6 +354,61 @@ describe("push device registry", () => {
     expect((await loadDevices()).devices).toHaveLength(1)
   })
 
+  test("recovers an old ownerless lock", async () => {
+    await home()
+    const lock = `${deviceFile()}.lock`
+    const old = new Date(Date.now() - 60_000)
+    await fs.mkdir(lock, { recursive: true })
+    await fs.utimes(lock, old, old)
+
+    await register(input())
+
+    expect(
+      await fs.stat(lock).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    expect((await loadDevices()).devices).toHaveLength(1)
+  })
+
+  test("recovers an old lock with malformed owner metadata", async () => {
+    await home()
+    const lock = `${deviceFile()}.lock`
+    const old = new Date(Date.now() - 60_000)
+    await fs.mkdir(lock, { recursive: true })
+    await fs.writeFile(path.join(lock, "owner.json"), "not-json")
+    await fs.utimes(lock, old, old)
+
+    await register(input())
+
+    expect(
+      await fs.stat(lock).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    expect((await loadDevices()).devices).toHaveLength(1)
+  })
+
+  test("does not remove a fresh ownerless lock", async () => {
+    await home()
+    const lock = `${deviceFile()}.lock`
+    const token = "secret-device-token-".padEnd(32, "x")
+    await fs.mkdir(lock, { recursive: true })
+
+    const error = await register(input("device-1", token)).catch((cause: unknown) => String(cause))
+
+    expect(error).toContain("device registry is busy")
+    expect(error).not.toContain(token)
+    expect(
+      await fs.stat(lock).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(true)
+  }, 10_000)
+
   test("does not remove a stale-looking lock owned by a live process", async () => {
     await home()
     const lock = `${deviceFile()}.lock`

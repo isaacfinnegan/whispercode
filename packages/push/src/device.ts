@@ -208,7 +208,10 @@ async function stale(lock: string): Promise<boolean> {
     fs.stat(file).catch(() => undefined),
   ])
   const [owner, stat] = data
-  if (!owner || !stat) return false
+  if (!owner || !stat) {
+    const dir = await fs.stat(lock).catch(() => undefined)
+    return !!dir && Date.now() - dir.mtimeMs > LOCK_STALE_MS
+  }
   if (Date.now() - Math.max(owner.createdAt, stat.mtimeMs) <= LOCK_STALE_MS) return false
   return !alive(owner.pid)
 }
