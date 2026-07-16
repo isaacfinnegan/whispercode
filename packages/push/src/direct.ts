@@ -56,7 +56,9 @@ export async function deliverDirect(item: Item, deps?: Partial<DirectDependencie
         : result.invalid
           ? { ok: false, invalid: true, code: "invalid_token" }
           : { ok: false, invalid: false, code: "delivery_failed" }
-      await update(device.id, safe)
+      await Promise.resolve()
+        .then(() => update(device.id, safe))
+        .catch(() => undefined)
       return safe.ok
     }),
   )

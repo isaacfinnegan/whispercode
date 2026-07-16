@@ -127,6 +127,38 @@ describe("direct push delivery", () => {
     expect(result).toEqual({ attempted: 0, delivered: 0, failed: 0 })
   })
 
+  test("counts a provider success as delivered when its registry update throws", async () => {
+    const registration = device("success-update-error")
+
+    const result = await deliverDirect(item("complete"), {
+      devices: async () => [registration],
+      adapter: { send: async () => ({ ok: true, invalid: false, code: "ok" }) },
+      update: async () => {
+        throw new Error(`private update failure ${registration.token}`)
+      },
+    })
+
+    expect(result).toEqual({ attempted: 1, delivered: 1, failed: 0 })
+    expect(JSON.stringify(result)).not.toContain(registration.token)
+    expect(JSON.stringify(result)).not.toContain("private update failure")
+  })
+
+  test("counts a provider failure as failed when its registry update throws", async () => {
+    const registration = device("failure-update-error")
+
+    const result = await deliverDirect(item("complete"), {
+      devices: async () => [registration],
+      adapter: { send: async () => ({ ok: false, invalid: false, code: "fcm_transport_error" }) },
+      update: async () => {
+        throw new Error(`private update failure ${registration.token}`)
+      },
+    })
+
+    expect(result).toEqual({ attempted: 1, delivered: 0, failed: 1 })
+    expect(JSON.stringify(result)).not.toContain(registration.token)
+    expect(JSON.stringify(result)).not.toContain("private update failure")
+  })
+
   test("projects approved copy and identifiers without href or private item data", async () => {
     const copy: Record<Kind, [string, string]> = {
       complete: ["Response ready", "Tap to return to WhisperCode"],
