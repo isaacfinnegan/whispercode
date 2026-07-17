@@ -5,7 +5,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createEffect, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { type PairInfo, type PairState, usePlatform } from "@/context/platform"
-import { legacyPushEnabled, usePushRelay } from "@/context/push-relay"
+import { createLegacyPushOperation, legacyPushEnabled, usePushRelay } from "@/context/push-relay"
 import { useServer } from "@/context/server"
 import { Persist, persisted } from "@/utils/persist"
 import { mergePushIssue, PushFail, type PushIssue, type PushPhase, runPushSetup } from "@/utils/push-pair"
@@ -144,6 +144,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
       tries: 0,
       source: undefined as "settings" | "auto" | undefined,
     })
+    const operation = createLegacyPushOperation(enabled)
     let lastRelay: string | undefined
 
     const bump = () => setState("tick", (value) => value + 1)
@@ -187,6 +188,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     const setup = async (opts?: { ask?: boolean; source?: "settings" | "auto" }) => {
       if (!enabled()) return false
       if (state.run || state.clear) return false
+      const active = operation.begin()
 
       setState("run", true)
       setState("phase", undefined)
@@ -200,34 +202,44 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
           relay: relay.current(),
           pair,
           ask: opts?.ask,
-          onPhase: (value) => setState("phase", value),
-          onPair: (value) => save(value, { auto: opts?.source === "auto" ? true : pair.auto }),
+          onPhase: (value) => {
+            if (active()) setState("phase", value)
+          },
+          onPair: (value) => {
+            if (active()) save(value, { auto: opts?.source === "auto" ? true : pair.auto })
+          },
         })
 
+        if (!active()) return false
         save(result.pair, { auto: true })
         return true
       } catch (err) {
+        if (!active()) return false
         if (err instanceof PushFail) {
           stop(err.issue)
           throw err
         }
         throw err
       } finally {
-        setState("run", false)
-        setState("phase", undefined)
+        if (active()) {
+          setState("run", false)
+          setState("phase", undefined)
+        }
       }
     }
 
     const clear = async () => {
       if (!enabled()) return
       if (!platform.clearPushPairing || state.clear) return
+      const active = operation.begin()
       setState("clear", true)
       try {
         const value = await platform.clearPushPairing()
+        if (!active()) return
         save(undefined, { auto: false, updated: Date.now() })
         return value
       } finally {
-        setState("clear", false)
+        if (active()) setState("clear", false)
       }
     }
 
@@ -281,6 +293,12 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
         window.removeEventListener("online", wake)
         window.removeEventListener("opencode:resume", wake)
       })
+    })
+
+    createEffect(() => {
+      if (enabled()) return
+      operation.cancel()
+      setState({ run: false, clear: false, phase: undefined })
     })
 
     createEffect(() => {

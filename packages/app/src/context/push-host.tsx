@@ -1,6 +1,7 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { batch, createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
+import { hash } from "@opencode-ai/core/util/encode"
 import { useGlobal } from "@/context/global"
 import { type PushPrefs, type PushRegistration, type PushState, usePlatform } from "@/context/platform"
 import { ServerConnection, useServer } from "@/context/server"
@@ -47,23 +48,15 @@ export function pushHostRetryAt(now: number, attempt: number) {
   return now + RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]
 }
 
-export function nextPushHostRetryAt(
-  states: HostPushState[],
-  configured: ServerConnection.Any[],
-  health: Record<string, boolean | undefined>,
-  now: number,
-  known: ServerConnection.Any[] = configured,
-) {
-  const current = new Set<string>(configured.map(ServerConnection.key))
-  const available = new Set<string>()
-  known.forEach((server) => {
-    const key = ServerConnection.key(server)
-    if (!server.http.password) return
-    if (current.has(key) && health[key] !== true) return
-    available.add(key)
-  })
-  const retries = states.flatMap((state) =>
-    state.retryAt !== undefined && available.has(state.server) ? [Math.max(now, state.retryAt)] : [],
+export async function pushHostServerIdentity(server: ServerConnection.Any) {
+  const id = `ph_${await hash(ServerConnection.key(server))}`
+  return { id, server: sanitizedServer(server.http.url) }
+}
+
+export function nextPushHostRetryAt(states: Array<[string, HostPushState]>, available: string[], now: number) {
+  const ready = new Set(available)
+  const retries = states.flatMap(([id, state]) =>
+    state.retryAt !== undefined && ready.has(id) ? [Math.max(now, state.retryAt)] : [],
   )
   return retries.length ? Math.min(...retries) : undefined
 }
@@ -97,13 +90,27 @@ function storedState(value: unknown): HostPushState | undefined {
   }
 }
 
+function sanitizedServer(value: string) {
+  try {
+    const url = new URL(value)
+    url.username = ""
+    url.password = ""
+    url.search = ""
+    url.hash = ""
+    return `${url.origin}${url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "")}`
+  } catch {
+    return "OpenCode server"
+  }
+}
+
 export function sanitizePushHostPersisted(value: unknown) {
   if (!isRecord(value) || !isRecord(value.servers)) return { servers: {} as HostPushSnapshot }
   const servers = Object.fromEntries(
     Object.entries(value.servers).flatMap(([key, item]) => {
+      if (!/^ph_[0-9a-f]{64}$/.test(key)) return []
       const state = storedState(item)
       if (!state) return []
-      return [[key, { ...state, server: key }]]
+      return [[key, { ...state, server: sanitizedServer(state.server) }]]
     }),
   )
   return { servers }
@@ -140,6 +147,7 @@ export function createPushHostState(
     emit()
   }
   const fail = (
+    id: string,
     server: string,
     device: string,
     tokenGeneration: number,
@@ -147,9 +155,9 @@ export function createPushHostState(
     status: "error" | "unregistering",
   ) => {
     const time = now()
-    const attempt = attempts.get(server) ?? 0
-    attempts.set(server, Math.min(attempt + 1, RETRY_MS.length - 1))
-    set(server, {
+    const attempt = attempts.get(id) ?? 0
+    attempts.set(id, Math.min(attempt + 1, RETRY_MS.length - 1))
+    set(id, {
       server,
       device,
       tokenGeneration,
@@ -170,6 +178,7 @@ export function createPushHostState(
       })
     },
     snapshot,
+    entries: () => [...values.entries()] as Array<[string, HostPushState]>,
     list: () => [...values.values()],
     get: (server: string) => values.get(server),
     pending(server: string) {
@@ -177,8 +186,8 @@ export function createPushHostState(
       if (!current) return
       set(server, { ...current, status: "pending", updatedAt: now(), retryAt: undefined, lastError: undefined })
     },
-    registering(server: string, payload: PushRegistration) {
-      set(server, {
+    registering(id: string, payload: PushRegistration, server = id) {
+      set(id, {
         server,
         device: payload.device,
         tokenGeneration: payload.token_generation,
@@ -186,12 +195,12 @@ export function createPushHostState(
         updatedAt: now(),
       })
     },
-    success(server: string, device: string, tokenGeneration: number) {
-      attempts.delete(server)
-      set(server, { server, device, tokenGeneration, status: "active", updatedAt: now() })
+    success(id: string, device: string, tokenGeneration: number, server = id) {
+      attempts.delete(id)
+      set(id, { server, device, tokenGeneration, status: "active", updatedAt: now() })
     },
-    failure(server: string, payload: PushRegistration, error: unknown) {
-      fail(server, payload.device, payload.token_generation, issue(error, "register"), "error")
+    failure(id: string, payload: PushRegistration, error: unknown, server = id) {
+      fail(id, server, payload.device, payload.token_generation, issue(error, "register"), "error")
     },
     unregistering(server: string) {
       const current = values.get(server)
@@ -205,7 +214,7 @@ export function createPushHostState(
         isRecord(error) && typeof error.code === "string" && typeof error.message === "string"
           ? { code: error.code, message: error.message }
           : issue(error, "unregister")
-      fail(server, current.device, current.tokenGeneration, next, "unregistering")
+      fail(server, current.server, current.device, current.tokenGeneration, next, "unregistering")
     },
     remove(server: string) {
       attempts.delete(server)
@@ -254,9 +263,17 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
   const now = options.now ?? Date.now
   // Authenticated connections stay process-local. Hydrated removals cannot retry until the same server is re-added.
   const known = new Map<string, ServerConnection.Any>()
+  const keys = new Map<string, string>()
+  const displays = new Map<string, string>()
   const inflight = new Map<string, { kind: "register" | "unregister" | "test"; promise: Promise<unknown> }>()
-  const desired = new Map<string, { server: ServerConnection.Any; payload: PushRegistration; signature: string }>()
+  const desired = new Map<
+    string,
+    { server: ServerConnection.Any; display: string; payload: PushRegistration; signature: string }
+  >()
+  let configured = new Set<string>()
+  let healthy = new Map<string, boolean | undefined>()
   let latest: CoordinatorInput | undefined
+  let stopped = false
 
   const run = (
     server: string,
@@ -265,7 +282,11 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
   ): Promise<unknown> => {
     const current = inflight.get(server)
     if (current?.kind === kind) return current.promise
-    if (current) return current.promise.then(() => run(server, kind, job))
+    if (current)
+      return current.promise.then(
+        () => run(server, kind, job),
+        () => run(server, kind, job),
+      )
     const promise = job().finally(() => {
       if (inflight.get(server)?.promise === promise) inflight.delete(server)
     })
@@ -286,28 +307,27 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
     })
   }
 
-  const register = (server: ServerConnection.Any, payload: PushRegistration) => {
-    const key = ServerConnection.key(server)
+  const register = (id: string, display: string, server: ServerConnection.Any, payload: PushRegistration) => {
     const signature = `${payload.token_generation}\0${JSON.stringify(payload.prefs)}`
-    desired.set(key, { server, payload, signature })
-    return run(key, "register", async () => {
+    desired.set(id, { server, display, payload, signature })
+    return run(id, "register", async () => {
       while (true) {
-        const next = desired.get(key)
+        const next = desired.get(id)
         if (!next) return
-        options.state.registering(key, next.payload)
+        options.state.registering(id, next.payload, next.display)
         const ok = await options.register(next.server, next.payload).then(
           () => {
-            options.state.success(key, next.payload.device, next.payload.token_generation)
+            options.state.success(id, next.payload.device, next.payload.token_generation, next.display)
             return true
           },
           (error) => {
-            options.state.failure(key, next.payload, error)
+            options.state.failure(id, next.payload, error, next.display)
             return false
           },
         )
-        const pending = desired.get(key)
+        const pending = desired.get(id)
         if (pending?.signature !== next.signature) continue
-        desired.delete(key)
+        desired.delete(id)
         if (!ok) return
         return
       }
@@ -315,39 +335,55 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
   }
 
   const sync = async (input: CoordinatorInput) => {
+    if (stopped) return
     latest = input
-    input.servers.forEach((server) => known.set(ServerConnection.key(server), server))
-    const current = new Set<string>(input.servers.map(ServerConnection.key))
-    const currentServers = new Map<string, ServerConnection.Any>(
-      input.servers.map((server) => [ServerConnection.key(server), server]),
-    )
+    const cached = input.servers.map((conn) => {
+      const key = ServerConnection.key(conn)
+      const id = keys.get(key)
+      const display = id ? displays.get(id) : undefined
+      return id && display ? { conn, key, id, display } : undefined
+    })
+    const servers = cached.every((value) => value !== undefined)
+      ? cached
+      : await Promise.all(
+          input.servers.map(async (conn) => {
+            const identity = await pushHostServerIdentity(conn)
+            return { conn, key: ServerConnection.key(conn), id: identity.id, display: identity.server }
+          }),
+        )
+    if (stopped) return
+    servers.forEach((value) => {
+      known.set(value.id, value.conn)
+      keys.set(value.key, value.id)
+      displays.set(value.id, value.display)
+    })
+    configured = new Set(servers.map((value) => value.id))
+    healthy = new Map(servers.map((value) => [value.id, input.health[value.key]]))
     if (!input.enabled) desired.clear()
-    else [...desired.keys()].filter((key) => !current.has(key)).forEach((key) => desired.delete(key))
+    else [...desired.keys()].filter((id) => !configured.has(id)).forEach((id) => desired.delete(id))
     const removals = options.state
-      .list()
-      .filter((state) => {
+      .entries()
+      .filter(([id, state]) => {
         if (state.status === "unregistering") {
-          const conn = known.get(state.server)
+          const conn = known.get(id)
           if (!conn?.http.password) return false
-          if (currentServers.has(state.server) && input.health[state.server] !== true) return false
+          if (configured.has(id) && healthy.get(id) !== true) return false
           return state.retryAt === undefined || shouldRetryUnregister(state, now())
         }
-        return !input.enabled || !current.has(state.server)
+        return !input.enabled || !configured.has(id)
       })
-      .map((state) => unregister(state.server))
+      .map(([id]) => unregister(id))
     if (!input.enabled || !input.registration) {
       await Promise.all(removals)
       return
     }
 
-    const registrations = input.servers.flatMap((server) => {
-      const key = ServerConnection.key(server)
-      const allowed = !!server.http.password && input.health[key] === true
-      const running = inflight.get(key)?.kind === "register"
-      if (allowed && running) return [register(server, input.registration!)]
+    const registrations = servers.flatMap(({ id, display, conn, key }) => {
+      const allowed = !!conn.http.password && input.health[key] === true
+      if (allowed && inflight.has(id)) return [register(id, display, conn, input.registration!)]
       if (
         !shouldRegister(options.state, {
-          server: key,
+          server: id,
           generation: input.registration!.token_generation,
           allowed,
           now: now(),
@@ -355,36 +391,56 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
       ) {
         return []
       }
-      return [register(server, input.registration!)]
+      return [register(id, display, conn, input.registration!)]
     })
     await Promise.all([...removals, ...registrations])
   }
 
   return {
     sync,
+    shutdown() {
+      if (stopped) return Promise.resolve()
+      stopped = true
+      desired.clear()
+      latest = latest ? { ...latest, enabled: false, registration: undefined } : undefined
+      return Promise.all(options.state.entries().map(([id]) => unregister(id))).then(() => undefined)
+    },
     nextRetryAt(time = now()) {
-      return nextPushHostRetryAt(options.state.list(), latest?.servers ?? [], latest?.health ?? {}, time, [
-        ...known.values(),
-      ])
+      const available = [...known.entries()].flatMap(([id, server]) => {
+        if (!server.http.password) return []
+        if (configured.has(id) && healthy.get(id) !== true) return []
+        return [id]
+      })
+      return nextPushHostRetryAt(options.state.entries(), available, time)
+    },
+    state(server: string) {
+      const id = keys.get(server)
+      return id ? options.state.get(id) : undefined
     },
     retry(server: string) {
-      const current = options.state.get(server)
+      const id = keys.get(server)
+      if (!id) return Promise.resolve()
+      const current = options.state.get(id)
       if (!current) return Promise.resolve()
-      if (current.status === "unregistering") return unregister(server).then(() => undefined)
+      if (current.status === "unregistering") return unregister(id).then(() => undefined)
       if (current.status !== "error" || !latest) return Promise.resolve()
-      options.state.pending(server)
+      options.state.pending(id)
       return sync(latest)
     },
-    unregister,
+    unregister(server: string) {
+      const id = keys.get(server)
+      return id ? unregister(id) : Promise.resolve()
+    },
     test(server: string) {
-      const current = options.state.get(server)
-      const conn = known.get(server)
+      const id = keys.get(server)
+      const current = id ? options.state.get(id) : undefined
+      const conn = id ? known.get(id) : undefined
       if (!current || !conn) return Promise.reject(new PushHostError("push_host_not_registered"))
-      return run(server, "test", () => options.test(conn, current.device)).then(() => undefined)
+      return run(id!, "test", () => options.test(conn, current.device)).then(() => undefined)
     },
     preferencesChanged() {
-      options.state.list().forEach((state) => {
-        if (state.status === "active") options.state.pending(state.server)
+      options.state.entries().forEach(([id, state]) => {
+        if (state.status === "active") options.state.pending(id)
       })
     },
   }
@@ -471,12 +527,14 @@ export const { use: usePushHost, provider: PushHostProvider } = createSimpleCont
           return [key, global.servers.health[key]?.healthy]
         }),
       )
-      void coordinator.sync({
-        servers: global.servers.list(),
-        health,
-        registration: registration ? pushHostRegistration(registration, prefs()) : undefined,
-        enabled: enabled(),
-      })
+      void coordinator
+        .sync({
+          servers: global.servers.list(),
+          health,
+          registration: registration ? pushHostRegistration(registration, prefs()) : undefined,
+          enabled: enabled(),
+        })
+        .catch(() => undefined)
     })
 
     createEffect(() => {
@@ -509,14 +567,21 @@ export const { use: usePushHost, provider: PushHostProvider } = createSimpleCont
       })
     })
 
+    onCleanup(() => {
+      void coordinator.shutdown().catch(() => undefined)
+    })
+
     return {
       ready,
       states: () => store.servers,
-      get: (key: ServerConnection.Key) => store.servers[key],
-      selected: () => store.servers[server.key],
-      retry: (key = server.key) => coordinator.retry(key),
-      unregister: (key = server.key) => coordinator.unregister(key),
-      test: (key = server.key) => coordinator.test(key),
+      state(key: ServerConnection.Key) {
+        Object.keys(store.servers)
+        return coordinator.state(key)
+      },
+      activeKey: () => server.key,
+      retry: (key: ServerConnection.Key) => coordinator.retry(key),
+      unregister: (key: ServerConnection.Key) => coordinator.unregister(key),
+      test: (key: ServerConnection.Key) => coordinator.test(key),
       preferencesChanged() {
         batch(() => {
           coordinator.preferencesChanged()
