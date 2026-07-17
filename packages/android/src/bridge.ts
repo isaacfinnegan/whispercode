@@ -8,6 +8,7 @@ const commands = {
   cancelScan: "cancel_scan",
   share: "share",
   getPushState: "get_push_state",
+  getPushRegistration: "get_push_registration",
   pushListenersReady: "push_listeners_ready",
   pushListenersNotReady: "push_listeners_not_ready",
   requestPushPermission: "request_push_permission",

@@ -1,7 +1,14 @@
 // @ts-expect-error Bun test types are excluded from the production tsconfig.
 import { expect, test } from "bun:test"
 import { createBridge } from "./bridge"
-import { isPushHref, normalizePair, normalizePush, queuePushDeepLink, routePushHref } from "./push-native"
+import {
+  isPushHref,
+  normalizePair,
+  normalizePush,
+  normalizeRegistration,
+  queuePushDeepLink,
+  routePushHref,
+} from "./push-native"
 
 const push = {
   supported: true,
@@ -25,6 +32,23 @@ test("normalizePush rejects partial native state payloads", () => {
 
 test("normalizePush accepts a complete native PushState", () => {
   expect(normalizePush(push)).toEqual(push)
+})
+
+test("normalizeRegistration accepts only the complete versioned native payload", () => {
+  const registration = {
+    version: 1,
+    device: "device-1",
+    provider: "fcm",
+    token: "secret-token",
+    token_generation: 2,
+    prefs: { complete: true, approval: true, question: false, error: true },
+  }
+
+  expect(normalizeRegistration(registration)).toEqual(registration)
+  expect(normalizeRegistration({ ...registration, version: 2 })).toBeNull()
+  expect(normalizeRegistration({ ...registration, token: "" })).toBeNull()
+  expect(normalizeRegistration({ ...registration, token_generation: -1 })).toBeNull()
+  expect(normalizeRegistration({ ...registration, prefs: { ...registration.prefs, error: undefined } })).toBeNull()
 })
 
 test("normalizePair preserves canonical PairInfo fields", () => {
@@ -58,6 +82,17 @@ test("mapped commands preserve native rejection messages", async () => {
 
   await expect(bridge.sendAsync("testPush")).rejects.toThrow("pair_not_found")
   await expect(bridge.sendAsync("unknown")).resolves.toBeNull()
+})
+
+test("bridge maps private push registration to the native command", async () => {
+  const calls: string[] = []
+  const bridge = createBridge(async (command) => {
+    calls.push(command)
+    return null as never
+  })
+
+  await bridge.sendAsync("getPushRegistration")
+  expect(calls).toEqual(["plugin:mobile-bridge|get_push_registration"])
 })
 
 test("listeners expose registration readiness", async () => {

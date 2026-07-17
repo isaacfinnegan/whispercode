@@ -39,6 +39,14 @@ export function dropPush(list?: string[]) {
   return (list ?? []).filter((item) => item !== spec && name(item) !== pkg)
 }
 
+export function runPush(args: string[], tool: "npx" | "bunx" = "npx") {
+  if (tool === "bunx") return { command: "bunx", args: [spec, ...args] }
+  return {
+    command: "npx",
+    args: ["--yes", "--prefix", ".", `--package=${spec}`, bin, ...args],
+  }
+}
+
 export function installPush(tool: "npx" | "bunx" = "npx") {
   if (tool === "bunx") return `bunx ${spec} install`
   return `npx --yes --prefix . --package=${spec} ${bin} install`
