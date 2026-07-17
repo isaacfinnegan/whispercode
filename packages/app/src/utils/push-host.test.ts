@@ -84,6 +84,7 @@ function trace(plan: Plan = {}, installed = true) {
   const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input))
     const method = init?.method ?? "GET"
+    if (init?.signal?.aborted) throw new DOMException("Aborted before send", "AbortError")
     const headers = new Headers(init?.headers)
     const body = typeof init?.body === "string" ? init.body : ""
     requests.push({ path: url.pathname, method, auth: headers.get("authorization"), body })

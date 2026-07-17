@@ -7,6 +7,7 @@ import { runPush } from "./push-plugin"
 const READY = '{"ready":true}\n'
 const OUTPUT_LIMIT = 32 * 1024
 const TIMEOUT = 15_000
+const CLEANUP_TIMEOUT = 1_000
 const OLD_COMMAND = /command not found|not found|unknown command|unknown_command|unrecognized|opencode-push\s*</i
 
 export interface PushHostSocket extends EventTarget {
@@ -80,6 +81,23 @@ async function bounded<T>(timeout: number | undefined, run: (deadline: PushHostD
   const deadline = createDeadline(timeout ?? TIMEOUT)
   try {
     return await run(deadline)
+  } finally {
+    deadline.dispose()
+  }
+}
+
+async function cleanupPty(input: BaseInput, id: string) {
+  const deadline = createDeadline(Math.min(input.timeout ?? CLEANUP_TIMEOUT, CLEANUP_TIMEOUT))
+  const fetch = input.fetch ?? globalThis.fetch
+  try {
+    const cleanup = fetch(new URL(`/pty/${encodeURIComponent(id)}`, input.server.http.url), {
+      method: "DELETE",
+      signal: deadline.signal,
+      headers: auth(input.server),
+    })
+    await deadline.run(cleanup).catch(() => undefined)
+  } catch {
+    // Cleanup is best-effort and must not replace the operation result.
   } finally {
     deadline.dispose()
   }
@@ -214,16 +232,7 @@ async function execute(
     try {
       socket?.close(1000)
     } catch {}
-    const cleanup = Promise.resolve()
-      .then(() =>
-        fetch(new URL(`/pty/${encodeURIComponent(id)}`, input.server.http.url), {
-          method: "DELETE",
-          signal: deadline.signal,
-          headers: auth(input.server),
-        }),
-      )
-      .catch(() => undefined)
-    await deadline.run(cleanup).catch(() => undefined)
+    await cleanupPty(input, id)
   }
 }
 
