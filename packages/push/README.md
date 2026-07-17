@@ -34,7 +34,18 @@ Add to your opencode config:
 }
 ```
 
-The plugin checks in with the relay on startup and publishes events when sessions complete.
+With an active device registration, the plugin sends notification-worthy events directly from the OpenCode backend. Existing installations explicitly configured with `mode: "relay"` continue to check in and publish through the legacy relay instead.
+
+## Backend FCM configuration
+
+Each controlled OpenCode backend that sends notifications directly needs the Firebase credential in its private environment:
+
+```sh
+export WHISPEROPENCODE_PUSH_FCM_PROJECT_ID="whispercode-pushes"
+export WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON="$(< /secure/path/firebase-service-account.json)"
+```
+
+The service-account JSON must not be committed or logged. Third-party backends need their own Firebase project or must use an explicitly trusted broker; do not give an untrusted backend this credential.
 
 ## License
 

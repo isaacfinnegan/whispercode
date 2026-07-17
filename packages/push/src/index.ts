@@ -1,5 +1,9 @@
 import type { Plugin } from "@opencode-ai/plugin"
+import { createFcmAdapter } from "@whispercode/push-provider"
 import { checkin } from "./checkin.js"
+import { fcm } from "./config.js"
+import { loadDevices, recordError } from "./device.js"
+import { deliverDirect } from "./direct.js"
 import { record } from "./event.js"
 import { publish } from "./relay.js"
 import { load, save } from "./state.js"
@@ -49,6 +53,21 @@ const plugin: Plugin = async () => {
                 }
                 // console.warn("whisperopencode-push: publish failed", data.relay.err)
               })
+          } else if (item) {
+            const devices = (await loadDevices()).devices.filter((device) => device.active)
+            if (devices.length > 0) {
+              const config = fcm()
+              if (config) {
+                await deliverDirect(item, {
+                  devices: async () => devices,
+                  adapter: createFcmAdapter(config),
+                })
+              } else {
+                await Promise.allSettled(
+                  devices.map((device) => recordError(device.id, "fcm_not_configured", device.tokenGeneration)),
+                )
+              }
+            }
           }
           await save(data)
         })
