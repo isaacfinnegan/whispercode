@@ -53,7 +53,7 @@ const plugin: Plugin = async () => {
                 }
                 // console.warn("whisperopencode-push: publish failed", data.relay.err)
               })
-          } else if (item) {
+          } else if (item && data.mode !== "relay") {
             const devices = (await loadDevices()).devices.filter((device) => device.active)
             if (devices.length > 0) {
               const config = fcm()

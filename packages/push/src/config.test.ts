@@ -40,4 +40,20 @@ describe("push config", () => {
   ])("rejects missing or malformed backend FCM configuration", (env) => {
     expect(fcm(env)).toBeUndefined()
   })
+
+  test.each([
+    ["whitespace project ID", " ", "push@example.com", "private-key"],
+    ["whitespace client email", "project-1", "\t", "private-key"],
+    ["whitespace private key", "project-1", "push@example.com", "\n"],
+  ])("rejects structurally unusable backend FCM configuration: %s", (_name, project, email, key) => {
+    expect(
+      fcm({
+        WHISPEROPENCODE_PUSH_FCM_PROJECT_ID: project,
+        WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON: JSON.stringify({
+          client_email: email,
+          private_key: key,
+        }),
+      }),
+    ).toBeUndefined()
+  })
 })

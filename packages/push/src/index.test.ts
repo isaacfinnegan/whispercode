@@ -129,6 +129,23 @@ describe("push plugin delivery", () => {
     }
   })
 
+  test("explicit relay mode without relay configuration never falls back to direct delivery", async () => {
+    await setup()
+    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
+    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
+      client_email: "push@example.com",
+      private_key: "private-key",
+    })
+    await save({ v: 1, mode: "relay", root: {}, cool: {} })
+
+    await expect(notify()).resolves.toBeUndefined()
+
+    expect(sent).toEqual([])
+    const device = (await loadDevices()).devices[0]
+    expect(device?.lastSuccessAt).toBeUndefined()
+    expect(device?.lastError).toBeUndefined()
+  })
+
   test.each([undefined, "not-json"])(
     "missing or malformed FCM configuration records a sanitized status without rejecting: %p",
     async (credentials) => {
@@ -143,4 +160,24 @@ describe("push plugin delivery", () => {
       expect(JSON.stringify(error)).not.toContain(credentials ?? "private-session")
     },
   )
+
+  test.each([
+    ["whitespace project ID", " ", "push@example.com", "private-key"],
+    ["whitespace client email", "project-1", "\t", "private-key"],
+    ["whitespace private key", "project-1", "push@example.com", "\n"],
+  ])("sanitizes structurally unusable FCM configuration: %s", async (_name, project, email, key) => {
+    await setup()
+    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = project
+    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
+      client_email: email,
+      private_key: key,
+    })
+
+    await expect(notify()).resolves.toBeUndefined()
+
+    expect(sent).toEqual([])
+    const error = (await loadDevices()).devices[0]?.lastError
+    expect(error?.code).toBe("fcm_not_configured")
+    expect(Object.keys(error ?? {}).sort()).toEqual(["at", "code"])
+  })
 })
