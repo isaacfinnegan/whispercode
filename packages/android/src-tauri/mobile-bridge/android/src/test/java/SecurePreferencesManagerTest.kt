@@ -26,6 +26,62 @@ class SecurePreferencesManagerTest {
     private fun manager() = SecurePreferencesManager.fromPreferences(context, store)
 
     @Test
+    fun `direct registration identity is stable and generation changes only with a new token`() {
+        val prefs = manager()
+        val id = prefs.getOrCreateDirectDeviceId()
+
+        prefs.saveFcmToken("token-a")
+        assertEquals(1L, prefs.getFcmTokenGeneration())
+
+        prefs.saveFcmToken("token-a")
+        assertEquals(1L, prefs.getFcmTokenGeneration())
+
+        prefs.saveFcmToken("token-b")
+        assertEquals(2L, prefs.getFcmTokenGeneration())
+        assertEquals(id, manager().getOrCreateDirectDeviceId())
+    }
+
+    @Test
+    fun `blank tokens do not advance direct registration generation`() {
+        val prefs = manager()
+
+        prefs.saveFcmToken(null)
+        prefs.saveFcmToken("")
+        prefs.saveFcmToken("   ")
+
+        assertEquals(0L, prefs.getFcmTokenGeneration())
+        assertNull(prefs.getFcmToken())
+    }
+
+    @Test
+    fun `direct registration identity and generation survive credential pair and relay resets`() {
+        val prefs = manager()
+        val id = prefs.getOrCreateDirectDeviceId()
+        prefs.saveFcmToken("fcm-token")
+        prefs.saveCredentials("channel", "device", "secret")
+        prefs.savePair("pair", "pair-token", "pair-command", "2026-01-01", "pending")
+
+        prefs.clearCredentials()
+        prefs.clearPair()
+        prefs.resetForRelay("https://relay.example.com")
+
+        val recreated = manager()
+        assertEquals(id, recreated.getOrCreateDirectDeviceId())
+        assertEquals(1L, recreated.getFcmTokenGeneration())
+    }
+
+    @Test
+    fun `existing FCM token migrates to a coherent generation without diagnostics`() {
+        store.edit().putString("push.fcm_token", "existing-secret-token").commit()
+
+        val prefs = manager()
+
+        assertEquals(1L, prefs.getFcmTokenGeneration())
+        assertNull(prefs.getLastCode())
+        assertNull(prefs.getLastError())
+    }
+
+    @Test
     fun `FCM token and pending state are separate`() {
         val prefs = manager()
 
@@ -260,6 +316,7 @@ class SecurePreferencesManagerTest {
         val prefs = manager()
 
         assertEquals("legacy-token", prefs.getFcmToken())
+        assertEquals(1L, prefs.getFcmTokenGeneration())
         assertTrue(prefs.isTokenPending())
     }
 

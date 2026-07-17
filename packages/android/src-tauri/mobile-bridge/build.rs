@@ -10,6 +10,7 @@ const COMMANDS: &[&str] = &[
     "cancel_scan",
     "share",
     "get_push_state",
+    "get_push_registration",
     "push_listeners_ready",
     "push_listeners_not_ready",
     "request_push_permission",

@@ -39,6 +39,8 @@ class SecurePreferencesManager private constructor(
         private const val KEY_SECRET = "push.secret"
         private const val KEY_RELAY_URL = "push.relay_url"
         private const val KEY_FCM_TOKEN = "push.fcm_token"
+        private const val KEY_DIRECT_DEVICE_ID = "push.direct_device_id"
+        private const val KEY_FCM_TOKEN_GENERATION = "push.fcm_token_generation"
         private const val KEY_TOKEN_PENDING = "push.token_pending"
         private const val KEY_PAIR_ID = "push.pair_id"
         private const val KEY_PAIR_TOKEN = "push.pair_token"
@@ -88,10 +90,14 @@ class SecurePreferencesManager private constructor(
             if (!token.isNullOrBlank()) {
                 prefs.edit()
                     .putString(KEY_FCM_TOKEN, token)
+                    .putLong(KEY_FCM_TOKEN_GENERATION, 1L)
                     .putBoolean(KEY_TOKEN_PENDING, true)
                     .remove(LEGACY_KEY_PENDING_TOKEN)
                     .apply()
             }
+        }
+        if (!prefs.getString(KEY_FCM_TOKEN, null).isNullOrBlank() && prefs.getLong(KEY_FCM_TOKEN_GENERATION, 0L) < 1L) {
+            prefs.edit().putLong(KEY_FCM_TOKEN_GENERATION, 1L).apply()
         }
         val relayUrl = prefs.getString(LEGACY_KEY_CLEANUP_RELAY_URL, null)
         val channel = prefs.getString(LEGACY_KEY_CLEANUP_CHANNEL, null)
@@ -245,11 +251,34 @@ class SecurePreferencesManager private constructor(
     }
 
     fun saveFcmToken(token: String?) {
-        sharedPreferences?.edit()?.putString(KEY_FCM_TOKEN, token)?.apply()
-        clearDiagnosticContaining(token)
+        val prefs = sharedPreferences ?: return
+        val value = token?.takeIf { it.isNotBlank() }
+        val current = prefs.getString(KEY_FCM_TOKEN, null)?.takeIf { it.isNotBlank() }
+        val edit = prefs.edit()
+        if (value == null) {
+            edit.remove(KEY_FCM_TOKEN)
+        } else {
+            edit.putString(KEY_FCM_TOKEN, value)
+            if (value != current) {
+                edit.putLong(KEY_FCM_TOKEN_GENERATION, prefs.getLong(KEY_FCM_TOKEN_GENERATION, 0L) + 1L)
+            }
+        }
+        edit.apply()
+        clearDiagnosticContaining(value)
     }
 
     fun getFcmToken(): String? = sharedPreferences?.getString(KEY_FCM_TOKEN, null)
+
+    fun getFcmTokenGeneration(): Long = sharedPreferences?.getLong(KEY_FCM_TOKEN_GENERATION, 0L) ?: 0L
+
+    fun getOrCreateDirectDeviceId(): String {
+        val prefs = sharedPreferences ?: return UUID.randomUUID().toString()
+        val existing = prefs.getString(KEY_DIRECT_DEVICE_ID, null)
+        if (!existing.isNullOrBlank()) return existing
+        val created = UUID.randomUUID().toString()
+        prefs.edit().putString(KEY_DIRECT_DEVICE_ID, created).commit()
+        return created
+    }
 
     fun setTokenPending(pending: Boolean) {
         sharedPreferences?.edit()?.putBoolean(KEY_TOKEN_PENDING, pending)?.apply()
