@@ -232,7 +232,7 @@ describe("push host coordinator", () => {
     const coordinator = createPushHostCoordinator({
       state,
       register: async () => {
-        throw new PushHostError("host_unavailable", `transport failed for ${registration().token}`)
+        throw new PushHostError("host_unavailable", `transport failed with ${serviceKey} for ${registration().token}`)
       },
       unregister: async () => undefined,
       test: async () => undefined,

@@ -11,8 +11,19 @@ npm install @whisperopencode/push
 ## CLI usage
 
 ```
-opencode-push <install|pair|status|test|unpair|devices|remove-device> [--pair <token>] [--relay <url>] [--server <label>] [--plugin <spec>] [--device <id>] [--json]
+opencode-push <install|pair|register|unregister|status|test|unpair|devices|remove-device> [--pair <token>] [--relay <url>] [--server <label>] [--plugin <spec>] [--device <id>] [--stdin] [--json]
 ```
+
+Direct backend commands:
+
+```sh
+opencode-push register --stdin
+opencode-push unregister --device device-1
+opencode-push status --json
+opencode-push test --device device-1
+```
+
+`register --stdin` accepts exactly one bounded registration JSON line on standard input. Send the FCM token only in that JSON input; never place the token or Firebase service-account JSON in a command argument. `unregister` removes only the selected backend-local device, `status --json` emits sanitized direct-delivery diagnostics, and `test --device` sends only to the selected active device.
 
 Pair with a mobile device:
 

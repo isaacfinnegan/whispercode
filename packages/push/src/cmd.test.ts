@@ -90,13 +90,14 @@ const registration = (value: Record<string, unknown> = {}) => ({
   prefs: { complete: true, approval: true, question: true, error: true },
   ...value,
 })
+const serviceAccountPrivateKey = "-----BEGIN PRIVATE KEY-----cli-security-secret-----END PRIVATE KEY-----"
 
 function configureFCM() {
   process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
   process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
     project_id: "project-1",
     client_email: "push@example.test",
-    private_key: "private-key",
+    private_key: serviceAccountPrivateKey,
   })
 }
 
@@ -609,7 +610,7 @@ describe("direct push cmd", () => {
       devices: [{ id: "device-1", active: true, token_generation: 2 }],
     })
     expect(memory.stdout()).not.toContain(value.token)
-    expect(memory.stdout()).not.toContain("private-key")
+    expect(memory.stdout()).not.toContain(serviceAccountPrivateKey)
   })
 
   test("status --json reports malformed or incomplete configuration as unconfigured", async () => {
@@ -686,12 +687,12 @@ describe("direct push cmd", () => {
     expect(
       await run("test", parse(["test", "--device", "failed"]), memory.io, {
         deliver: async () => {
-          throw new Error("raw provider secret")
+          throw new Error(serviceAccountPrivateKey)
         },
       }),
     ).toEqual({ ok: false, error: "delivery_failed" })
     expect(memory.stdout() + memory.stderr()).not.toContain("secret-")
-    expect(memory.stdout() + memory.stderr()).not.toContain("raw provider")
+    expect(memory.stdout() + memory.stderr()).not.toContain(serviceAccountPrivateKey)
   })
 
   test("legacy test without --device does not use direct delivery", async () => {

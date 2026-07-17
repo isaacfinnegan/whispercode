@@ -61,18 +61,24 @@ opencode-push test --device <id>
 The registration record contains only what the plugin needs to deliver and filter pushes:
 
 ```ts
+type DevicePreferences = {
+  complete: boolean
+  approval: boolean
+  question: boolean
+  error: boolean
+}
+
 type DeviceRegistration = {
   id: string
-  fcmToken: string
-  prefs: {
-    complete: boolean
-    approval: boolean
-    question: boolean
-    error: boolean
-  }
+  provider: "fcm"
+  token: string
+  tokenGeneration: number
+  prefs: DevicePreferences
+  active: boolean
   createdAt: number
   updatedAt: number
-  lastError?: string
+  lastSuccessAt?: number
+  lastError?: { code: string; at: number }
 }
 ```
 
