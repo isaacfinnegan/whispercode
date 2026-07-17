@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test"
 import { dict } from "../i18n/en"
 import { PushFail } from "../utils/push-pair"
 import { shouldToastPairErr } from "./settings-mobile-notifications-helpers"
-import { diagRows } from "./settings-mobile-notifications-data"
+import { diagRows, hostSummary } from "./settings-mobile-notifications-data"
 
 describe("settings mobile notifications", () => {
   test("suppresses structured pairing failure toasts", () => {
@@ -75,5 +75,52 @@ describe("settings mobile notifications", () => {
       .join("\n")
 
     expect(copy).not.toMatch(/\b(?:Apple|APNs|iPhone)\b/i)
+  })
+
+  test("shows the selected backend registration status without exposing failures", () => {
+    expect(hostSummary({ server: "Backend One", status: "active" })).toEqual({
+      variant: "success",
+      title: "Active",
+      body: "Backend One",
+    })
+    expect(hostSummary({ server: "Backend One", status: "registering" }).title).toBe("Registering")
+    expect(hostSummary({ server: "Backend One", status: "error", retryAt: 1_000 }).title).toBe("Retrying")
+    expect(
+      hostSummary({
+        server: "Backend One",
+        status: "error",
+        code: "fcm_unconfigured",
+        message: "service account secret and raw PTY output",
+      }),
+    ).toEqual({
+      variant: "warning",
+      title: "Backend missing FCM credentials",
+      body: "Backend One",
+    })
+    expect(
+      JSON.stringify(
+        hostSummary({
+          server: "Backend One",
+          status: "error",
+          code: "push_host_failed",
+          message: "token secret and raw stack",
+        }),
+      ),
+    ).toBe('{"variant":"error","title":"Push delivery failed","body":"Backend One"}')
+  })
+
+  test("keeps Android direct delivery separate from relay pairing controls", async () => {
+    const file = Bun.file(new URL("./settings-mobile-notifications.tsx", import.meta.url))
+    const text = await file.text()
+
+    expect(text).toContain('data-component="settings-push-host"')
+    expect(text).toContain('data-action="settings-push-host-retry"')
+    expect(text).toContain('data-action="settings-push-host-unregister"')
+    expect(text).toContain("selected: selectedKey()")
+    expect(text).toContain("host: pushHost")
+    expect(text).toContain("pushHostServerIdentity(value)?.id")
+    expect(text).toContain('selectedHost()?.status !== "active"')
+    expect(text).toContain("if (selectedKey()) pushHost.preferencesChanged()")
+    expect(text).toContain('action === "retry" ? pushHost.retry(key) : pushHost.unregister(key)')
   })
 })

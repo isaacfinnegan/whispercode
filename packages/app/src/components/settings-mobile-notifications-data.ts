@@ -3,6 +3,51 @@
 
 import type { PairState, PushDiag, PushState } from "@/context/platform"
 
+type HostSummaryInput = {
+  server?: string
+  status?: "pending" | "registering" | "active" | "error" | "unregistering"
+  retryAt?: number
+  code?: string
+  message?: string
+}
+
+type HostSummaryCopy = {
+  unavailable: string
+  registering: string
+  active: string
+  retrying: string
+  missing: string
+  failed: string
+  unregistering: string
+  select: string
+}
+
+const hostCopy: HostSummaryCopy = {
+  unavailable: "Backend unavailable",
+  registering: "Registering",
+  active: "Active",
+  retrying: "Retrying",
+  missing: "Backend missing FCM credentials",
+  failed: "Push delivery failed",
+  unregistering: "Unregistering",
+  select: "Select a backend",
+}
+
+export function hostSummary(input: HostSummaryInput, copy: HostSummaryCopy = hostCopy) {
+  const body = input.server ?? copy.select
+  if (!input.server) return { variant: "warning" as const, title: copy.unavailable, body }
+  if (input.status === "active") return { variant: "success" as const, title: copy.active, body }
+  if (input.status === "unregistering") return { variant: "info" as const, title: copy.unregistering, body }
+  if (input.status === "error" && ["fcm_unconfigured", "fcm_not_configured"].includes(input.code ?? "")) {
+    return { variant: "warning" as const, title: copy.missing, body }
+  }
+  if (input.status === "error" && input.retryAt !== undefined) {
+    return { variant: "warning" as const, title: copy.retrying, body }
+  }
+  if (input.status === "error") return { variant: "error" as const, title: copy.failed, body }
+  return { variant: "info" as const, title: copy.registering, body }
+}
+
 type Pair = {
   status?: PairState
   id?: string

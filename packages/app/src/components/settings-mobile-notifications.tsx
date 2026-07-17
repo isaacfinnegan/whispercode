@@ -4,20 +4,23 @@
 import { Card } from "@opencode-ai/ui/card"
 import { Button } from "@opencode-ai/ui/button"
 import { Select } from "@opencode-ai/ui/select"
+import { Switch } from "@opencode-ai/ui/switch"
 import { showToast } from "@opencode-ai/ui/toast"
 import { Component, For, Show, createMemo, createResource, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/context/language"
+import { useGlobal } from "@/context/global"
 import { usePlatform, type PushState } from "@/context/platform"
+import { pushHostServerIdentity, usePushHost } from "@/context/push-host"
 import { canClearPair, usePushPair } from "@/context/push-pair"
 import { usePushRelay } from "@/context/push-relay"
-import { useServer } from "@/context/server"
+import { ServerConnection, serverName, useServer } from "@/context/server"
 import { useSettings } from "@/context/settings"
 import { pushIssue } from "@/utils/push-pair"
 import { DEFAULT_PUSH_RELAY_URL } from "@/utils/push-relay-url"
 import { sendPushTest } from "@/utils/push-test"
 import { shouldToastPairErr } from "./settings-mobile-notifications-helpers"
-import { diagRows } from "./settings-mobile-notifications-data"
+import { diagRows, hostSummary } from "./settings-mobile-notifications-data"
 
 type PushAction = {
   label: string
@@ -37,7 +40,9 @@ type Summary = {
 export const SettingsMobileNotifications: Component = () => {
   const language = useLanguage()
   const platform = usePlatform()
+  const global = useGlobal()
   const settings = useSettings()
+  const pushHost = usePushHost()
   const pairing = usePushPair()
   const relay = usePushRelay()
   const server = useServer()
@@ -46,6 +51,7 @@ export const SettingsMobileNotifications: Component = () => {
     asking: false,
     testing: false,
     diag: false,
+    hostAction: undefined as "retry" | "unregister" | undefined,
   })
 
   const mobile = createMemo(() => platform.platform === "ios" || platform.platform === "android")
@@ -61,6 +67,37 @@ export const SettingsMobileNotifications: Component = () => {
     }),
   )
   const ready = createMemo(() => mobile() && !!platform.requestPushPermission)
+  const selected = createMemo(() => global.settings.server.selected())
+  const selectedKey = createMemo(() => {
+    const value = selected()
+    const key = value ? pushHostServerIdentity(value)?.id : undefined
+    return key ? ServerConnection.Key.make(key) : undefined
+  })
+  const selectedHost = createMemo(() => {
+    const key = selectedKey()
+    return key ? pushHost.state(key) : undefined
+  })
+  const hostCard = createMemo(() => {
+    const state = selectedHost()
+    return hostSummary(
+      {
+        server: selected() ? serverName(selected()) : undefined,
+        status: state?.status,
+        retryAt: state?.retryAt,
+        code: state?.lastError?.code,
+      },
+      {
+        unavailable: language.t("settings.general.notifications.push.backend.unavailable"),
+        select: language.t("settings.general.notifications.push.backend.select"),
+        registering: language.t("settings.general.notifications.push.backend.registering"),
+        active: language.t("settings.general.notifications.push.backend.active"),
+        retrying: language.t("settings.general.notifications.push.backend.retrying"),
+        missing: language.t("settings.general.notifications.push.backend.missing"),
+        failed: language.t("settings.general.notifications.push.backend.failed"),
+        unregistering: language.t("settings.general.notifications.push.backend.unregistering"),
+      },
+    )
+  })
 
   const phaseDesc = (value?: ReturnType<typeof pairing.phase>) => {
     if (value === "permission") return language.t("settings.general.notifications.push.pairing.step.permission")
@@ -140,6 +177,8 @@ export const SettingsMobileNotifications: Component = () => {
     await sendPushTest({
       platform,
       href: window.location.pathname + window.location.search + window.location.hash,
+      selected: selectedKey(),
+      host: pushHost,
     })
       .then((ok) => {
         if (!ok) {
@@ -157,6 +196,14 @@ export const SettingsMobileNotifications: Component = () => {
         })
       })
       .catch((err: unknown) => {
+        if (platform.platform === "android") {
+          showToast({
+            title: language.t("settings.general.notifications.push.toast.failed.title"),
+            description: language.t("settings.general.notifications.push.backend.test.failed"),
+            variant: "error",
+          })
+          return
+        }
         const message = err instanceof Error ? err.message : String(err)
         showToast({ title: language.t("common.requestFailed"), description: message })
       })
@@ -208,6 +255,27 @@ export const SettingsMobileNotifications: Component = () => {
         const message = err instanceof Error ? err.message : String(err)
         showToast({ title: language.t("common.requestFailed"), description: message })
       })
+  }
+
+  const runHostAction = async (action: "retry" | "unregister") => {
+    const key = selectedKey()
+    if (!key || store.hostAction) return
+    setStore("hostAction", action)
+    const job = action === "retry" ? pushHost.retry(key) : pushHost.unregister(key)
+    await job
+      .catch(() =>
+        showToast({
+          title: language.t("common.requestFailed"),
+          description: language.t("settings.general.notifications.push.backend.test.failed"),
+          variant: "error",
+        }),
+      )
+      .finally(() => setStore("hostAction", undefined))
+  }
+
+  const setPreference = (set: (value: boolean) => void, value: boolean) => {
+    set(value)
+    if (selectedKey()) pushHost.preferencesChanged()
   }
 
   const rows = createMemo(() =>
@@ -462,125 +530,250 @@ export const SettingsMobileNotifications: Component = () => {
           <h3 class="text-14-medium text-text-strong pb-2">Notifications</h3>
           <div class="bg-surface-raised-base px-4 rounded-lg">
             <Show
-              when={ready()}
+              when={platform.platform === "android"}
               fallback={
-                <SettingsRow
-                  title={language.t("settings.general.notifications.push.permission.title")}
-                  description={
-                    mobile()
-                      ? language.t("settings.general.notifications.push.permission.unsupported")
-                      : language.t("settings.whispercode.mobile.unavailable")
+                <Show
+                  when={ready()}
+                  fallback={
+                    <SettingsRow
+                      title={language.t("settings.general.notifications.push.permission.title")}
+                      description={
+                        mobile()
+                          ? language.t("settings.general.notifications.push.permission.unsupported")
+                          : language.t("settings.whispercode.mobile.unavailable")
+                      }
+                    >
+                      <span class="text-12-medium text-text-dimmed">
+                        {language.t("settings.general.notifications.push.action.unavailable")}
+                      </span>
+                    </SettingsRow>
                   }
                 >
-                  <span class="text-12-medium text-text-dimmed">
-                    {language.t("settings.general.notifications.push.action.unavailable")}
-                  </span>
-                </SettingsRow>
+                  <>
+                    <div class="py-4 border-b border-border-weak-base">
+                      <StatusCard
+                        variant={summary().variant}
+                        title={summary().title}
+                        body={summary().body}
+                        detail={summary().detail}
+                        command={summary().command}
+                        action={summary().action}
+                        busy={store.asking}
+                      />
+                    </div>
+
+                    <SettingsRow
+                      title={language.t("settings.general.notifications.push.permission.title")}
+                      description={
+                        <>
+                          {pushDesc(push())}
+                          <Show when={note()}>
+                            {(text) => (
+                              <>
+                                <br />
+                                {text()}
+                              </>
+                            )}
+                          </Show>
+                        </>
+                      }
+                    >
+                      <div data-action="settings-push-permission">
+                        <Button
+                          size="small"
+                          variant="secondary"
+                          disabled={store.asking || permissionAction().disabled}
+                          onClick={() => void permissionAction().run?.()}
+                        >
+                          {store.asking
+                            ? language.t("settings.general.notifications.push.action.checking")
+                            : permissionAction().label}
+                        </Button>
+                      </div>
+                    </SettingsRow>
+
+                    <SettingsRow
+                      title={language.t("settings.general.notifications.push.test.title")}
+                      description={language.t("settings.general.notifications.push.test.description")}
+                    >
+                      <div data-action="settings-push-test">
+                        <Button
+                          size="small"
+                          variant="secondary"
+                          disabled={store.testing || !push()?.allowed || !paired()}
+                          onClick={() => void testPush()}
+                        >
+                          {store.testing
+                            ? language.t("settings.general.notifications.push.action.sending")
+                            : language.t("settings.general.notifications.push.action.test")}
+                        </Button>
+                      </div>
+                    </SettingsRow>
+
+                    <SettingsRow title={pairTitle()} description={pairDesc()}>
+                      <div class="flex flex-wrap items-center justify-end gap-2" data-action="settings-push-pairing">
+                        <Button size="small" disabled={pairDisabled()} onClick={() => void pairAction().run?.()}>
+                          {pairAction().label}
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="secondary"
+                          disabled={
+                            pairing.running() || pairing.clearing() || !platform.clearPushPairing || !clearable()
+                          }
+                          onClick={() => void clearPair()}
+                        >
+                          {pairing.clearing()
+                            ? language.t("settings.general.notifications.push.pairing.action.clearing")
+                            : language.t("settings.general.notifications.push.pairing.action.clear")}
+                        </Button>
+                      </div>
+                    </SettingsRow>
+
+                    <SettingsRow
+                      title="Diagnostics"
+                      description="Inspect current mobile notification registration and relay pairing state."
+                    >
+                      <div
+                        class="flex w-full min-w-0 max-w-[460px] flex-col items-stretch gap-2"
+                        data-action="settings-push-diagnostics"
+                      >
+                        <div class="min-w-0 max-w-full rounded-lg bg-surface-base px-3 py-2 text-12-mono text-text-dimmed whitespace-pre-wrap [overflow-wrap:anywhere]">
+                          <For each={rows()}>{(item) => <div class="leading-relaxed">{item}</div>}</For>
+                        </div>
+                        <div class="flex justify-end">
+                          <Button
+                            size="small"
+                            variant="secondary"
+                            disabled={store.diag || !platform.getPushState}
+                            onClick={() => void refreshDiag()}
+                          >
+                            {store.diag ? "Refreshing..." : "Refresh"}
+                          </Button>
+                        </div>
+                      </div>
+                    </SettingsRow>
+                  </>
+                </Show>
               }
             >
-              <>
-                <div class="py-4 border-b border-border-weak-base">
-                  <StatusCard
-                    variant={summary().variant}
-                    title={summary().title}
-                    body={summary().body}
-                    detail={summary().detail}
-                    command={summary().command}
-                    action={summary().action}
-                    busy={store.asking}
-                  />
-                </div>
-
-                <SettingsRow
-                  title={language.t("settings.general.notifications.push.permission.title")}
-                  description={
-                    <>
-                      {pushDesc(push())}
-                      <Show when={note()}>
-                        {(text) => (
-                          <>
-                            <br />
-                            {text()}
-                          </>
-                        )}
-                      </Show>
-                    </>
-                  }
-                >
-                  <div data-action="settings-push-permission">
-                    <Button
-                      size="small"
-                      variant="secondary"
-                      disabled={store.asking || permissionAction().disabled}
-                      onClick={() => void permissionAction().run?.()}
-                    >
-                      {store.asking
-                        ? language.t("settings.general.notifications.push.action.checking")
-                        : permissionAction().label}
-                    </Button>
+              <Show
+                when={ready()}
+                fallback={
+                  <SettingsRow
+                    title={language.t("settings.general.notifications.push.permission.title")}
+                    description={language.t("settings.general.notifications.push.permission.unsupported")}
+                  >
+                    <span class="text-12-medium text-text-dimmed">
+                      {language.t("settings.general.notifications.push.action.unavailable")}
+                    </span>
+                  </SettingsRow>
+                }
+              >
+                <div data-component="settings-push-host">
+                  <div class="py-4 border-b border-border-weak-base">
+                    <StatusCard {...hostCard()} busy={!!store.hostAction} />
                   </div>
-                </SettingsRow>
 
-                <SettingsRow
-                  title={language.t("settings.general.notifications.push.test.title")}
-                  description={language.t("settings.general.notifications.push.test.description")}
-                >
-                  <div data-action="settings-push-test">
+                  <SettingsRow
+                    title={language.t("settings.general.notifications.push.permission.title")}
+                    description={pushDesc(push())}
+                  >
+                    <div data-action="settings-push-permission">
+                      <Button
+                        size="small"
+                        variant="secondary"
+                        disabled={store.asking || permissionAction().disabled}
+                        onClick={() => void permissionAction().run?.()}
+                      >
+                        {store.asking
+                          ? language.t("settings.general.notifications.push.action.checking")
+                          : permissionAction().label}
+                      </Button>
+                    </div>
+                  </SettingsRow>
+
+                  <SettingsRow
+                    title={language.t("settings.general.notifications.push.backend.token.title")}
+                    description={pushDesc(push())}
+                  >
+                    <span class="text-12-medium text-text-dimmed">
+                      {push()?.registered
+                        ? language.t("settings.general.notifications.push.backend.token.ready")
+                        : language.t("settings.general.notifications.push.backend.token.pending")}
+                    </span>
+                  </SettingsRow>
+
+                  <SettingsRow
+                    title={language.t("settings.general.notifications.agent.title")}
+                    description={language.t("settings.general.notifications.agent.description")}
+                  >
+                    <Switch
+                      checked={settings.notifications.agent()}
+                      onChange={(value) => setPreference(settings.notifications.setAgent, value)}
+                    />
+                  </SettingsRow>
+
+                  <SettingsRow
+                    title={language.t("settings.general.notifications.permissions.title")}
+                    description={language.t("settings.general.notifications.permissions.description")}
+                  >
+                    <Switch
+                      checked={settings.notifications.permissions()}
+                      onChange={(value) => setPreference(settings.notifications.setPermissions, value)}
+                    />
+                  </SettingsRow>
+
+                  <SettingsRow
+                    title={language.t("settings.general.notifications.errors.title")}
+                    description={language.t("settings.general.notifications.errors.description")}
+                  >
+                    <Switch
+                      checked={settings.notifications.errors()}
+                      onChange={(value) => setPreference(settings.notifications.setErrors, value)}
+                    />
+                  </SettingsRow>
+
+                  <SettingsRow
+                    title={language.t("settings.general.notifications.push.test.title")}
+                    description={language.t("settings.general.notifications.push.test.description")}
+                  >
                     <Button
+                      data-action="settings-push-test"
                       size="small"
                       variant="secondary"
-                      disabled={store.testing || !push()?.allowed || !paired()}
+                      disabled={store.testing || selectedHost()?.status !== "active"}
                       onClick={() => void testPush()}
                     >
                       {store.testing
                         ? language.t("settings.general.notifications.push.action.sending")
                         : language.t("settings.general.notifications.push.action.test")}
                     </Button>
-                  </div>
-                </SettingsRow>
+                  </SettingsRow>
 
-                <SettingsRow title={pairTitle()} description={pairDesc()}>
-                  <div class="flex flex-wrap items-center justify-end gap-2" data-action="settings-push-pairing">
-                    <Button size="small" disabled={pairDisabled()} onClick={() => void pairAction().run?.()}>
-                      {pairAction().label}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="secondary"
-                      disabled={pairing.running() || pairing.clearing() || !platform.clearPushPairing || !clearable()}
-                      onClick={() => void clearPair()}
-                    >
-                      {pairing.clearing()
-                        ? language.t("settings.general.notifications.push.pairing.action.clearing")
-                        : language.t("settings.general.notifications.push.pairing.action.clear")}
-                    </Button>
-                  </div>
-                </SettingsRow>
-
-                <SettingsRow
-                  title="Diagnostics"
-                  description="Inspect current mobile notification registration and relay pairing state."
-                >
-                  <div
-                    class="flex w-full min-w-0 max-w-[460px] flex-col items-stretch gap-2"
-                    data-action="settings-push-diagnostics"
-                  >
-                    <div class="min-w-0 max-w-full rounded-lg bg-surface-base px-3 py-2 text-12-mono text-text-dimmed whitespace-pre-wrap [overflow-wrap:anywhere]">
-                      <For each={rows()}>{(item) => <div class="leading-relaxed">{item}</div>}</For>
-                    </div>
-                    <div class="flex justify-end">
+                  <SettingsRow title={hostCard().title} description={hostCard().body}>
+                    <div class="flex flex-wrap items-center justify-end gap-2">
                       <Button
+                        data-action="settings-push-host-retry"
+                        size="small"
+                        disabled={!!store.hostAction || selectedHost()?.status !== "error"}
+                        onClick={() => void runHostAction("retry")}
+                      >
+                        {language.t("settings.general.notifications.push.backend.action.retry")}
+                      </Button>
+                      <Button
+                        data-action="settings-push-host-unregister"
                         size="small"
                         variant="secondary"
-                        disabled={store.diag || !platform.getPushState}
-                        onClick={() => void refreshDiag()}
+                        disabled={!!store.hostAction || !selectedHost() || selectedHost()?.status === "unregistering"}
+                        onClick={() => void runHostAction("unregister")}
                       >
-                        {store.diag ? "Refreshing..." : "Refresh"}
+                        {language.t("settings.general.notifications.push.backend.action.unregister")}
                       </Button>
                     </div>
-                  </div>
-                </SettingsRow>
-              </>
+                  </SettingsRow>
+                </div>
+              </Show>
             </Show>
           </div>
         </div>
