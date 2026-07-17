@@ -18,12 +18,16 @@ sealed class RelayUrlResult {
 
 data class RelayCleanupSnapshot(val id: String, val relayUrl: String, val credentials: PushCredentials)
 
+data class FcmRegistrationSnapshot(val token: String, val generation: Long)
+
 class SecurePreferencesManager private constructor(
     private val context: Context,
     private var sharedPreferences: SharedPreferences?,
     private val scheduleCleanup: (String) -> Unit,
 ) {
     companion object {
+        private val FCM_REGISTRATION_LOCK = Any()
+
         internal fun fromPreferences(
             context: Context,
             preferences: SharedPreferences,
@@ -85,19 +89,21 @@ class SecurePreferencesManager private constructor(
 
     private fun migrateLegacyState() {
         val prefs = sharedPreferences ?: return
-        if (!prefs.contains(KEY_FCM_TOKEN)) {
-            val token = prefs.getString(LEGACY_KEY_PENDING_TOKEN, null)
-            if (!token.isNullOrBlank()) {
-                prefs.edit()
-                    .putString(KEY_FCM_TOKEN, token)
-                    .putLong(KEY_FCM_TOKEN_GENERATION, 1L)
-                    .putBoolean(KEY_TOKEN_PENDING, true)
-                    .remove(LEGACY_KEY_PENDING_TOKEN)
-                    .apply()
+        synchronized(FCM_REGISTRATION_LOCK) {
+            if (!prefs.contains(KEY_FCM_TOKEN)) {
+                val token = prefs.getString(LEGACY_KEY_PENDING_TOKEN, null)
+                if (!token.isNullOrBlank()) {
+                    prefs.edit()
+                        .putString(KEY_FCM_TOKEN, token)
+                        .putLong(KEY_FCM_TOKEN_GENERATION, 1L)
+                        .putBoolean(KEY_TOKEN_PENDING, true)
+                        .remove(LEGACY_KEY_PENDING_TOKEN)
+                        .apply()
+                }
             }
-        }
-        if (!prefs.getString(KEY_FCM_TOKEN, null).isNullOrBlank() && prefs.getLong(KEY_FCM_TOKEN_GENERATION, 0L) < 1L) {
-            prefs.edit().putLong(KEY_FCM_TOKEN_GENERATION, 1L).apply()
+            if (!prefs.getString(KEY_FCM_TOKEN, null).isNullOrBlank() && prefs.getLong(KEY_FCM_TOKEN_GENERATION, 0L) < 1L) {
+                prefs.edit().putLong(KEY_FCM_TOKEN_GENERATION, 1L).apply()
+            }
         }
         val relayUrl = prefs.getString(LEGACY_KEY_CLEANUP_RELAY_URL, null)
         val channel = prefs.getString(LEGACY_KEY_CLEANUP_CHANNEL, null)
@@ -253,23 +259,31 @@ class SecurePreferencesManager private constructor(
     fun saveFcmToken(token: String?) {
         val prefs = sharedPreferences ?: return
         val value = token?.takeIf { it.isNotBlank() }
-        val current = prefs.getString(KEY_FCM_TOKEN, null)?.takeIf { it.isNotBlank() }
-        val edit = prefs.edit()
-        if (value == null) {
-            edit.remove(KEY_FCM_TOKEN)
-        } else {
-            edit.putString(KEY_FCM_TOKEN, value)
-            if (value != current) {
-                edit.putLong(KEY_FCM_TOKEN_GENERATION, prefs.getLong(KEY_FCM_TOKEN_GENERATION, 0L) + 1L)
+        synchronized(FCM_REGISTRATION_LOCK) {
+            val current = prefs.getString(KEY_FCM_TOKEN, null)?.takeIf { it.isNotBlank() }
+            val edit = prefs.edit()
+            if (value == null) {
+                edit.remove(KEY_FCM_TOKEN)
+            } else {
+                edit.putString(KEY_FCM_TOKEN, value)
+                if (value != current) {
+                    edit.putLong(KEY_FCM_TOKEN_GENERATION, prefs.getLong(KEY_FCM_TOKEN_GENERATION, 0L) + 1L)
+                }
             }
+            edit.apply()
         }
-        edit.apply()
         clearDiagnosticContaining(value)
     }
 
     fun getFcmToken(): String? = sharedPreferences?.getString(KEY_FCM_TOKEN, null)
 
     fun getFcmTokenGeneration(): Long = sharedPreferences?.getLong(KEY_FCM_TOKEN_GENERATION, 0L) ?: 0L
+
+    fun getFcmRegistrationSnapshot(): FcmRegistrationSnapshot? = synchronized(FCM_REGISTRATION_LOCK) {
+        val prefs = sharedPreferences ?: return@synchronized null
+        val token = prefs.getString(KEY_FCM_TOKEN, null)?.takeIf { it.isNotBlank() } ?: return@synchronized null
+        FcmRegistrationSnapshot(token, prefs.getLong(KEY_FCM_TOKEN_GENERATION, 0L))
+    }
 
     fun getOrCreateDirectDeviceId(): String {
         val prefs = sharedPreferences ?: return UUID.randomUUID().toString()

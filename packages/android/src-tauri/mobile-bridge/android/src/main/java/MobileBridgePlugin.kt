@@ -749,8 +749,8 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     @Command
     fun getPushRegistration(invoke: Invoke) {
-        val token = prefs.getFcmToken()
-        val error = pushRegistrationError(permissionState() == "authorized", token)
+        val registration = prefs.getFcmRegistrationSnapshot()
+        val error = pushRegistrationError(permissionState() == "authorized", registration?.token)
         if (error != null) {
             invoke.reject(error)
             return
@@ -759,8 +759,8 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
             pushRegistrationJson(
                 PushRegistrationSnapshot(
                     device = prefs.getOrCreateDirectDeviceId(),
-                    token = token!!,
-                    tokenGeneration = prefs.getFcmTokenGeneration(),
+                    token = registration!!.token,
+                    tokenGeneration = registration.generation,
                 ),
             ),
         )
