@@ -287,11 +287,13 @@ class SecurePreferencesManager private constructor(
 
     fun getOrCreateDirectDeviceId(): String {
         val prefs = sharedPreferences ?: return UUID.randomUUID().toString()
-        val existing = prefs.getString(KEY_DIRECT_DEVICE_ID, null)
-        if (!existing.isNullOrBlank()) return existing
-        val created = UUID.randomUUID().toString()
-        prefs.edit().putString(KEY_DIRECT_DEVICE_ID, created).commit()
-        return created
+        return synchronized(FCM_REGISTRATION_LOCK) {
+            val existing = prefs.getString(KEY_DIRECT_DEVICE_ID, null)
+            if (!existing.isNullOrBlank()) return@synchronized existing
+            val created = UUID.randomUUID().toString()
+            prefs.edit().putString(KEY_DIRECT_DEVICE_ID, created).commit()
+            created
+        }
     }
 
     fun setTokenPending(pending: Boolean) {

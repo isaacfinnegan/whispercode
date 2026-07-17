@@ -47,6 +47,51 @@ class SecurePreferencesManagerTest {
     }
 
     @Test
+    fun `different manager instances create one direct registration identity`() {
+        val firstEntered = CountDownLatch(1)
+        val secondEntered = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val active = AtomicBoolean(false)
+        val firstStore = object : SharedPreferences by store {
+            override fun getString(key: String?, defaultValue: String?): String? {
+                val value = store.getString(key, defaultValue)
+                if (active.get() && key == "push.direct_device_id") {
+                    firstEntered.countDown()
+                    assertTrue(releaseFirst.await(5, TimeUnit.SECONDS))
+                }
+                return value
+            }
+        }
+        val secondStore = object : SharedPreferences by store {
+            override fun getString(key: String?, defaultValue: String?): String? {
+                if (active.get() && key == "push.direct_device_id") secondEntered.countDown()
+                return store.getString(key, defaultValue)
+            }
+        }
+        val first = SecurePreferencesManager.fromPreferences(context, firstStore)
+        val second = SecurePreferencesManager.fromPreferences(context, secondStore)
+        val executor = Executors.newFixedThreadPool(2)
+        active.set(true)
+
+        try {
+            val firstRead = executor.submit(java.util.concurrent.Callable { first.getOrCreateDirectDeviceId() })
+            assertTrue(firstEntered.await(5, TimeUnit.SECONDS))
+            val secondRead = executor.submit(java.util.concurrent.Callable { second.getOrCreateDirectDeviceId() })
+
+            assertFalse(secondEntered.await(200, TimeUnit.MILLISECONDS))
+            releaseFirst.countDown()
+            val firstId = firstRead.get(5, TimeUnit.SECONDS)
+            val secondId = secondRead.get(5, TimeUnit.SECONDS)
+
+            assertEquals(firstId, secondId)
+            assertEquals(firstId, store.getString("push.direct_device_id", null))
+        } finally {
+            releaseFirst.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun `different manager instances serialize token generation updates`() {
         val firstEntered = CountDownLatch(1)
         val secondEntered = CountDownLatch(1)
