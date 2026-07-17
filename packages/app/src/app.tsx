@@ -42,6 +42,7 @@ import { ModelsProvider } from "@/context/models"
 import { NotificationProvider } from "@/context/notification"
 import { PermissionProvider } from "@/context/permission"
 import { PushPairProvider } from "@/context/push-pair"
+import { pushHostProviderMode, PushHostProvider } from "@/context/push-host"
 import { usePlatform } from "@/context/platform"
 import { PushRelayProvider } from "@/context/push-relay"
 import { PromptProvider } from "@/context/prompt"
@@ -275,16 +276,34 @@ function BodyDesignClass() {
 function SharedProviders(props: ParentProps) {
   return (
     <SettingsProvider>
-      <PushRelayProvider>
-        <PushPairProvider>
-          <BodyDesignClass />
-          <CommandProvider>
-            <DesktopCommands />
-            <HighlightsProvider>{props.children}</HighlightsProvider>
-          </CommandProvider>
-        </PushPairProvider>
-      </PushRelayProvider>
+      <PushProviders>
+        <BodyDesignClass />
+        <CommandProvider>
+          <DesktopCommands />
+          <HighlightsProvider>{props.children}</HighlightsProvider>
+        </CommandProvider>
+      </PushProviders>
     </SettingsProvider>
+  )
+}
+
+function PushProviders(props: ParentProps) {
+  const platform = usePlatform()
+  const mode = createMemo(() => {
+    const push = platform.pushState?.()
+    return pushHostProviderMode(platform.platform, push?.paired === true, push?.diag?.relay)
+  })
+  return (
+    <Show
+      when={mode() === "host"}
+      fallback={
+        <PushRelayProvider>
+          <PushPairProvider>{props.children}</PushPairProvider>
+        </PushRelayProvider>
+      }
+    >
+      <PushHostProvider>{props.children}</PushHostProvider>
+    </Show>
   )
 }
 
