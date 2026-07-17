@@ -5,8 +5,10 @@ import { PushHostError } from "@/utils/push-host"
 import {
   createPushHostCoordinator,
   createPushHostState,
+  nextPushHostRetryAt,
   pushHostRegistration,
   pushHostProviderMode,
+  pushHostProviderStack,
   pushHostRetryAt,
   sanitizePushHostPersisted,
   shouldRegister,
@@ -34,6 +36,11 @@ describe("push host state", () => {
     expect(pushHostProviderMode("android", false, "https://relay.example")).toBe("legacy")
     expect(pushHostProviderMode("ios", false)).toBe("legacy")
     expect(pushHostProviderMode("web", false)).toBe("legacy")
+  })
+
+  test("keeps legacy contexts mounted while Android direct hosting is active", () => {
+    expect(pushHostProviderStack("android", false)).toEqual(["relay", "pair", "host"])
+    expect(pushHostProviderStack("android", true)).toEqual(["relay", "pair"])
   })
 
   test("registers once per authenticated server and token generation", () => {
@@ -114,6 +121,25 @@ describe("push host state", () => {
     expect(persisted.servers["https://one"]?.server).toBe("https://one")
     expect(JSON.stringify(persisted)).not.toContain("secret-fcm-token")
   })
+
+  test("keeps removed or unauthenticated unregister retries dormant", () => {
+    const pending = {
+      server: "https://one",
+      device: "device-1",
+      tokenGeneration: 2,
+      status: "unregistering" as const,
+      updatedAt: 1_000,
+      retryAt: 6_000,
+    }
+    expect(nextPushHostRetryAt([pending], [], {}, 10_000)).toBeUndefined()
+    expect(
+      nextPushHostRetryAt([pending], [{ type: "http", http: { url: "https://one" } }], { "https://one": true }, 10_000),
+    ).toBeUndefined()
+    expect(
+      nextPushHostRetryAt([pending], [connection("https://one")], { "https://one": false }, 10_000),
+    ).toBeUndefined()
+    expect(nextPushHostRetryAt([pending], [connection("https://one")], { "https://one": true }, 10_000)).toBe(10_000)
+  })
 })
 
 describe("push host coordinator", () => {
@@ -148,6 +174,81 @@ describe("push host coordinator", () => {
     await Promise.all([first, second])
     expect(state.get(ServerConnection.key(one))?.status).toBe("active")
     expect(state.get(ServerConnection.key(two))?.status).toBe("active")
+  })
+
+  test("replays the latest token generation after an in-flight registration", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const generations: number[] = []
+    const server = connection("https://one")
+    const key = ServerConnection.key(server)
+    const coordinator = createPushHostCoordinator({
+      state: createPushHostState(),
+      register: async (_server, payload) => {
+        generations.push(payload.token_generation)
+        if (generations.length === 1) await gate
+      },
+      unregister: async () => undefined,
+      test: async () => undefined,
+    })
+
+    const first = coordinator.sync({
+      servers: [server],
+      health: { [key]: true },
+      registration: registration(2),
+      enabled: true,
+    })
+    await Promise.resolve()
+    const second = coordinator.sync({
+      servers: [server],
+      health: { [key]: true },
+      registration: registration(3),
+      enabled: true,
+    })
+    release()
+    await Promise.all([first, second])
+
+    expect(generations).toEqual([2, 3])
+  })
+
+  test("replays the latest preferences after an in-flight registration", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const complete: boolean[] = []
+    const server = connection("https://one")
+    const key = ServerConnection.key(server)
+    const coordinator = createPushHostCoordinator({
+      state: createPushHostState(),
+      register: async (_server, payload) => {
+        complete.push(payload.prefs.complete)
+        if (complete.length === 1) await gate
+      },
+      unregister: async () => undefined,
+      test: async () => undefined,
+    })
+
+    const first = coordinator.sync({
+      servers: [server],
+      health: { [key]: true },
+      registration: registration(),
+      enabled: true,
+    })
+    await Promise.resolve()
+    const second = coordinator.sync({
+      servers: [server],
+      health: { [key]: true },
+      registration: pushHostRegistration(registration(), {
+        complete: false,
+        approval: true,
+        question: false,
+        error: false,
+      }),
+      enabled: true,
+    })
+    release()
+    await Promise.all([first, second])
+
+    expect(complete).toEqual([true, false])
   })
 
   test("registers after server health recovers and re-registers for a new token generation", async () => {
@@ -251,6 +352,54 @@ describe("push host coordinator", () => {
     now = 6_000
     await coordinator.sync({ servers: [server], health: { [key]: true }, registration: registration(), enabled: true })
     expect(attempts).toBe(2)
+    expect(state.get(key)).toBeUndefined()
+  })
+
+  test("keeps hydrated unregister dormant until the server is re-added authenticated", async () => {
+    const key = "https://one"
+    let attempts = 0
+    const state = createPushHostState({
+      [key]: {
+        server: key,
+        device: "device-1",
+        tokenGeneration: 2,
+        status: "unregistering",
+        updatedAt: 1_000,
+        retryAt: 6_000,
+      },
+    })
+    const coordinator = createPushHostCoordinator({
+      state,
+      now: () => 10_000,
+      register: async () => undefined,
+      unregister: async () => {
+        attempts++
+      },
+      test: async () => undefined,
+    })
+
+    await coordinator.sync({ servers: [], health: {}, registration: registration(), enabled: true })
+    await coordinator.sync({ servers: [], health: {}, registration: registration(), enabled: true })
+    expect(attempts).toBe(0)
+    expect(state.get(key)?.retryAt).toBe(6_000)
+
+    const unauthenticated = { type: "http" as const, http: { url: key } }
+    await coordinator.sync({
+      servers: [unauthenticated],
+      health: { [key]: true },
+      registration: registration(),
+      enabled: true,
+    })
+    expect(attempts).toBe(0)
+    expect(state.get(key)?.status).toBe("unregistering")
+
+    await coordinator.sync({
+      servers: [connection(key)],
+      health: { [key]: true },
+      registration: registration(),
+      enabled: true,
+    })
+    expect(attempts).toBe(1)
     expect(state.get(key)).toBeUndefined()
   })
 

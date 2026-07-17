@@ -34,8 +34,35 @@ export function pushHostProviderMode(
   return platform === "android" && !legacyPaired && !customRelay ? "host" : "legacy"
 }
 
+export function pushHostProviderStack(
+  platform: "web" | "desktop" | "ios" | "android",
+  legacyPaired: boolean,
+  relay?: string,
+) {
+  const legacy = ["relay", "pair"] as const
+  return pushHostProviderMode(platform, legacyPaired, relay) === "host" ? [...legacy, "host" as const] : [...legacy]
+}
+
 export function pushHostRetryAt(now: number, attempt: number) {
   return now + RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]
+}
+
+export function nextPushHostRetryAt(
+  states: HostPushState[],
+  servers: ServerConnection.Any[],
+  health: Record<string, boolean | undefined>,
+  now: number,
+) {
+  const available = new Set<string>(
+    servers.flatMap((server) => {
+      const key = ServerConnection.key(server)
+      return server.http.password && health[key] === true ? [key] : []
+    }),
+  )
+  const retries = states.flatMap((state) =>
+    state.retryAt !== undefined && available.has(state.server) ? [Math.max(now, state.retryAt)] : [],
+  )
+  return retries.length ? Math.min(...retries) : undefined
 }
 
 export function pushHostRegistration(registration: PushRegistration, prefs: PushPrefs): PushRegistration {
@@ -224,6 +251,7 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
   const now = options.now ?? Date.now
   const known = new Map<string, ServerConnection.Any>()
   const inflight = new Map<string, { kind: "register" | "unregister" | "test"; promise: Promise<unknown> }>()
+  const desired = new Map<string, { server: ServerConnection.Any; payload: PushRegistration; signature: string }>()
   let latest: CoordinatorInput | undefined
 
   const run = (
@@ -254,14 +282,49 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
     })
   }
 
+  const register = (server: ServerConnection.Any, payload: PushRegistration) => {
+    const key = ServerConnection.key(server)
+    const signature = `${payload.token_generation}\0${JSON.stringify(payload.prefs)}`
+    desired.set(key, { server, payload, signature })
+    return run(key, "register", async () => {
+      while (true) {
+        const next = desired.get(key)
+        if (!next) return
+        options.state.registering(key, next.payload)
+        const ok = await options.register(next.server, next.payload).then(
+          () => {
+            options.state.success(key, next.payload.device, next.payload.token_generation)
+            return true
+          },
+          (error) => {
+            options.state.failure(key, next.payload, error)
+            return false
+          },
+        )
+        const pending = desired.get(key)
+        if (pending?.signature !== next.signature) continue
+        desired.delete(key)
+        if (!ok) return
+        return
+      }
+    })
+  }
+
   const sync = async (input: CoordinatorInput) => {
     latest = input
     input.servers.forEach((server) => known.set(ServerConnection.key(server), server))
     const current = new Set<string>(input.servers.map(ServerConnection.key))
+    const currentServers = new Map<string, ServerConnection.Any>(
+      input.servers.map((server) => [ServerConnection.key(server), server]),
+    )
+    if (!input.enabled) desired.clear()
+    else [...desired.keys()].filter((key) => !current.has(key)).forEach((key) => desired.delete(key))
     const removals = options.state
       .list()
       .filter((state) => {
         if (state.status === "unregistering") {
+          const conn = currentServers.get(state.server)
+          if (!conn?.http.password || input.health[state.server] !== true) return false
           return state.retryAt === undefined || shouldRetryUnregister(state, now())
         }
         return !input.enabled || !current.has(state.server)
@@ -275,6 +338,8 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
     const registrations = input.servers.flatMap((server) => {
       const key = ServerConnection.key(server)
       const allowed = !!server.http.password && input.health[key] === true
+      const running = inflight.get(key)?.kind === "register"
+      if (allowed && running) return [register(server, input.registration!)]
       if (
         !shouldRegister(options.state, {
           server: key,
@@ -285,15 +350,7 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
       ) {
         return []
       }
-      return [
-        run(key, "register", async () => {
-          options.state.registering(key, input.registration!)
-          await options.register(server, input.registration!).then(
-            () => options.state.success(key, input.registration!.device, input.registration!.token_generation),
-            (error) => options.state.failure(key, input.registration!, error),
-          )
-        }),
-      ]
+      return [register(server, input.registration!)]
     })
     await Promise.all([...removals, ...registrations])
   }
@@ -413,10 +470,17 @@ export const { use: usePushHost, provider: PushHostProvider } = createSimpleCont
     })
 
     createEffect(() => {
-      const retries = Object.values(store.servers)
-        .map((value) => value.retryAt)
-        .filter((value): value is number => value !== undefined)
-      const retryAt = retries.length ? Math.min(...retries) : undefined
+      const retryAt = nextPushHostRetryAt(
+        Object.values(store.servers),
+        global.servers.list(),
+        Object.fromEntries(
+          global.servers.list().map((target) => {
+            const key = ServerConnection.key(target)
+            return [key, global.servers.health[key]?.healthy]
+          }),
+        ),
+        Date.now(),
+      )
       if (retryAt === undefined) return
       const timer = globalThis.setTimeout(bump, Math.max(0, retryAt - Date.now()))
       onCleanup(() => globalThis.clearTimeout(timer))
