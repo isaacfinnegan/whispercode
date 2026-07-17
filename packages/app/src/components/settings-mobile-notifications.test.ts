@@ -3,6 +3,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { dict } from "../i18n/en"
+import { pushHostProviderMode } from "../context/push-host"
 import { PushFail } from "../utils/push-pair"
 import { shouldToastPairErr } from "./settings-mobile-notifications-helpers"
 import { diagRows, hostSummary } from "./settings-mobile-notifications-data"
@@ -113,7 +114,20 @@ describe("settings mobile notifications", () => {
     const file = Bun.file(new URL("./settings-mobile-notifications.tsx", import.meta.url))
     const text = await file.text()
 
-    expect(text).toContain('data-component="settings-push-host"')
+    const parent = text.slice(
+      text.indexOf("export const SettingsMobileNotifications"),
+      text.indexOf("function AndroidDirectNotifications"),
+    )
+    const direct = text.slice(text.indexOf("function AndroidDirectNotifications"))
+
+    expect(pushHostProviderMode("ios", false)).toBe("legacy")
+    expect(pushHostProviderMode("android", true)).toBe("legacy")
+    expect(pushHostProviderMode("android", false, "https://relay.example")).toBe("legacy")
+    expect(pushHostProviderMode("android", false)).toBe("host")
+    expect(parent).not.toContain("usePushHost()")
+    expect(parent).toContain("when={direct()}")
+    expect(direct).toContain("usePushHost()")
+    expect(direct).toContain('data-component="settings-push-host"')
     expect(text).toContain('data-action="settings-push-host-retry"')
     expect(text).toContain('data-action="settings-push-host-unregister"')
     expect(text).toContain("selected: selectedKey()")

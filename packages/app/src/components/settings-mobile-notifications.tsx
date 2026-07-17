@@ -11,7 +11,7 @@ import { createStore } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import { useGlobal } from "@/context/global"
 import { usePlatform, type PushState } from "@/context/platform"
-import { pushHostServerIdentity, usePushHost } from "@/context/push-host"
+import { pushHostProviderMode, pushHostServerIdentity, usePushHost } from "@/context/push-host"
 import { canClearPair, usePushPair } from "@/context/push-pair"
 import { usePushRelay } from "@/context/push-relay"
 import { ServerConnection, serverName, useServer } from "@/context/server"
@@ -40,9 +40,7 @@ type Summary = {
 export const SettingsMobileNotifications: Component = () => {
   const language = useLanguage()
   const platform = usePlatform()
-  const global = useGlobal()
   const settings = useSettings()
-  const pushHost = usePushHost()
   const pairing = usePushPair()
   const relay = usePushRelay()
   const server = useServer()
@@ -51,7 +49,6 @@ export const SettingsMobileNotifications: Component = () => {
     asking: false,
     testing: false,
     diag: false,
-    hostAction: undefined as "retry" | "unregister" | undefined,
   })
 
   const mobile = createMemo(() => platform.platform === "ios" || platform.platform === "android")
@@ -67,37 +64,9 @@ export const SettingsMobileNotifications: Component = () => {
     }),
   )
   const ready = createMemo(() => mobile() && !!platform.requestPushPermission)
-  const selected = createMemo(() => global.settings.server.selected())
-  const selectedKey = createMemo(() => {
-    const value = selected()
-    const key = value ? pushHostServerIdentity(value)?.id : undefined
-    return key ? ServerConnection.Key.make(key) : undefined
-  })
-  const selectedHost = createMemo(() => {
-    const key = selectedKey()
-    return key ? pushHost.state(key) : undefined
-  })
-  const hostCard = createMemo(() => {
-    const state = selectedHost()
-    return hostSummary(
-      {
-        server: selected() ? serverName(selected()) : undefined,
-        status: state?.status,
-        retryAt: state?.retryAt,
-        code: state?.lastError?.code,
-      },
-      {
-        unavailable: language.t("settings.general.notifications.push.backend.unavailable"),
-        select: language.t("settings.general.notifications.push.backend.select"),
-        registering: language.t("settings.general.notifications.push.backend.registering"),
-        active: language.t("settings.general.notifications.push.backend.active"),
-        retrying: language.t("settings.general.notifications.push.backend.retrying"),
-        missing: language.t("settings.general.notifications.push.backend.missing"),
-        failed: language.t("settings.general.notifications.push.backend.failed"),
-        unregistering: language.t("settings.general.notifications.push.backend.unregistering"),
-      },
-    )
-  })
+  const direct = createMemo(
+    () => pushHostProviderMode(platform.platform, push()?.paired === true, push()?.diag?.relay) === "host",
+  )
 
   const phaseDesc = (value?: ReturnType<typeof pairing.phase>) => {
     if (value === "permission") return language.t("settings.general.notifications.push.pairing.step.permission")
@@ -172,13 +141,17 @@ export const SettingsMobileNotifications: Component = () => {
       .finally(() => setStore("asking", false))
   }
 
-  const testPush = async () => {
+  const testPush = async (target?: {
+    selected: ServerConnection.Key
+    host: { test(server: ServerConnection.Key): Promise<void> }
+  }) => {
     setStore("testing", true)
     await sendPushTest({
+      mode: direct() ? "host" : "legacy",
       platform,
       href: window.location.pathname + window.location.search + window.location.hash,
-      selected: selectedKey(),
-      host: pushHost,
+      selected: target?.selected,
+      host: target?.host,
     })
       .then((ok) => {
         if (!ok) {
@@ -196,7 +169,7 @@ export const SettingsMobileNotifications: Component = () => {
         })
       })
       .catch((err: unknown) => {
-        if (platform.platform === "android") {
+        if (direct()) {
           showToast({
             title: language.t("settings.general.notifications.push.toast.failed.title"),
             description: language.t("settings.general.notifications.push.backend.test.failed"),
@@ -255,27 +228,6 @@ export const SettingsMobileNotifications: Component = () => {
         const message = err instanceof Error ? err.message : String(err)
         showToast({ title: language.t("common.requestFailed"), description: message })
       })
-  }
-
-  const runHostAction = async (action: "retry" | "unregister") => {
-    const key = selectedKey()
-    if (!key || store.hostAction) return
-    setStore("hostAction", action)
-    const job = action === "retry" ? pushHost.retry(key) : pushHost.unregister(key)
-    await job
-      .catch(() =>
-        showToast({
-          title: language.t("common.requestFailed"),
-          description: language.t("settings.general.notifications.push.backend.test.failed"),
-          variant: "error",
-        }),
-      )
-      .finally(() => setStore("hostAction", undefined))
-  }
-
-  const setPreference = (set: (value: boolean) => void, value: boolean) => {
-    set(value)
-    if (selectedKey()) pushHost.preferencesChanged()
   }
 
   const rows = createMemo(() =>
@@ -530,7 +482,7 @@ export const SettingsMobileNotifications: Component = () => {
           <h3 class="text-14-medium text-text-strong pb-2">Notifications</h3>
           <div class="bg-surface-raised-base px-4 rounded-lg">
             <Show
-              when={platform.platform === "android"}
+              when={direct()}
               fallback={
                 <Show
                   when={ready()}
@@ -657,127 +609,210 @@ export const SettingsMobileNotifications: Component = () => {
                 </Show>
               }
             >
-              <Show
-                when={ready()}
-                fallback={
-                  <SettingsRow
-                    title={language.t("settings.general.notifications.push.permission.title")}
-                    description={language.t("settings.general.notifications.push.permission.unsupported")}
-                  >
-                    <span class="text-12-medium text-text-dimmed">
-                      {language.t("settings.general.notifications.push.action.unavailable")}
-                    </span>
-                  </SettingsRow>
-                }
-              >
-                <div data-component="settings-push-host">
-                  <div class="py-4 border-b border-border-weak-base">
-                    <StatusCard {...hostCard()} busy={!!store.hostAction} />
-                  </div>
-
-                  <SettingsRow
-                    title={language.t("settings.general.notifications.push.permission.title")}
-                    description={pushDesc(push())}
-                  >
-                    <div data-action="settings-push-permission">
-                      <Button
-                        size="small"
-                        variant="secondary"
-                        disabled={store.asking || permissionAction().disabled}
-                        onClick={() => void permissionAction().run?.()}
-                      >
-                        {store.asking
-                          ? language.t("settings.general.notifications.push.action.checking")
-                          : permissionAction().label}
-                      </Button>
-                    </div>
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title={language.t("settings.general.notifications.push.backend.token.title")}
-                    description={pushDesc(push())}
-                  >
-                    <span class="text-12-medium text-text-dimmed">
-                      {push()?.registered
-                        ? language.t("settings.general.notifications.push.backend.token.ready")
-                        : language.t("settings.general.notifications.push.backend.token.pending")}
-                    </span>
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title={language.t("settings.general.notifications.agent.title")}
-                    description={language.t("settings.general.notifications.agent.description")}
-                  >
-                    <Switch
-                      checked={settings.notifications.agent()}
-                      onChange={(value) => setPreference(settings.notifications.setAgent, value)}
-                    />
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title={language.t("settings.general.notifications.permissions.title")}
-                    description={language.t("settings.general.notifications.permissions.description")}
-                  >
-                    <Switch
-                      checked={settings.notifications.permissions()}
-                      onChange={(value) => setPreference(settings.notifications.setPermissions, value)}
-                    />
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title={language.t("settings.general.notifications.errors.title")}
-                    description={language.t("settings.general.notifications.errors.description")}
-                  >
-                    <Switch
-                      checked={settings.notifications.errors()}
-                      onChange={(value) => setPreference(settings.notifications.setErrors, value)}
-                    />
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title={language.t("settings.general.notifications.push.test.title")}
-                    description={language.t("settings.general.notifications.push.test.description")}
-                  >
-                    <Button
-                      data-action="settings-push-test"
-                      size="small"
-                      variant="secondary"
-                      disabled={store.testing || selectedHost()?.status !== "active"}
-                      onClick={() => void testPush()}
+              {(_direct) => (
+                <Show
+                  when={ready()}
+                  fallback={
+                    <SettingsRow
+                      title={language.t("settings.general.notifications.push.permission.title")}
+                      description={language.t("settings.general.notifications.push.permission.unsupported")}
                     >
-                      {store.testing
-                        ? language.t("settings.general.notifications.push.action.sending")
-                        : language.t("settings.general.notifications.push.action.test")}
-                    </Button>
-                  </SettingsRow>
-
-                  <SettingsRow title={hostCard().title} description={hostCard().body}>
-                    <div class="flex flex-wrap items-center justify-end gap-2">
-                      <Button
-                        data-action="settings-push-host-retry"
-                        size="small"
-                        disabled={!!store.hostAction || selectedHost()?.status !== "error"}
-                        onClick={() => void runHostAction("retry")}
-                      >
-                        {language.t("settings.general.notifications.push.backend.action.retry")}
-                      </Button>
-                      <Button
-                        data-action="settings-push-host-unregister"
-                        size="small"
-                        variant="secondary"
-                        disabled={!!store.hostAction || !selectedHost() || selectedHost()?.status === "unregistering"}
-                        onClick={() => void runHostAction("unregister")}
-                      >
-                        {language.t("settings.general.notifications.push.backend.action.unregister")}
-                      </Button>
-                    </div>
-                  </SettingsRow>
-                </div>
-              </Show>
+                      <span class="text-12-medium text-text-dimmed">
+                        {language.t("settings.general.notifications.push.action.unavailable")}
+                      </span>
+                    </SettingsRow>
+                  }
+                >
+                  <AndroidDirectNotifications
+                    push={push}
+                    pushDesc={pushDesc}
+                    permissionAction={permissionAction}
+                    asking={store.asking}
+                    testing={store.testing}
+                    test={testPush}
+                  />
+                </Show>
+              )}
             </Show>
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function AndroidDirectNotifications(props: {
+  push: () => PushState | undefined
+  pushDesc: (value?: PushState) => string
+  permissionAction: () => PushAction
+  asking: boolean
+  testing: boolean
+  test(input: {
+    selected: ServerConnection.Key
+    host: { test(server: ServerConnection.Key): Promise<void> }
+  }): Promise<void>
+}) {
+  const language = useLanguage()
+  const global = useGlobal()
+  const settings = useSettings()
+  const pushHost = usePushHost()
+  const [store, setStore] = createStore({ hostAction: undefined as "retry" | "unregister" | undefined })
+  const selected = createMemo(() => global.settings.server.selected())
+  const selectedKey = createMemo(() => {
+    const value = selected()
+    const key = value ? pushHostServerIdentity(value)?.id : undefined
+    return key ? ServerConnection.Key.make(key) : undefined
+  })
+  const selectedHost = createMemo(() => {
+    const key = selectedKey()
+    return key ? pushHost.state(key) : undefined
+  })
+  const hostCard = createMemo(() => {
+    const state = selectedHost()
+    return hostSummary(
+      {
+        server: selected() ? serverName(selected()) : undefined,
+        status: state?.status,
+        retryAt: state?.retryAt,
+        code: state?.lastError?.code,
+      },
+      {
+        unavailable: language.t("settings.general.notifications.push.backend.unavailable"),
+        select: language.t("settings.general.notifications.push.backend.select"),
+        registering: language.t("settings.general.notifications.push.backend.registering"),
+        active: language.t("settings.general.notifications.push.backend.active"),
+        retrying: language.t("settings.general.notifications.push.backend.retrying"),
+        missing: language.t("settings.general.notifications.push.backend.missing"),
+        failed: language.t("settings.general.notifications.push.backend.failed"),
+        unregistering: language.t("settings.general.notifications.push.backend.unregistering"),
+      },
+    )
+  })
+
+  const runHostAction = async (action: "retry" | "unregister") => {
+    const key = selectedKey()
+    if (!key || store.hostAction) return
+    setStore("hostAction", action)
+    const job = action === "retry" ? pushHost.retry(key) : pushHost.unregister(key)
+    await job
+      .catch(() =>
+        showToast({
+          title: language.t("common.requestFailed"),
+          description: language.t("settings.general.notifications.push.backend.test.failed"),
+          variant: "error",
+        }),
+      )
+      .finally(() => setStore("hostAction", undefined))
+  }
+
+  const setPreference = (set: (value: boolean) => void, value: boolean) => {
+    set(value)
+    if (selectedKey()) pushHost.preferencesChanged()
+  }
+
+  return (
+    <div data-component="settings-push-host">
+      <div class="py-4 border-b border-border-weak-base">
+        <StatusCard {...hostCard()} busy={!!store.hostAction} />
+      </div>
+
+      <SettingsRow
+        title={language.t("settings.general.notifications.push.permission.title")}
+        description={props.pushDesc(props.push())}
+      >
+        <div data-action="settings-push-permission">
+          <Button
+            size="small"
+            variant="secondary"
+            disabled={props.asking || props.permissionAction().disabled}
+            onClick={() => void props.permissionAction().run?.()}
+          >
+            {props.asking
+              ? language.t("settings.general.notifications.push.action.checking")
+              : props.permissionAction().label}
+          </Button>
+        </div>
+      </SettingsRow>
+
+      <SettingsRow
+        title={language.t("settings.general.notifications.push.backend.token.title")}
+        description={props.pushDesc(props.push())}
+      >
+        <span class="text-12-medium text-text-dimmed">
+          {props.push()?.registered
+            ? language.t("settings.general.notifications.push.backend.token.ready")
+            : language.t("settings.general.notifications.push.backend.token.pending")}
+        </span>
+      </SettingsRow>
+
+      <SettingsRow
+        title={language.t("settings.general.notifications.agent.title")}
+        description={language.t("settings.general.notifications.agent.description")}
+      >
+        <Switch
+          checked={settings.notifications.agent()}
+          onChange={(value) => setPreference(settings.notifications.setAgent, value)}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        title={language.t("settings.general.notifications.permissions.title")}
+        description={language.t("settings.general.notifications.permissions.description")}
+      >
+        <Switch
+          checked={settings.notifications.permissions()}
+          onChange={(value) => setPreference(settings.notifications.setPermissions, value)}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        title={language.t("settings.general.notifications.errors.title")}
+        description={language.t("settings.general.notifications.errors.description")}
+      >
+        <Switch
+          checked={settings.notifications.errors()}
+          onChange={(value) => setPreference(settings.notifications.setErrors, value)}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        title={language.t("settings.general.notifications.push.test.title")}
+        description={language.t("settings.general.notifications.push.test.description")}
+      >
+        <Button
+          data-action="settings-push-test"
+          size="small"
+          variant="secondary"
+          disabled={props.testing || selectedHost()?.status !== "active"}
+          onClick={() => void props.test({ selected: selectedKey()!, host: pushHost })}
+        >
+          {props.testing
+            ? language.t("settings.general.notifications.push.action.sending")
+            : language.t("settings.general.notifications.push.action.test")}
+        </Button>
+      </SettingsRow>
+
+      <SettingsRow title={hostCard().title} description={hostCard().body}>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            data-action="settings-push-host-retry"
+            size="small"
+            disabled={!!store.hostAction || selectedHost()?.status !== "error"}
+            onClick={() => void runHostAction("retry")}
+          >
+            {language.t("settings.general.notifications.push.backend.action.retry")}
+          </Button>
+          <Button
+            data-action="settings-push-host-unregister"
+            size="small"
+            variant="secondary"
+            disabled={!!store.hostAction || !selectedHost() || selectedHost()?.status === "unregistering"}
+            onClick={() => void runHostAction("unregister")}
+          >
+            {language.t("settings.general.notifications.push.backend.action.unregister")}
+          </Button>
+        </div>
+      </SettingsRow>
     </div>
   )
 }

@@ -5,12 +5,13 @@ import type { Platform } from "@/context/platform"
 import type { ServerConnection } from "@/context/server"
 
 export async function sendPushTest(input: {
+  mode: "host" | "legacy"
   platform: Pick<Platform, "platform" | "fetch" | "testPush">
   href?: string
   selected?: ServerConnection.Key
   host?: { test(server: ServerConnection.Key): Promise<void> }
 }) {
-  if (input.platform.platform === "android") {
+  if (input.mode === "host") {
     if (!input.selected || !input.host) throw new Error("Backend push delivery is not configured")
     return input.host.test(input.selected).then(
       () => true,
