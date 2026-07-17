@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { ServerConnection } from "@/context/server"
 import type { PushRegistration } from "@/context/platform"
-import { PushPlugin, runPush } from "./push-plugin"
+import { holdPush, PushPlugin, runPush, runPushTransport } from "./push-plugin"
 import {
   PushHostError,
   pushHostStatus,
@@ -35,7 +35,7 @@ type Plan = {
   ticketHang?: boolean
   ticketStatus?: number
   disposeStatus?: number
-  requireHold?: boolean
+  requireParent?: boolean
 }
 
 async function within<T>(promise: Promise<T>, ms = 200): Promise<T> {
@@ -128,8 +128,8 @@ function trace(plan: Plan = {}, installed = true) {
     if (url.pathname === "/path") return Response.json({ state: "/tmp/opencode", directory: "/repo" })
     if (url.pathname === "/pty" && method === "POST") {
       created = true
-      const args = (body ? JSON.parse(body) : {}) as { args?: string[] }
-      running = !plan.requireHold || args.args?.includes("--pty-hold") === true
+      const value = (body ? JSON.parse(body) : {}) as { command?: string; args?: string[] }
+      running = !plan.requireParent || (value.command === "node" && value.args?.[0] === "-e")
       return Response.json({ id: "pty-1" })
     }
     if (url.pathname === "/pty/pty-1/connect-token" && method === "POST") {
@@ -193,6 +193,55 @@ describe("runPush", () => {
       command: "bunx",
       args: [PushPlugin.spec, "status", "--json"],
     })
+  })
+
+  test("wraps trusted argv as static Node data without shell interpolation", () => {
+    const child = runPush(["register", "--stdin"])
+    const transport = runPushTransport(["register", "--stdin"])
+
+    expect(transport.command).toBe("node")
+    expect(transport.args[0]).toBe("-e")
+    expect(JSON.parse(transport.args[2]!)).toEqual([child.command, ...child.args])
+    expect(transport.args[1]).not.toContain(token)
+    expect(transport.args[2]).not.toContain(token)
+  })
+
+  test("transport parent holds output from an immediately exiting old child", async () => {
+    const usage = "opencode-push <install|pair|status|test>\\n"
+    const transport = holdPush({
+      command: process.execPath,
+      args: ["-e", `process.stdout.write(${JSON.stringify(usage)})`],
+    })
+    const proc = Bun.spawn([transport.command, ...transport.args], { stdout: "pipe", stderr: "pipe" })
+    const reader = proc.stdout.getReader()
+    const first = await reader.read()
+    let exited = false
+    void proc.exited.then(() => (exited = true))
+
+    expect(new TextDecoder().decode(first.value)).toBe(usage)
+    await Bun.sleep(100)
+    expect(exited).toBe(false)
+    proc.kill()
+    await proc.exited
+    await reader.cancel()
+    expect(await new Response(proc.stderr).text()).toBe("")
+  })
+
+  test("transport parent forwards termination and waits for the child", async () => {
+    const script = String.raw`
+      process.once("SIGTERM", () => process.stdout.write("stopped\n", () => process.exit(0)))
+      process.stdout.write("ready\n")
+      setInterval(() => {}, 1_000)
+    `
+    const transport = holdPush({ command: process.execPath, args: ["-e", script] })
+    const proc = Bun.spawn([transport.command, ...transport.args], { stdout: "pipe", stderr: "pipe" })
+    const reader = proc.stdout.getReader()
+
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("ready\n")
+    proc.kill("SIGTERM")
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("stopped\n")
+    expect(await within(proc.exited, 2_000)).toBe(0)
+    expect(await new Response(proc.stderr).text()).toBe("")
   })
 })
 
@@ -327,19 +376,19 @@ describe("push host PTY", () => {
     const result = await registerPushHost({ server, payload: registration, fetch: next.fetch, socket: next.socket })
 
     const create = next.requests.find((request) => request.path === "/pty" && request.method === "POST")!
-    expect(JSON.parse(create.body)).toEqual({
-      command: "npx",
-      args: [
-        "--yes",
-        "--prefix",
-        ".",
-        `--package=${PushPlugin.spec}`,
-        PushPlugin.bin,
-        "--pty-hold",
-        "register",
-        "--stdin",
-      ],
-    })
+    const command = JSON.parse(create.body) as { command: string; args: string[] }
+    expect(command.command).toBe("node")
+    expect(command.args[0]).toBe("-e")
+    expect(JSON.parse(command.args[2]!)).toEqual([
+      "npx",
+      "--yes",
+      "--prefix",
+      ".",
+      `--package=${PushPlugin.spec}`,
+      PushPlugin.bin,
+      "register",
+      "--stdin",
+    ])
     expect(JSON.stringify(create)).not.toContain(token)
     expect(next.websocketURL()).not.toContain(token)
     expect(next.stdin).toEqual([JSON.stringify(registration) + "\n"])
@@ -408,7 +457,7 @@ describe("push host PTY", () => {
   })
 
   test("runs non-register commands without readiness or stdin", async () => {
-    const status = trace({ output: '{"mode":"direct","configured":true,"devices":[]}\n' })
+    const status = trace({ output: '{"mode":"direct","configured":true,"devices":[]}\n', requireParent: true })
     await expect(pushHostStatus({ server, fetch: status.fetch, socket: status.socket })).resolves.toEqual({
       mode: "direct",
       configured: true,
@@ -416,13 +465,13 @@ describe("push host PTY", () => {
     })
     expect(status.stdin).toEqual([])
 
-    const unregister = trace({ output: '{"ok":true,"device":"device-1","active":false}\n' })
+    const unregister = trace({ output: '{"ok":true,"device":"device-1","active":false}\n', requireParent: true })
     await expect(
       unregisterPushHost({ server, device: "device-1", fetch: unregister.fetch, socket: unregister.socket }),
     ).resolves.toMatchObject({ ok: true })
     expect(unregister.stdin).toEqual([])
 
-    const test = trace({ output: '{"ok":true,"device":"device-1"}\n' })
+    const test = trace({ output: '{"ok":true,"device":"device-1"}\n', requireParent: true })
     await expect(
       testPushHost({ server, device: "device-1", fetch: test.fetch, socket: test.socket }),
     ).resolves.toMatchObject({
@@ -433,23 +482,50 @@ describe("push host PTY", () => {
     expect(
       [status, unregister, test].map((next) => {
         const create = next.requests.find((request) => request.path === "/pty" && request.method === "POST")!
-        return (JSON.parse(create.body) as { args: string[] }).args.slice(5)
+        const transport = JSON.parse(create.body) as { args: string[] }
+        return JSON.parse(transport.args[2]!) as string[]
       }),
     ).toEqual([
-      ["--pty-hold", "status", "--json"],
-      ["--pty-hold", "unregister", "--device", "device-1"],
-      ["--pty-hold", "test", "--device", "device-1"],
+      ["npx", "--yes", "--prefix", ".", `--package=${PushPlugin.spec}`, PushPlugin.bin, "status", "--json"],
+      [
+        "npx",
+        "--yes",
+        "--prefix",
+        ".",
+        `--package=${PushPlugin.spec}`,
+        PushPlugin.bin,
+        "unregister",
+        "--device",
+        "device-1",
+      ],
+      ["npx", "--yes", "--prefix", ".", `--package=${PushPlugin.spec}`, PushPlugin.bin, "test", "--device", "device-1"],
     ])
   })
 
   test("holds a fast command through delayed ticket attachment and deletion", async () => {
-    const next = trace({ output: '{"mode":"direct","configured":true,"devices":[]}\n', requireHold: true })
+    const next = trace({ output: '{"mode":"direct","configured":true,"devices":[]}\n', requireParent: true })
 
     await expect(pushHostStatus({ server, fetch: next.fetch, socket: next.socket })).resolves.toEqual({
       mode: "direct",
       configured: true,
       devices: [],
     })
+    expect(next.runningAtTicket()).toBe(true)
+    expect(next.runningAtDelete()).toBe(true)
+  })
+
+  test("keeps old plugin usage attachable and deletes the live parent", async () => {
+    const next = trace({ output: "opencode-push <install|pair|status|test>\n", requireParent: true })
+
+    const error = await registerPushHost({
+      server,
+      payload: registration,
+      fetch: next.fetch,
+      socket: next.socket,
+    }).catch((cause) => cause)
+
+    expect(error).toMatchObject({ code: "push_plugin_upgrade_required" })
+    expect(next.stdin).toEqual([])
     expect(next.runningAtTicket()).toBe(true)
     expect(next.runningAtDelete()).toBe(true)
   })

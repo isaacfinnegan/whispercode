@@ -2,7 +2,7 @@ import type { ServerConnection } from "@/context/server"
 import type { PushRegistration } from "@/context/platform"
 import { serverAuthHeaders } from "@/utils/server"
 import { ensurePushHost, type PushHostDeadline } from "./push-host-install"
-import { runPush } from "./push-plugin"
+import { runPushTransport } from "./push-plugin"
 import { terminalWebSocketURL } from "./terminal-websocket-url"
 
 const READY = '{"ready":true}'
@@ -172,7 +172,7 @@ async function execute(
   payload?: PushRegistration,
 ): Promise<Record<string, unknown>> {
   const fetch = input.fetch ?? globalThis.fetch
-  const spec = runPush(["--pty-hold", command, ...args], input.tool)
+  const spec = runPushTransport([command, ...args], input.tool)
   const created = await deadline.run(
     fetch(new URL("/pty", input.server.http.url), {
       method: "POST",
