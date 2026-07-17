@@ -4,6 +4,7 @@ import { ServerConnection } from "./server"
 import { PushHostError } from "@/utils/push-host"
 import {
   createPushHostCoordinator,
+  createPushHostRetryTimer,
   createPushHostState,
   nextPushHostRetryAt,
   pushHostRegistration,
@@ -213,6 +214,71 @@ describe("push host coordinator", () => {
 
     expect(calls).toEqual([first.http.url])
     expect(coordinator.state(ServerConnection.key(second))?.status).toBe("active")
+  })
+
+  test("selects the first authenticated healthy alias for a canonical origin", async () => {
+    const first = { type: "http" as const, http: { url: "https://one/unavailable" } }
+    const second = connection("https://one/ready")
+    const third = connection("https://one/also-ready")
+    const calls: string[] = []
+    const coordinator = createPushHostCoordinator({
+      state: createPushHostState(),
+      register: async (server) => calls.push(server.http.url),
+      unregister: async () => undefined,
+      test: async () => undefined,
+    })
+
+    await coordinator.sync({
+      servers: [first, second, third],
+      health: {
+        [ServerConnection.key(first)]: false,
+        [ServerConnection.key(second)]: true,
+        [ServerConnection.key(third)]: true,
+      },
+      registration: registration(),
+      enabled: true,
+    })
+
+    expect(calls).toEqual([second.http.url])
+  })
+
+  test("arms a hydrated future retry after readiness and coordinator mapping change", () => {
+    let ready = false
+    let revision = 0
+    let mapped = false
+    let timer: { delay: number; wake: () => void } | undefined
+    let wakes = 0
+
+    createPushHostRetryTimer({
+      ready,
+      retryAt: () => (mapped ? 6_000 : undefined),
+      now: () => 1_000,
+      wake: () => wakes++,
+      schedule: (wake, delay) => {
+        timer = { delay, wake }
+        return 1
+      },
+      cancel: () => undefined,
+    })
+
+    ready = true
+    expect(timer).toBeUndefined()
+    mapped = true
+    revision++
+    createPushHostRetryTimer({
+      ready,
+      retryAt: () => (revision === 1 && mapped ? 6_000 : undefined),
+      now: () => 1_000,
+      wake: () => wakes++,
+      schedule: (wake, delay) => {
+        timer = { delay, wake }
+        return 1
+      },
+      cancel: () => undefined,
+    })
+    expect(timer?.delay).toBe(5_000)
+    timer?.wake()
+    expect(wakes).toBe(1)
   })
 
   test("concurrent syncs finish with the newest generation and preferences", async () => {

@@ -38,6 +38,15 @@ export async function settleLegacyPushOperation(
   return false
 }
 
+export async function restoreDefaultPushRelay(setRelay?: (url: string) => unknown, clearPairing?: () => unknown) {
+  await Promise.resolve()
+    .then(() => setRelay?.(DEFAULT_PUSH_RELAY_URL))
+    .catch(() => undefined)
+  await Promise.resolve()
+    .then(() => clearPairing?.())
+    .catch(() => undefined)
+}
+
 export const { use: usePushRelay, provider: PushRelayProvider } = createSimpleContext({
   name: "PushRelay",
   gate: false,
@@ -68,7 +77,12 @@ export const { use: usePushRelay, provider: PushRelayProvider } = createSimpleCo
       void platform
         .setPushRelayURL(next)
         .then(async () => {
-          if (!(await settleLegacyPushOperation(active, platform.clearPushPairing))) return
+          if (
+            !(await settleLegacyPushOperation(active, () =>
+              restoreDefaultPushRelay(platform.setPushRelayURL, platform.clearPushPairing),
+            ))
+          )
+            return
           last = next
         })
         .catch(() => undefined)

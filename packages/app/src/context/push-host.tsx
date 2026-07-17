@@ -71,6 +71,26 @@ export function nextPushHostRetryAt(states: Array<[string, HostPushState]>, avai
   return retries.length ? Math.min(...retries) : undefined
 }
 
+export function createPushHostRetryTimer(options: {
+  ready: boolean
+  retryAt(now: number): number | undefined
+  wake(): void
+  now?: () => number
+  schedule?: (wake: () => void, delay: number) => number | ReturnType<typeof globalThis.setTimeout>
+  cancel?: (timer: number | ReturnType<typeof globalThis.setTimeout>) => void
+}) {
+  if (!options.ready) return () => undefined
+  const now = options.now ?? Date.now
+  const schedule = options.schedule ?? ((wake, delay) => globalThis.setTimeout(wake, delay))
+  const cancel =
+    options.cancel ?? ((timer) => globalThis.clearTimeout(timer as ReturnType<typeof globalThis.setTimeout>))
+  const time = now()
+  const retryAt = options.retryAt(time)
+  if (retryAt === undefined) return () => undefined
+  const timer = schedule(options.wake, Math.max(0, retryAt - time))
+  return () => cancel(timer)
+}
+
 export function pushHostRegistration(registration: PushRegistration, prefs: PushPrefs): PushRegistration {
   return { ...registration, prefs }
 }
@@ -340,8 +360,12 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
     >()
     input.servers.forEach((conn) => {
       const identity = pushHostServerIdentity(conn)
-      if (!identity || unique.has(identity.id)) return
-      unique.set(identity.id, { conn, key: ServerConnection.key(conn), id: identity.id, display: identity.server })
+      if (!identity) return
+      const current = unique.get(identity.id)
+      const key = ServerConnection.key(conn)
+      if (current && !!current.conn.http.password && input.health[current.key] === true) return
+      if (current && (!conn.http.password || input.health[key] !== true)) return
+      unique.set(identity.id, { conn, key, id: identity.id, display: identity.server })
     })
     const servers = [...unique.values()]
     servers.forEach((value) => {
@@ -451,7 +475,7 @@ export const { use: usePushHost, provider: PushHostProvider } = createSimpleCont
       },
       createStore<{ version: 2; servers: HostPushSnapshot }>({ version: 2, servers: {} }),
     )
-    const [runtime, setRuntime] = createStore({ generation: -1, tick: 0 })
+    const [runtime, setRuntime] = createStore({ generation: -1, tick: 0, mapping: 0 })
     const state = createPushHostState({}, (value) => setStore("servers", reconcile(value)))
     let registration: PushRegistration | undefined
     let hydrated = false
@@ -517,23 +541,25 @@ export const { use: usePushHost, provider: PushHostProvider } = createSimpleCont
           return [key, global.servers.health[key]?.healthy]
         }),
       )
-      void coordinator
-        .sync({
-          servers: global.servers.list(),
-          health,
-          registration: registration ? pushHostRegistration(registration, prefs()) : undefined,
-          enabled: enabled(),
-        })
-        .catch(() => undefined)
+      const syncing = coordinator.sync({
+        servers: global.servers.list(),
+        health,
+        registration: registration ? pushHostRegistration(registration, prefs()) : undefined,
+        enabled: enabled(),
+      })
+      setRuntime("mapping", (value) => value + 1)
+      void syncing.catch(() => undefined)
     })
 
     createEffect(() => {
       Object.values(store.servers)
-      global.servers.list()
-      const retryAt = coordinator.nextRetryAt(Date.now())
-      if (retryAt === undefined) return
-      const timer = globalThis.setTimeout(bump, Math.max(0, retryAt - Date.now()))
-      onCleanup(() => globalThis.clearTimeout(timer))
+      runtime.mapping
+      const cancel = createPushHostRetryTimer({
+        ready: ready() && hydrated,
+        retryAt: (time) => coordinator.nextRetryAt(time),
+        wake: bump,
+      })
+      onCleanup(cancel)
     })
 
     createEffect(() => {
