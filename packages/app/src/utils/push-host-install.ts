@@ -5,26 +5,42 @@ import { addPush, hasPush } from "./push-plugin"
 const WAIT_MS = 15_000
 const WAIT_GAP = 250
 
-const request = (fetch: typeof globalThis.fetch, server: ServerConnection.Any, path: string, init?: RequestInit) =>
-  fetch(new URL(path, server.http.url), {
+export type PushHostDeadline = {
+  signal: AbortSignal
+  run<T>(job: Promise<T>): Promise<T>
+  sleep(ms: number): Promise<void>
+}
+
+const request = (
+  fetch: typeof globalThis.fetch,
+  server: ServerConnection.Any,
+  path: string,
+  deadline?: PushHostDeadline,
+  init?: RequestInit,
+) => {
+  const job = fetch(new URL(path, server.http.url), {
     ...init,
+    signal: deadline?.signal ?? init?.signal,
     headers: {
       ...init?.headers,
       ...serverAuthHeaders(server.http),
     },
   })
+  return deadline ? deadline.run(job) : job
+}
 
 export async function ensurePushHost(input: {
   server: ServerConnection.Any
   fetch?: typeof globalThis.fetch
+  deadline?: PushHostDeadline
 }): Promise<boolean> {
   const fetch = input.fetch ?? globalThis.fetch
-  const current = await request(fetch, input.server, "/global/config", { cache: "no-store" })
+  const current = await request(fetch, input.server, "/global/config", input.deadline, { cache: "no-store" })
   if (!current.ok) throw new Error("push_host_config_read_failed")
-  const config = (await current.json()) as { plugin?: string[] }
+  const config = (await (input.deadline ? input.deadline.run(current.json()) : current.json())) as { plugin?: string[] }
   if (hasPush(config.plugin)) return false
 
-  const patch = await request(fetch, input.server, "/global/config", {
+  const patch = await request(fetch, input.server, "/global/config", input.deadline, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ plugin: addPush(config.plugin) }),
@@ -32,15 +48,20 @@ export async function ensurePushHost(input: {
   if (!patch.ok) throw new Error("push_host_config_write_failed")
 
   let disposeError: unknown
-  await request(fetch, input.server, "/global/dispose", { method: "POST" }).catch((cause) => {
+  await request(fetch, input.server, "/global/dispose", input.deadline, { method: "POST" }).catch((cause) => {
+    if (input.deadline?.signal.aborted) throw cause
     disposeError = cause
   })
 
   const deadline = Date.now() + WAIT_MS
-  while (Date.now() < deadline) {
-    const response = await request(fetch, input.server, "/path").catch(() => undefined)
+  while (input.deadline ? !input.deadline.signal.aborted : Date.now() < deadline) {
+    const response = await request(fetch, input.server, "/path", input.deadline).catch((cause) => {
+      if (input.deadline?.signal.aborted) throw cause
+      return undefined
+    })
     if (response?.ok) return true
-    await new Promise((resolve) => globalThis.setTimeout(resolve, WAIT_GAP))
+    if (input.deadline) await input.deadline.sleep(WAIT_GAP)
+    else await new Promise((resolve) => globalThis.setTimeout(resolve, WAIT_GAP))
   }
   if (disposeError) throw disposeError
   throw new Error("push_host_refresh_timeout")

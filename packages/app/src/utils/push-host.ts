@@ -1,7 +1,7 @@
 import type { ServerConnection } from "@/context/server"
 import type { PushRegistration } from "@/context/platform"
 import { serverAuthHeaders } from "@/utils/server"
-import { ensurePushHost } from "./push-host-install"
+import { ensurePushHost, type PushHostDeadline } from "./push-host-install"
 import { runPush } from "./push-plugin"
 
 const READY = '{"ready":true}\n'
@@ -36,6 +36,55 @@ export class PushHostError extends Error {
 
 const auth = (server: ServerConnection.Any) => serverAuthHeaders(server.http)
 
+function createDeadline(ms: number): PushHostDeadline & { dispose(): void } {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof globalThis.setTimeout>
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = globalThis.setTimeout(() => {
+      const error = new PushHostError("push_host_timeout")
+      reject(error)
+      controller.abort(error)
+    }, ms)
+  })
+
+  return {
+    signal: controller.signal,
+    run: <T>(job: Promise<T>) => Promise.race([job, expired]),
+    sleep: (delay: number) => {
+      if (controller.signal.aborted) return Promise.reject(controller.signal.reason)
+      const job = new Promise<void>((resolve, reject) => {
+        const done = () => {
+          globalThis.clearTimeout(wait)
+          controller.signal.removeEventListener("abort", abort)
+        }
+        const abort = () => {
+          done()
+          reject(controller.signal.reason)
+        }
+        const wait = globalThis.setTimeout(() => {
+          done()
+          resolve()
+        }, delay)
+        controller.signal.addEventListener("abort", abort, { once: true })
+      })
+      return Promise.race([job, expired])
+    },
+    dispose: () => {
+      globalThis.clearTimeout(timer)
+      if (!controller.signal.aborted) controller.abort()
+    },
+  }
+}
+
+async function bounded<T>(timeout: number | undefined, run: (deadline: PushHostDeadline) => Promise<T>): Promise<T> {
+  const deadline = createDeadline(timeout ?? TIMEOUT)
+  try {
+    return await run(deadline)
+  } finally {
+    deadline.dispose()
+  }
+}
+
 function response(value: string, command: string): Record<string, unknown> {
   const line = value.split("\n", 1)[0]?.replace(/\r$/, "") ?? ""
   let result: unknown
@@ -61,19 +110,23 @@ function response(value: string, command: string): Record<string, unknown> {
 
 async function execute(
   input: BaseInput,
+  deadline: PushHostDeadline,
   command: "register" | "unregister" | "status" | "test",
   args: string[],
   payload?: PushRegistration,
 ): Promise<Record<string, unknown>> {
   const fetch = input.fetch ?? globalThis.fetch
   const spec = runPush([command, ...args], input.tool)
-  const created = await fetch(new URL("/pty", input.server.http.url), {
-    method: "POST",
-    headers: { "content-type": "application/json", ...auth(input.server) },
-    body: JSON.stringify(spec),
-  })
+  const created = await deadline.run(
+    fetch(new URL("/pty", input.server.http.url), {
+      method: "POST",
+      signal: deadline.signal,
+      headers: { "content-type": "application/json", ...auth(input.server) },
+      body: JSON.stringify(spec),
+    }),
+  )
   if (!created.ok) throw new PushHostError("push_host_create_failed")
-  const value = (await created.json()) as { id?: unknown }
+  const value = (await deadline.run(created.json())) as { id?: unknown }
   if (typeof value.id !== "string" || !value.id) throw new PushHostError("push_host_create_failed")
   const id = value.id
   let socket: PushHostSocket | undefined
@@ -93,20 +146,16 @@ async function execute(
     socket = createSocket(url.toString())
     socket.binaryType = "arraybuffer"
 
-    return await new Promise<Record<string, unknown>>((resolve, reject) => {
+    const stream = new Promise<Record<string, unknown>>((resolve, reject) => {
       let output = ""
       let ready = command !== "register"
       let sent = false
       let settled = false
-      const timer = globalThis.setTimeout(
-        () => finish(new PushHostError("push_host_timeout")),
-        input.timeout ?? TIMEOUT,
-      )
 
       const finish = (error?: unknown, result?: Record<string, unknown>) => {
         if (settled) return
         settled = true
-        globalThis.clearTimeout(timer)
+        deadline.signal.removeEventListener("abort", onAbort)
         socket?.removeEventListener("open", onOpen)
         socket?.removeEventListener("message", onMessage)
         socket?.removeEventListener("error", onError)
@@ -152,46 +201,58 @@ async function execute(
       }
       const onError = () => finish(new PushHostError("push_host_stream_failed"))
       const onClose = () => finish(new PushHostError("push_host_stream_closed"))
+      const onAbort = () => finish(deadline.signal.reason ?? new PushHostError("push_host_timeout"))
 
+      deadline.signal.addEventListener("abort", onAbort, { once: true })
       socket?.addEventListener("open", onOpen)
       socket?.addEventListener("message", onMessage)
       socket?.addEventListener("error", onError)
       socket?.addEventListener("close", onClose)
     })
+    return await deadline.run(stream)
   } finally {
     try {
       socket?.close(1000)
     } catch {}
-    await fetch(new URL(`/pty/${encodeURIComponent(id)}`, input.server.http.url), {
-      method: "DELETE",
-      headers: auth(input.server),
-    }).catch(() => undefined)
+    const cleanup = Promise.resolve()
+      .then(() =>
+        fetch(new URL(`/pty/${encodeURIComponent(id)}`, input.server.http.url), {
+          method: "DELETE",
+          signal: deadline.signal,
+          headers: auth(input.server),
+        }),
+      )
+      .catch(() => undefined)
+    await deadline.run(cleanup).catch(() => undefined)
   }
 }
 
 export async function registerPushHost(input: BaseInput & { payload: PushRegistration }) {
-  try {
-    await ensurePushHost(input)
-    const result = await execute(input, "register", ["--stdin"], input.payload)
-    if (JSON.stringify(result).includes(input.payload.token)) {
-      throw new PushHostError("push_host_invalid_response")
+  return bounded(input.timeout, async (deadline) => {
+    try {
+      await ensurePushHost({ ...input, deadline })
+      const result = await execute(input, deadline, "register", ["--stdin"], input.payload)
+      if (JSON.stringify(result).includes(input.payload.token)) {
+        throw new PushHostError("push_host_invalid_response")
+      }
+      return result
+    } catch (cause) {
+      const redact = (value: string) => value.split(input.payload.token).join("[redacted]")
+      if (cause instanceof PushHostError) {
+        const code = cause.code.includes(input.payload.token) ? "push_host_command_failed" : cause.code
+        throw new PushHostError(code, redact(cause.message))
+      }
+      const message = cause instanceof Error ? redact(cause.message) : "push_host_failed"
+      throw new PushHostError("push_host_failed", message)
     }
-    return result
-  } catch (cause) {
-    const redact = (value: string) => value.split(input.payload.token).join("[redacted]")
-    if (cause instanceof PushHostError) {
-      const code = cause.code.includes(input.payload.token) ? "push_host_command_failed" : cause.code
-      throw new PushHostError(code, redact(cause.message))
-    }
-    const message = cause instanceof Error ? redact(cause.message) : "push_host_failed"
-    throw new PushHostError("push_host_failed", message)
-  }
+  })
 }
 
 export const unregisterPushHost = (input: BaseInput & { device: string }) =>
-  execute(input, "unregister", ["--device", input.device])
+  bounded(input.timeout, (deadline) => execute(input, deadline, "unregister", ["--device", input.device]))
 
-export const pushHostStatus = (input: BaseInput) => execute(input, "status", ["--json"])
+export const pushHostStatus = (input: BaseInput) =>
+  bounded(input.timeout, (deadline) => execute(input, deadline, "status", ["--json"]))
 
 export const testPushHost = (input: BaseInput & { device: string }) =>
-  execute(input, "test", ["--device", input.device])
+  bounded(input.timeout, (deadline) => execute(input, deadline, "test", ["--device", input.device]))

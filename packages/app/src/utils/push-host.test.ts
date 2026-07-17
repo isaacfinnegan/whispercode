@@ -25,7 +25,23 @@ const server: ServerConnection.Http = {
   http: { url: "https://host.example.com", username: "operator", password: "password" },
 }
 
-type Plan = { ready?: boolean; output?: string; close?: boolean }
+type Plan = { ready?: boolean; output?: string; close?: boolean; deleteHang?: boolean }
+
+async function within<T>(promise: Promise<T>, ms = 200): Promise<T> {
+  const expired = Symbol("test timeout")
+  let timer: ReturnType<typeof setTimeout>
+  const guard = new Promise<typeof expired>((resolve) => {
+    timer = setTimeout(() => resolve(expired), ms)
+  })
+  try {
+    const result = await Promise.race([promise, guard])
+    expect(result).not.toBe(expired)
+    if (result === expired) throw new Error("operation exceeded the injected deadline")
+    return result
+  } finally {
+    clearTimeout(timer!)
+  }
+}
 
 function trace(plan: Plan = {}, installed = true) {
   const requests: Array<{ path: string; method: string; auth: string | null; body: string }> = []
@@ -34,6 +50,7 @@ function trace(plan: Plan = {}, installed = true) {
   let websocketURL = ""
   let socketClosed = false
   let created = false
+  let deleteAborted = false
 
   class Socket extends EventTarget implements PushHostSocket {
     binaryType = "blob"
@@ -80,7 +97,17 @@ function trace(plan: Plan = {}, installed = true) {
       created = true
       return Response.json({ id: "pty-1" })
     }
-    if (url.pathname === "/pty/pty-1" && method === "DELETE") return Response.json(true)
+    if (url.pathname === "/pty/pty-1" && method === "DELETE") {
+      if (!plan.deleteHang) return Response.json(true)
+      return new Promise<Response>((_resolve, reject) => {
+        const abort = () => {
+          deleteAborted = true
+          reject(new DOMException("Aborted", "AbortError"))
+        }
+        if (init?.signal?.aborted) abort()
+        else init?.signal?.addEventListener("abort", abort, { once: true })
+      })
+    }
     return new Response("not found", { status: 404 })
   }) as typeof globalThis.fetch
 
@@ -93,7 +120,19 @@ function trace(plan: Plan = {}, installed = true) {
     websocketURL: () => websocketURL,
     socketClosed: () => socketClosed,
     created: () => created,
+    deleteAborted: () => deleteAborted,
   }
+}
+
+function hang(init: RequestInit | undefined, aborted: () => void): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    const abort = () => {
+      aborted()
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    if (init?.signal?.aborted) abort()
+    else init?.signal?.addEventListener("abort", abort, { once: true })
+  })
 }
 
 describe("runPush", () => {
@@ -110,6 +149,103 @@ describe("runPush", () => {
 })
 
 describe("push host PTY", () => {
+  test("overall deadline aborts a hanging host config request", async () => {
+    let aborted = false
+    const fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      hang(init, () => (aborted = true))) as typeof globalThis.fetch
+
+    const error = await within(
+      registerPushHost({ server, payload: registration, fetch, timeout: 10 }).catch((cause) => cause),
+    )
+
+    expect(error).toMatchObject({ code: "push_host_timeout" })
+    expect(aborted).toBe(true)
+  })
+
+  test("overall deadline aborts a hanging host refresh poll before PTY creation", async () => {
+    let aborted = false
+    let pty = false
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname
+      if (path === "/global/config" && !init?.method) return Response.json({ plugin: [] })
+      if (path === "/global/config" && init?.method === "PATCH") return Response.json({ plugin: [PushPlugin.spec] })
+      if (path === "/global/dispose") return Response.json(true)
+      if (path === "/path") return hang(init, () => (aborted = true))
+      if (path === "/pty") pty = true
+      return new Response("unexpected", { status: 500 })
+    }) as typeof globalThis.fetch
+
+    const error = await within(
+      registerPushHost({ server, payload: registration, fetch, timeout: 10 }).catch((cause) => cause),
+    )
+
+    expect(error).toMatchObject({ code: "push_host_timeout" })
+    expect(aborted).toBe(true)
+    expect(pty).toBe(false)
+  })
+
+  test("overall deadline aborts a hanging PTY create request", async () => {
+    let aborted = false
+    const fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      hang(init, () => (aborted = true))) as typeof globalThis.fetch
+
+    const error = await within(pushHostStatus({ server, fetch, timeout: 10 }).catch((cause) => cause))
+
+    expect(error).toMatchObject({ code: "push_host_timeout" })
+    expect(aborted).toBe(true)
+  })
+
+  test("overall deadline bounds a hanging PTY create response body", async () => {
+    let bodyStarted = false
+    const fetch = (async () =>
+      ({
+        ok: true,
+        json: () => {
+          bodyStarted = true
+          return new Promise(() => {})
+        },
+      }) as Response) as unknown as typeof globalThis.fetch
+
+    const error = await within(pushHostStatus({ server, fetch, timeout: 10 }).catch((cause) => cause))
+
+    expect(error).toMatchObject({ code: "push_host_timeout" })
+    expect(bodyStarted).toBe(true)
+  })
+
+  test("hanging PTY deletion is bounded and does not mask success", async () => {
+    const next = trace({ output: '{"mode":"direct","configured":true,"devices":[]}\n', deleteHang: true })
+
+    const result = await within(pushHostStatus({ server, fetch: next.fetch, socket: next.socket, timeout: 10 }))
+
+    expect(result).toEqual({ mode: "direct", configured: true, devices: [] })
+    expect(next.deleteAborted()).toBe(true)
+    expect(next.requests.at(-1)).toMatchObject({ path: "/pty/pty-1", method: "DELETE" })
+  })
+
+  test("hanging PTY deletion is bounded and does not mask the primary error", async () => {
+    const next = trace({ output: "not-json\n", deleteHang: true })
+
+    const error = await within(
+      pushHostStatus({ server, fetch: next.fetch, socket: next.socket, timeout: 10 }).catch((cause) => cause),
+    )
+
+    expect(error).toMatchObject({ code: "push_host_invalid_response" })
+    expect(next.deleteAborted()).toBe(true)
+    expect(next.requests.at(-1)).toMatchObject({ path: "/pty/pty-1", method: "DELETE" })
+  })
+
+  test("synchronous PTY deletion failure does not mask the primary error", async () => {
+    const next = trace({ output: "not-json\n" })
+    const fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "DELETE") throw new Error("delete failed")
+      return next.fetch(input, init)
+    }) as typeof globalThis.fetch
+
+    const error = await pushHostStatus({ server, fetch, socket: next.socket, timeout: 10 }).catch((cause) => cause)
+
+    expect(error).toMatchObject({ code: "push_host_invalid_response" })
+  })
+
   test("register sends the token only in PTY stdin after readiness", async () => {
     const next = trace({ ready: true, output: '{"ok":true,"device":"device-1","token_generation":3}\n' })
 
@@ -157,6 +293,7 @@ describe("push host PTY", () => {
     expect(next.stdin).toEqual([])
     await expect(job).rejects.toMatchObject({ code: "push_host_timeout" })
     expect(next.stdin).toEqual([])
+    expect(next.requests.at(-1)).toMatchObject({ path: "/pty/pty-1", method: "DELETE" })
   })
 
   test("runs non-register commands without readiness or stdin", async () => {
