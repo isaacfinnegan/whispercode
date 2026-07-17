@@ -6,10 +6,12 @@ import info from "../../../push/package.json"
 const pkg = info.name
 const spec = pkg
 const bin = "opencode-push"
+export const PUSH_HOST_COMMAND_FAILED = '{"ok":false,"error":"push_host_command_failed"}'
 const hold = String.raw`
 const { spawn } = require("node:child_process")
 const argv = JSON.parse(process.argv[1])
 const child = spawn(argv[0], argv.slice(1), { stdio: "inherit" })
+const failure = ${JSON.stringify(`${PUSH_HOST_COMMAND_FAILED}\n`)}
 let timer
 let settled = false
 let stopping = false
@@ -34,7 +36,12 @@ const finish = (code) => {
   process.exitCode = code
   timer = setTimeout(() => {}, 20_000)
 }
-child.once("error", () => finish(1))
+const fail = () => {
+  if (settled) return
+  process.stdout.write(failure)
+  finish(1)
+}
+child.once("error", fail)
 child.once("close", (code, signal) => finish(code ?? (signal ? 1 : 0)))
 `.trim()
 

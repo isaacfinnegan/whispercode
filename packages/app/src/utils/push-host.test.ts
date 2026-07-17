@@ -243,6 +243,25 @@ describe("runPush", () => {
     expect(await within(proc.exited, 2_000)).toBe(0)
     expect(await new Response(proc.stderr).text()).toBe("")
   })
+
+  test("transport parent reports a sanitized spawn failure once and holds", async () => {
+    const command = `missing-push-command-${token}`
+    const transport = holdPush({ command, args: ["--secret", token] })
+    const proc = Bun.spawn([transport.command, ...transport.args], { stdout: "pipe", stderr: "pipe" })
+    let exited = false
+    void proc.exited.then(() => (exited = true))
+
+    await Bun.sleep(100)
+    expect(exited).toBe(false)
+    proc.kill()
+    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+
+    expect(stdout).toBe('{"ok":false,"error":"push_host_command_failed"}\n')
+    expect(stdout + stderr).not.toContain(command)
+    expect(stdout + stderr).not.toContain(token)
+    expect(stdout + stderr).not.toContain("ENOENT")
+    expect(stderr).toBe("")
+  })
 })
 
 describe("push host PTY", () => {
@@ -406,6 +425,25 @@ describe("push host PTY", () => {
       registerPushHost({ server, payload: registration, fetch: next.fetch, socket: next.socket, timeout: 50 }),
     ).resolves.toEqual({ ok: true, device: "device-1", token_generation: 3 })
     expect(next.stdin).toEqual([JSON.stringify(registration) + "\n"])
+  })
+
+  test("maps a wrapper spawn failure before readiness without sending registration", async () => {
+    const next = trace({ output: '{"ok":false,"error":"push_host_command_failed"}\n', requireParent: true })
+
+    const error = await within(
+      registerPushHost({
+        server,
+        payload: registration,
+        fetch: next.fetch,
+        socket: next.socket,
+        timeout: 50,
+      }).catch((cause) => cause),
+    )
+
+    expect(error).toMatchObject({ code: "push_host_command_failed", message: "push_host_command_failed" })
+    expect(next.stdin).toEqual([])
+    expect(next.output.join("")).not.toContain(token)
+    expect(next.requests.at(-1)).toMatchObject({ path: "/pty/pty-1", method: "DELETE" })
   })
 
   test("split complete lines remain subject to the cumulative output cap", async () => {

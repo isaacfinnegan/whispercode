@@ -2,7 +2,7 @@ import type { ServerConnection } from "@/context/server"
 import type { PushRegistration } from "@/context/platform"
 import { serverAuthHeaders } from "@/utils/server"
 import { ensurePushHost, type PushHostDeadline } from "./push-host-install"
-import { runPushTransport } from "./push-plugin"
+import { PUSH_HOST_COMMAND_FAILED, runPushTransport } from "./push-plugin"
 import { terminalWebSocketURL } from "./terminal-websocket-url"
 
 const READY = '{"ready":true}'
@@ -230,6 +230,10 @@ async function execute(
                 socket?.send(`${JSON.stringify(payload)}\n`)
               }
               break
+            }
+            if (frame.line === PUSH_HOST_COMMAND_FAILED) {
+              finish(new PushHostError("push_host_command_failed"))
+              return
             }
             if (oldRegister(frame.line)) {
               finish(new PushHostError("push_plugin_upgrade_required"))
