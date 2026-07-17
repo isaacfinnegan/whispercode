@@ -25,7 +25,17 @@ const server: ServerConnection.Http = {
   http: { url: "https://host.example.com", username: "operator", password: "password" },
 }
 
-type Plan = { ready?: boolean; output?: string; close?: boolean; deleteHang?: boolean }
+type Plan = {
+  ready?: boolean
+  output?: string
+  frames?: string[]
+  close?: boolean
+  deleteHang?: boolean
+  ticket?: string
+  ticketHang?: boolean
+  ticketStatus?: number
+  disposeStatus?: number
+}
 
 async function within<T>(promise: Promise<T>, ms = 200): Promise<T> {
   const expired = Symbol("test timeout")
@@ -44,13 +54,21 @@ async function within<T>(promise: Promise<T>, ms = 200): Promise<T> {
 }
 
 function trace(plan: Plan = {}, installed = true) {
-  const requests: Array<{ path: string; method: string; auth: string | null; body: string }> = []
+  const requests: Array<{
+    url: string
+    path: string
+    method: string
+    auth: string | null
+    ticket: string | null
+    body: string
+  }> = []
   const stdin: string[] = []
   const output: string[] = []
   let websocketURL = ""
   let socketClosed = false
   let created = false
   let deleteAborted = false
+  let ticketAborted = false
 
   class Socket extends EventTarget implements PushHostSocket {
     binaryType = "blob"
@@ -60,6 +78,7 @@ function trace(plan: Plan = {}, installed = true) {
       websocketURL = url
       queueMicrotask(() => {
         this.dispatchEvent(new Event("open"))
+        if (plan.frames) plan.frames.forEach((frame) => this.emit(frame))
         if (plan.ready) this.emit('{"ready":true}\n')
         if (!plan.ready && plan.output !== undefined) this.emit(plan.output)
       })
@@ -87,16 +106,30 @@ function trace(plan: Plan = {}, installed = true) {
     if (init?.signal?.aborted) throw new DOMException("Aborted before send", "AbortError")
     const headers = new Headers(init?.headers)
     const body = typeof init?.body === "string" ? init.body : ""
-    requests.push({ path: url.pathname, method, auth: headers.get("authorization"), body })
+    requests.push({
+      url: url.toString(),
+      path: url.pathname,
+      method,
+      auth: headers.get("authorization"),
+      ticket: headers.get("x-opencode-ticket"),
+      body,
+    })
     if (url.pathname === "/global/config" && method === "GET") {
       return Response.json({ plugin: installed ? [PushPlugin.spec] : [] })
     }
     if (url.pathname === "/global/config" && method === "PATCH") return Response.json({ plugin: [PushPlugin.spec] })
-    if (url.pathname === "/global/dispose" && method === "POST") return Response.json(true)
+    if (url.pathname === "/global/dispose" && method === "POST") {
+      return new Response(plan.disposeStatus ? "failed" : "true", { status: plan.disposeStatus ?? 200 })
+    }
     if (url.pathname === "/path") return Response.json({ state: "/tmp/opencode", directory: "/repo" })
     if (url.pathname === "/pty" && method === "POST") {
       created = true
       return Response.json({ id: "pty-1" })
+    }
+    if (url.pathname === "/pty/pty-1/connect-token" && method === "POST") {
+      if (plan.ticketHang) return hang(init, () => (ticketAborted = true))
+      if (plan.ticketStatus) return new Response("failed", { status: plan.ticketStatus })
+      return Response.json({ ticket: plan.ticket ?? "ticket-1" })
     }
     if (url.pathname === "/pty/pty-1" && method === "DELETE") {
       if (!plan.deleteHang) return Response.json(true)
@@ -122,6 +155,7 @@ function trace(plan: Plan = {}, installed = true) {
     socketClosed: () => socketClosed,
     created: () => created,
     deleteAborted: () => deleteAborted,
+    ticketAborted: () => ticketAborted,
   }
 }
 
@@ -213,6 +247,33 @@ describe("push host PTY", () => {
     expect(bodyStarted).toBe(true)
   })
 
+  test("overall deadline aborts a hanging authenticated connect-ticket request", async () => {
+    const next = trace({ ticketHang: true })
+
+    const error = await within(
+      pushHostStatus({ server, fetch: next.fetch, socket: next.socket, timeout: 10 }).catch((cause) => cause),
+    )
+
+    expect(error).toMatchObject({ code: "push_host_timeout" })
+    expect(next.ticketAborted()).toBe(true)
+    expect(next.requests.at(-1)).toMatchObject({ path: "/pty/pty-1", method: "DELETE" })
+  })
+
+  test("reports a failed host recycle as a stable sanitized status", async () => {
+    const next = trace({ disposeStatus: 500 }, false)
+
+    const error = await registerPushHost({
+      server,
+      payload: registration,
+      fetch: next.fetch,
+      socket: next.socket,
+    }).catch((cause) => cause)
+
+    expect(error).toMatchObject({ code: "push_host_recycle_failed", message: "push_host_recycle_failed" })
+    expect(next.requests.some((request) => request.path === "/path")).toBe(false)
+    expect(next.requests.some((request) => request.path === "/pty")).toBe(false)
+  })
+
   test("hanging PTY deletion is bounded and does not mask success", async () => {
     const next = trace({ output: '{"mode":"direct","configured":true,"devices":[]}\n', deleteHang: true })
 
@@ -265,6 +326,32 @@ describe("push host PTY", () => {
     expect(result).toEqual({ ok: true, device: "device-1", token_generation: 3 })
   })
 
+  test("register accepts split node-pty CRLF readiness and response lines", async () => {
+    const next = trace({
+      frames: ['{"rea', 'dy":true}\r', "\n", '{"ok":true,"device":"device-1",', '"token_generation":3}\r', "\n"],
+    })
+
+    await expect(
+      registerPushHost({ server, payload: registration, fetch: next.fetch, socket: next.socket, timeout: 50 }),
+    ).resolves.toEqual({ ok: true, device: "device-1", token_generation: 3 })
+    expect(next.stdin).toEqual([JSON.stringify(registration) + "\n"])
+  })
+
+  test("split complete lines remain subject to the cumulative output cap", async () => {
+    const next = trace({ frames: Array.from({ length: 330 }, () => `${"x".repeat(100)}\r\n`) })
+
+    const error = await registerPushHost({
+      server,
+      payload: registration,
+      fetch: next.fetch,
+      socket: next.socket,
+      timeout: 50,
+    }).catch((cause) => cause)
+
+    expect(error).toMatchObject({ code: "push_host_output_limit" })
+    expect(next.stdin).toEqual([])
+  })
+
   test("observes the refreshed backend before creating the registration PTY", async () => {
     const next = trace({ ready: true, output: '{"ok":true,"device":"device-1","token_generation":3}\n' }, false)
 
@@ -276,6 +363,7 @@ describe("push host PTY", () => {
       "POST /global/dispose",
       "GET /path",
       "POST /pty",
+      "POST /pty/pty-1/connect-token",
       "DELETE /pty/pty-1",
     ])
   })
@@ -321,15 +409,37 @@ describe("push host PTY", () => {
     expect(test.stdin).toEqual([])
   })
 
-  test("preserves HTTP and websocket authentication and always deletes the PTY", async () => {
+  test("uses authenticated ticket fetch and a credential-free terminal websocket URL", async () => {
     const next = trace({ output: '{"mode":"direct","configured":true,"devices":[]}\n' })
     await pushHostStatus({ server, fetch: next.fetch, socket: next.socket })
 
     expect(next.requests.every((request) => request.auth?.startsWith("Basic "))).toBe(true)
+    const ticket = next.requests.find((request) => request.path === "/pty/pty-1/connect-token")
+    expect(ticket).toMatchObject({ method: "POST", ticket: "1" })
+    expect(ticket?.url).not.toContain(server.http.password!)
+    expect(ticket?.url).not.toContain(btoa(`${server.http.username}:${server.http.password}`))
     const url = new URL(next.websocketURL())
-    expect(url.username).toBe("operator")
-    expect(url.password).toBe("password")
+    expect(url.username).toBe("")
+    expect(url.password).toBe("")
+    expect(url.searchParams.get("ticket")).toBe("ticket-1")
+    expect(url.searchParams.has("auth_token")).toBe(false)
+    expect(url.toString()).not.toContain(server.http.password!)
+    expect(url.toString()).not.toContain(btoa(`${server.http.username}:${server.http.password}`))
+    expect(next.requests.find((request) => request.path === "/pty")?.body).not.toContain(server.http.password!)
     expect(next.socketClosed()).toBe(true)
+    expect(next.requests.at(-1)).toMatchObject({ path: "/pty/pty-1", method: "DELETE" })
+  })
+
+  test("sanitizes authenticated connect-ticket failures", async () => {
+    const next = trace({ ticketStatus: 500 })
+
+    const error = await pushHostStatus({ server, fetch: next.fetch, socket: next.socket, timeout: 50 }).catch(
+      (cause) => cause,
+    )
+
+    expect(error).toMatchObject({ code: "push_host_connect_ticket_failed" })
+    expect(error.message).not.toContain(server.http.password!)
+    expect(next.websocketURL()).toBe("")
     expect(next.requests.at(-1)).toMatchObject({ path: "/pty/pty-1", method: "DELETE" })
   })
 
@@ -353,10 +463,10 @@ describe("push host PTY", () => {
     }
   })
 
-  test("maps missing and old register commands to a stable upgrade error without exposing the token", async () => {
+  test("maps only old register command evidence to the stable upgrade error", async () => {
     for (const output of [
-      "sh: opencode-push: command not found\n",
-      "opencode-push <install|pair|status|test>\n",
+      "opencode-push <install|pair|status|test>\r\n",
+      'error: unknown command "register"\n',
       '{"ok":false,"error":"unknown_command"}\n',
     ]) {
       const next = trace({ ready: output.startsWith("{"), output })
@@ -372,6 +482,29 @@ describe("push host PTY", () => {
       expect(error.message).not.toContain(token)
       expect(JSON.stringify(next.requests)).not.toContain(token)
       expect(next.websocketURL()).not.toContain(token)
+    }
+  })
+
+  test("keeps npx and package resolution failures as sanitized operational errors", async () => {
+    for (const output of [
+      "sh: opencode-push: command not found\n",
+      "npm ERR! code E404\r\nnpm ERR! 404 Not Found - GET https://registry.example.invalid/push\r\n",
+      "npm error could not determine executable to run\n",
+      "error: package @whisperopencode/push not found\n",
+    ]) {
+      const next = trace({ output })
+      const error = await registerPushHost({
+        server,
+        payload: registration,
+        fetch: next.fetch,
+        socket: next.socket,
+        timeout: 50,
+      }).catch((cause) => cause)
+
+      expect(error).toBeInstanceOf(PushHostError)
+      expect(error.code).toBe("push_host_command_failed")
+      expect(error.message).not.toContain(token)
+      expect(error.message).not.toContain("registry.example.invalid")
     }
   })
 

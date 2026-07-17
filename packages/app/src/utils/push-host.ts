@@ -3,12 +3,12 @@ import type { PushRegistration } from "@/context/platform"
 import { serverAuthHeaders } from "@/utils/server"
 import { ensurePushHost, type PushHostDeadline } from "./push-host-install"
 import { runPush } from "./push-plugin"
+import { terminalWebSocketURL } from "./terminal-websocket-url"
 
-const READY = '{"ready":true}\n'
+const READY = '{"ready":true}'
 const OUTPUT_LIMIT = 32 * 1024
 const TIMEOUT = 15_000
 const CLEANUP_TIMEOUT = 1_000
-const OLD_COMMAND = /command not found|not found|unknown command|unknown_command|unrecognized|opencode-push\s*</i
 
 export interface PushHostSocket extends EventTarget {
   binaryType: string
@@ -103,16 +103,36 @@ async function cleanupPty(input: BaseInput, id: string) {
   }
 }
 
-function response(value: string, command: string): Record<string, unknown> {
-  const line = value.split("\n", 1)[0]?.replace(/\r$/, "") ?? ""
+function takeLine(value: string) {
+  const end = value.indexOf("\n")
+  if (end === -1) return
+  return {
+    line: value.slice(0, end).replace(/\r$/, ""),
+    rest: value.slice(end + 1),
+  }
+}
+
+function oldRegister(line: string) {
+  if (/\b(?:unknown|unrecognized)\s+(?:command\s+)?["']?register\b/i.test(line)) return true
+  const usage = line.match(/\bopencode-push\s+<([^>]+)>/i)?.[1]
+  if (!usage) return false
+  return !usage.split("|").some((command) => command.trim() === "register")
+}
+
+function operationFailure(line: string) {
+  return /command not found|npm (?:err!|error)|\be404\b|404 not found|package .*not found|could not determine executable|failed to resolve|unable to resolve/i.test(
+    line,
+  )
+}
+
+function response(line: string, command: string): Record<string, unknown> {
   let result: unknown
   try {
     result = JSON.parse(line)
   } catch {
-    const old = OLD_COMMAND.test(value)
-    throw new PushHostError(
-      old && command === "register" ? "push_plugin_upgrade_required" : "push_host_invalid_response",
-    )
+    if (command === "register" && oldRegister(line)) throw new PushHostError("push_plugin_upgrade_required")
+    if (operationFailure(line)) throw new PushHostError("push_host_command_failed")
+    throw new PushHostError("push_host_invalid_response")
   }
   if (!result || typeof result !== "object" || Array.isArray(result)) {
     throw new PushHostError("push_host_invalid_response")
@@ -124,6 +144,24 @@ function response(value: string, command: string): Record<string, unknown> {
     throw new PushHostError(typeof code === "string" ? code : "push_host_command_failed")
   }
   return data
+}
+
+async function connectTicket(input: BaseInput, deadline: PushHostDeadline, id: string, directory: string) {
+  const fetch = input.fetch ?? globalThis.fetch
+  const url = new URL(`/pty/${encodeURIComponent(id)}/connect-token`, input.server.http.url)
+  if (directory) url.searchParams.set("directory", directory)
+  const result = await deadline.run(
+    fetch(url, {
+      method: "POST",
+      signal: deadline.signal,
+      headers: { "x-opencode-ticket": "1", ...auth(input.server) },
+    }),
+  )
+  if (!result.ok) throw new PushHostError("push_host_connect_ticket_failed")
+  const data = await deadline.run(result.json()).catch(() => undefined)
+  const ticket = data && typeof data === "object" ? (data as { ticket?: unknown }).ticket : undefined
+  if (typeof ticket !== "string" || !ticket) throw new PushHostError("push_host_connect_ticket_failed")
+  return ticket
 }
 
 async function execute(
@@ -144,17 +182,15 @@ async function execute(
     }),
   )
   if (!created.ok) throw new PushHostError("push_host_create_failed")
-  const value = (await deadline.run(created.json())) as { id?: unknown }
+  const value = (await deadline.run(created.json())) as { id?: unknown; cwd?: unknown }
   if (typeof value.id !== "string" || !value.id) throw new PushHostError("push_host_create_failed")
   const id = value.id
+  const directory = typeof value.cwd === "string" ? value.cwd : ""
   let socket: PushHostSocket | undefined
 
   try {
-    const url = new URL(`/pty/${encodeURIComponent(id)}/connect`, input.server.http.url)
-    url.searchParams.set("cursor", "0")
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
-    url.username = input.server.http.username ?? ""
-    url.password = input.server.http.password ?? ""
+    const ticket = await connectTicket(input, deadline, id, directory)
+    const url = terminalWebSocketURL({ url: input.server.http.url, id, directory, cursor: 0, ticket })
     const createSocket =
       input.socket ??
       ((href: string) => {
@@ -166,6 +202,7 @@ async function execute(
 
     const stream = new Promise<Record<string, unknown>>((resolve, reject) => {
       let output = ""
+      let bytes = 0
       let ready = command !== "register"
       let sent = false
       let settled = false
@@ -183,24 +220,33 @@ async function execute(
       }
       const read = () => {
         if (!ready) {
-          const marker = output.indexOf(READY)
-          if (marker === -1) {
-            if (OLD_COMMAND.test(output)) {
-              finish(new PushHostError("push_plugin_upgrade_required"))
+          let frame = takeLine(output)
+          while (frame) {
+            output = frame.rest
+            if (frame.line === READY) {
+              ready = true
+              if (!sent) {
+                sent = true
+                socket?.send(`${JSON.stringify(payload)}\n`)
+              }
+              break
             }
-            return
+            if (oldRegister(frame.line)) {
+              finish(new PushHostError("push_plugin_upgrade_required"))
+              return
+            }
+            if (operationFailure(frame.line)) {
+              finish(new PushHostError("push_host_command_failed"))
+              return
+            }
+            frame = takeLine(output)
           }
-          output = output.slice(marker + READY.length)
-          ready = true
-          if (!sent) {
-            sent = true
-            socket?.send(`${JSON.stringify(payload)}\n`)
-          }
+          if (!ready) return
         }
-        const newline = output.indexOf("\n")
-        if (newline === -1) return
+        const frame = takeLine(output)
+        if (!frame) return
         try {
-          finish(undefined, response(output.slice(0, newline + 1), command))
+          finish(undefined, response(frame.line, command))
         } catch (cause) {
           finish(cause)
         }
@@ -211,7 +257,8 @@ async function execute(
         if (data instanceof ArrayBuffer) return
         if (typeof data !== "string") return
         output += data
-        if (new TextEncoder().encode(output).byteLength > OUTPUT_LIMIT) {
+        bytes += new TextEncoder().encode(data).byteLength
+        if (bytes > OUTPUT_LIMIT) {
           finish(new PushHostError("push_host_output_limit"))
           return
         }
@@ -252,7 +299,8 @@ export async function registerPushHost(input: BaseInput & { payload: PushRegistr
         throw new PushHostError(code, redact(cause.message))
       }
       const message = cause instanceof Error ? redact(cause.message) : "push_host_failed"
-      throw new PushHostError("push_host_failed", message)
+      const code = message === "push_host_recycle_failed" ? message : "push_host_failed"
+      throw new PushHostError(code, message)
     }
   })
 }

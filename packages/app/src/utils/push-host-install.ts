@@ -48,10 +48,14 @@ export async function ensurePushHost(input: {
   if (!patch.ok) throw new Error("push_host_config_write_failed")
 
   let disposeError: unknown
-  await request(fetch, input.server, "/global/dispose", input.deadline, { method: "POST" }).catch((cause) => {
-    if (input.deadline?.signal.aborted) throw cause
-    disposeError = cause
-  })
+  const disposed = await request(fetch, input.server, "/global/dispose", input.deadline, { method: "POST" }).catch(
+    (cause) => {
+      if (input.deadline?.signal.aborted) throw cause
+      disposeError = cause
+      return undefined
+    },
+  )
+  if (disposed && !disposed.ok) throw new Error("push_host_recycle_failed")
 
   const deadline = Date.now() + WAIT_MS
   while (input.deadline ? !input.deadline.signal.aborted : Date.now() < deadline) {
