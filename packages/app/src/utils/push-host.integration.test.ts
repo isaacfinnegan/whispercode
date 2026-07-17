@@ -8,6 +8,9 @@ import { ServerConnection } from "@/context/server"
 import { PushHostError, registerPushHost, type PushHostSocket } from "./push-host"
 
 const dirs: string[] = []
+const cleanups: Array<() => Promise<void>> = []
+const operationTimeout = 5_000
+const outputLimit = 64 * 1024
 const token = "integration-ui-fcm-token".padEnd(32, "x")
 const privateKey = "-----BEGIN PRIVATE KEY-----backend-only-secret-----END PRIVATE KEY-----"
 const registration: PushRegistration = {
@@ -19,7 +22,16 @@ const registration: PushRegistration = {
   prefs: { complete: true, approval: true, question: true, error: true },
 }
 
+function within<T>(promise: Promise<T>, timeout = operationTimeout): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error("integration operation timed out")), timeout)
+  })
+  return Promise.race([promise, expired]).finally(() => clearTimeout(timer))
+}
+
 afterEach(async () => {
+  await Promise.allSettled(cleanups.splice(0).map((cleanup) => cleanup()))
   await Promise.all(dirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 
@@ -33,19 +45,110 @@ async function backend(name: string, failure?: string) {
   const requests: Array<{ url: string; body: string; auth: string | null }> = []
   const stdout: string[] = []
   const stderr: string[] = []
-  const start = (args: string[]) =>
-    Bun.spawn(args, {
-      cwd: source,
+  const node = Bun.which("node")
+  if (!node) throw new Error("node is required for PTY integration coverage")
+  const harness = String.raw`
+    const pty = require("@lydell/node-pty")
+    const [bun, file, home, cwd, ...args] = process.argv.slice(1)
+    const child = pty.spawn(bun, [file, ...args], {
+      cwd,
       env: { ...process.env, OPENCODE_TEST_HOME: home },
+      cols: 80,
+      rows: 24,
+    })
+    let stopped = false
+    const stop = () => {
+      if (stopped) return
+      stopped = true
+      child.kill()
+    }
+    const timer = setTimeout(() => {
+      process.stderr.write("PTY harness timed out")
+      stop()
+    }, 10000)
+    process.stdin.setEncoding("utf8")
+    process.stdin.on("data", (chunk) => child.write(chunk))
+    process.once("SIGINT", stop)
+    process.once("SIGTERM", stop)
+    child.onData((chunk) => process.stdout.write(chunk))
+    child.onExit(({ exitCode }) => {
+      clearTimeout(timer)
+      process.exit(exitCode)
+    })
+  `
+  const start = (args: string[]) =>
+    Bun.spawn([node, "-e", harness, process.execPath, path.join(source, "cli.ts"), home, source, ...args], {
+      cwd: source,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
     })
   type Child = ReturnType<typeof start>
-  const children = new Map<string, Child>()
+  type Entry = { child: Child; readers: Promise<void>[] }
+  const children = new Map<string, Entry>()
+  const deliveries = new Set<ReturnType<typeof Bun.spawn>>()
   let sequence = 0
   let cliRuns = 0
   let socketURL = ""
+  let disposed = false
+
+  const pump = async (stream: ReadableStream<Uint8Array>, output: string[], receive?: (value: string) => void) => {
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+    let bytes = 0
+    try {
+      while (true) {
+        const result = await reader.read()
+        if (result.done) break
+        bytes += result.value.byteLength
+        if (bytes > outputLimit) throw new Error("integration output limit exceeded")
+        const value = decoder.decode(result.value, { stream: true })
+        if (!value) continue
+        output.push(value)
+        receive?.(value)
+      }
+      const value = decoder.decode()
+      if (value) {
+        output.push(value)
+        receive?.(value)
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
+  const terminate = async (entry: Entry) => {
+    if (entry.child.exitCode === null) entry.child.kill("SIGTERM")
+    await within(entry.child.exited).catch(async () => {
+      if (entry.child.exitCode === null) entry.child.kill("SIGKILL")
+      await within(entry.child.exited)
+    })
+    await within(Promise.allSettled(entry.readers).then(() => undefined))
+  }
+
+  const stop = async (id: string) => {
+    const entry = children.get(id)
+    if (!entry) return
+    children.delete(id)
+    await terminate(entry)
+  }
+
+  const dispose = async () => {
+    if (disposed) return
+    disposed = true
+    await Promise.allSettled([...children.keys()].map(stop))
+    await Promise.allSettled(
+      [...deliveries].map(async (child) => {
+        if (child.exitCode === null) child.kill("SIGTERM")
+        await within(child.exited).catch(async () => {
+          if (child.exitCode === null) child.kill("SIGKILL")
+          await within(child.exited)
+        })
+      }),
+    )
+    deliveries.clear()
+  }
+  cleanups.push(dispose)
 
   class Socket extends EventTarget implements PushHostSocket {
     binaryType = "blob"
@@ -55,18 +158,18 @@ async function backend(name: string, failure?: string) {
       super()
       socketURL = url
       const id = new URL(url).pathname.split("/").at(-2)!
-      const child = children.get(id)
-      if (!child) throw new Error("missing PTY child")
-      this.child = child
-      void new Response(child.stdout).text().then((value) => {
-        stdout.push(value)
-        if (value) this.dispatchEvent(new MessageEvent("message", { data: value }))
-      })
-      void new Response(child.stderr).text().then((value) => stderr.push(value))
-      queueMicrotask(() => {
-        this.dispatchEvent(new Event("open"))
-        this.dispatchEvent(new MessageEvent("message", { data: '{"ready":true}\n' }))
-      })
+      const entry = children.get(id)
+      if (!entry) throw new Error("missing PTY child")
+      this.child = entry.child
+      entry.readers.push(
+        pump(entry.child.stdout, stdout, (value) =>
+          this.dispatchEvent(new MessageEvent("message", { data: value })),
+        ).catch(() => {
+          this.dispatchEvent(new Event("error"))
+        }),
+        pump(entry.child.stderr, stderr).catch(() => undefined),
+      )
+      queueMicrotask(() => this.dispatchEvent(new Event("open")))
     }
 
     send(value: string) {
@@ -80,7 +183,6 @@ async function backend(name: string, failure?: string) {
         return
       }
       this.child.stdin.write(value)
-      this.child.stdin.end()
     }
 
     close() {}
@@ -104,14 +206,13 @@ async function backend(name: string, failure?: string) {
       }
       const id = `pty-${++sequence}`
       cliRuns++
-      children.set(id, start([process.execPath, path.join(source, "cli.ts"), ...wrapped.slice(bin + 1)]))
+      children.set(id, { child: start(wrapped.slice(bin + 1)), readers: [] })
       return Response.json({ id })
     }
     if (url.pathname.endsWith("/connect-token")) return Response.json({ ticket: `ticket-${name}` })
     if (url.pathname.startsWith("/pty/") && init?.method === "DELETE") {
       const id = url.pathname.split("/").at(-1)!
-      const child = children.get(id)
-      if (child && child.exitCode === null) child.kill()
+      await stop(id)
       return Response.json(true)
     }
     return new Response("not found", { status: 404 })
@@ -126,11 +227,13 @@ async function backend(name: string, failure?: string) {
     get cliRuns() {
       return cliRuns
     },
+    active: () => children.size + deliveries.size,
     fetch,
     socket: (url: string) => new Socket(url),
     socketURL: () => socketURL,
-    readRegistry: () => fs.readFile(registry, "utf8").then(JSON.parse),
-    registryMode: () => fs.stat(registry).then((stat) => stat.mode & 0o777),
+    readRegistry: () => within(fs.readFile(registry, "utf8").then(JSON.parse)),
+    registryMode: () => within(fs.stat(registry).then((stat) => stat.mode & 0o777)),
+    dispose,
     async publish(kind: "complete" | "approval", fail = false) {
       const event =
         kind === "complete"
@@ -171,17 +274,26 @@ async function backend(name: string, failure?: string) {
         stdout: "pipe",
         stderr: "pipe",
       })
-      const [status, output, error] = await Promise.all([
-        child.exited,
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-      ])
-      return {
-        status,
-        output,
-        error,
-        argv,
-        sends: JSON.parse(output) as Array<{ tokenMatched: boolean; message: { kind: string; deviceID: string } }>,
+      deliveries.add(child)
+      const output = new Response(child.stdout).text()
+      const error = new Response(child.stderr).text()
+      try {
+        const [status, result, logs] = await within(Promise.all([child.exited, output, error]))
+        return {
+          status,
+          output: result,
+          error: logs,
+          argv,
+          sends: JSON.parse(result) as Array<{ tokenMatched: boolean; message: { kind: string; deviceID: string } }>,
+        }
+      } finally {
+        if (child.exitCode === null) child.kill("SIGTERM")
+        await within(child.exited).catch(async () => {
+          if (child.exitCode === null) child.kill("SIGKILL")
+          await within(child.exited)
+        })
+        await within(Promise.allSettled([output, error]).then(() => undefined))
+        deliveries.delete(child)
       }
     },
   }
@@ -200,21 +312,33 @@ describe("push host integration security", () => {
       state,
       register: (server, payload) => {
         const target = server.http.url === one.origin ? one : two
-        return registerPushHost({ server, payload, fetch: target.fetch, socket: target.socket })
+        return registerPushHost({
+          server,
+          payload,
+          fetch: target.fetch,
+          socket: target.socket,
+          timeout: operationTimeout,
+        })
       },
       unregister: async () => undefined,
       test: async () => undefined,
     })
 
-    await coordinator.sync({
-      servers,
-      health: Object.fromEntries(servers.map((server) => [ServerConnection.key(server), true])),
-      registration,
-      enabled: true,
-    })
+    await within(
+      coordinator.sync({
+        servers,
+        health: Object.fromEntries(servers.map((server) => [ServerConnection.key(server), true])),
+        registration,
+        enabled: true,
+      }),
+      operationTimeout * 2,
+    )
 
     const registries = await Promise.all([one.readRegistry(), two.readRegistry()])
     expect([one.cliRuns, two.cliRuns]).toEqual([1, 1])
+    expect(one.stdout.join("")).toContain('{"ready":true}')
+    expect(two.stdout.join("")).toContain('{"ready":true}')
+    expect([one.active(), two.active()]).toEqual([0, 0])
     expect(registries.map((item) => item.devices.map((device: { id: string }) => device.id))).toEqual([
       ["device-1"],
       ["device-1"],
@@ -223,7 +347,7 @@ describe("push host integration security", () => {
     expect(registries[1].devices[0]).toMatchObject({ token, provider: "fcm", tokenGeneration: 4, active: true })
     expect(await Promise.all([one.registryMode(), two.registryMode()])).toEqual([0o600, 0o600])
 
-    const [complete, approval] = await Promise.all([one.publish("complete"), two.publish("approval")])
+    const [complete, approval] = await within(Promise.all([one.publish("complete"), two.publish("approval")]))
     expect([complete.status, approval.status]).toEqual([0, 0])
     expect(complete.sends).toEqual([
       { tokenMatched: true, message: expect.objectContaining({ kind: "complete", deviceID: "device-1" }) },
@@ -235,6 +359,7 @@ describe("push host integration security", () => {
 
     const artifacts = JSON.stringify({
       argvAndCreateBodies: [one, two].flatMap((item) => item.requests.map((request) => request.body)),
+      httpURLs: [one, two].flatMap((item) => item.requests.map((request) => request.url)),
       ptyURLs: [one.socketURL(), two.socketURL()],
       cliOutput: [one.stdout, one.stderr, two.stdout, two.stderr],
       pluginArgv: [complete.argv, approval.argv],
@@ -260,10 +385,12 @@ describe("push host integration security", () => {
       payload: registration,
       fetch: target.fetch,
       socket: target.socket,
+      timeout: operationTimeout,
     }).catch((cause) => cause)
 
     expect(error).toBeInstanceOf(PushHostError)
     expect(JSON.stringify({ name: error.name, code: error.code, message: error.message })).not.toContain(token)
+    expect(target.active()).toBe(0)
   })
 
   test("sanitizes backend configuration and adapter errors containing the private key", async () => {
@@ -272,7 +399,13 @@ describe("push host integration security", () => {
       type: "http" as const,
       http: { url: target.origin, username: "operator", password: target.password },
     }
-    await registerPushHost({ server, payload: registration, fetch: target.fetch, socket: target.socket })
+    await registerPushHost({
+      server,
+      payload: registration,
+      fetch: target.fetch,
+      socket: target.socket,
+      timeout: operationTimeout,
+    })
 
     const failed = await target.publish("complete", true)
     const registry = await target.readRegistry()
@@ -285,5 +418,6 @@ describe("push host integration security", () => {
     expect(registry.devices[0].lastError).toMatchObject({ code: "delivery_failed", at: expect.any(Number) })
     expect(artifacts).not.toContain(token)
     expect(artifacts).not.toContain(privateKey)
+    expect(target.active()).toBe(0)
   })
 })

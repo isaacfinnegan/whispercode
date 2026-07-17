@@ -20,15 +20,19 @@ import { deviceFile } from "./path"
 import { load, save } from "./state"
 
 const base = (): Opts => ({ plugin: "@whisperopencode/push", json: true })
+const dirs: string[] = []
 
 async function tmp() {
-  return fs.mkdtemp(path.join(os.tmpdir(), "push-"))
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "push-"))
+  dirs.push(dir)
+  return dir
 }
 
-afterEach(() => {
+afterEach(async () => {
   delete process.env.OPENCODE_TEST_HOME
   delete process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID
   delete process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON
+  await Promise.all(dirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 
 function memoryIO(input = "", chunks?: Array<string | Uint8Array>) {

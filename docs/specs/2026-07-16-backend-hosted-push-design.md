@@ -103,7 +103,7 @@ For every authenticated OpenCode HTTP server connection:
 
 1. The app checks whether that server has an active direct-push registration for the current device/token generation.
 2. If not, it opens a short-lived authenticated PTY running `opencode-push register --stdin`.
-3. The app sends the registration payload to PTY standard input over the WebSocket, then closes input and waits for the non-sensitive status response.
+3. The app sends one registration JSON line to PTY standard input over the WebSocket and leaves input open while it waits for the non-sensitive status response. PTY deletion and cleanup terminate the PTY parent and child after the response or on failure.
 4. The app records server-scoped success or sanitized failure state locally.
 5. The app retries transient failures after the next successful connection or native FCM token refresh.
 
