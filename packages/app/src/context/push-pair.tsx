@@ -5,7 +5,12 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createEffect, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { type PairInfo, type PairState, usePlatform } from "@/context/platform"
-import { createLegacyPushOperation, legacyPushEnabled, usePushRelay } from "@/context/push-relay"
+import {
+  createLegacyPushOperation,
+  legacyPushEnabled,
+  settleLegacyPushOperation,
+  usePushRelay,
+} from "@/context/push-relay"
 import { useServer } from "@/context/server"
 import { Persist, persisted } from "@/utils/persist"
 import { mergePushIssue, PushFail, type PushIssue, type PushPhase, runPushSetup } from "@/utils/push-pair"
@@ -210,11 +215,21 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
           },
         })
 
-        if (!active()) return false
+        if (
+          !(await settleLegacyPushOperation(active, platform.clearPushPairing, () =>
+            save(undefined, { auto: false, updated: Date.now() }),
+          ))
+        )
+          return false
         save(result.pair, { auto: true })
         return true
       } catch (err) {
-        if (!active()) return false
+        if (
+          !(await settleLegacyPushOperation(active, platform.clearPushPairing, () =>
+            save(undefined, { auto: false, updated: Date.now() }),
+          ))
+        )
+          return false
         if (err instanceof PushFail) {
           stop(err.issue)
           throw err

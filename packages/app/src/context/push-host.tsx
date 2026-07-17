@@ -1,7 +1,6 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { batch, createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
-import { hash } from "@opencode-ai/core/util/encode"
 import { useGlobal } from "@/context/global"
 import { type PushPrefs, type PushRegistration, type PushState, usePlatform } from "@/context/platform"
 import { ServerConnection, useServer } from "@/context/server"
@@ -48,9 +47,20 @@ export function pushHostRetryAt(now: number, attempt: number) {
   return now + RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]
 }
 
-export async function pushHostServerIdentity(server: ServerConnection.Any) {
-  const id = `ph_${await hash(ServerConnection.key(server))}`
-  return { id, server: sanitizedServer(server.http.url) }
+function canonicalServerKey(value: string) {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return
+    return url.origin
+  } catch {
+    return
+  }
+}
+
+export function pushHostServerIdentity(server: ServerConnection.Any) {
+  const id = canonicalServerKey(ServerConnection.key(server))
+  if (!id) return
+  return { id, server: id }
 }
 
 export function nextPushHostRetryAt(states: Array<[string, HostPushState]>, available: string[], now: number) {
@@ -90,30 +100,19 @@ function storedState(value: unknown): HostPushState | undefined {
   }
 }
 
-function sanitizedServer(value: string) {
-  try {
-    const url = new URL(value)
-    url.username = ""
-    url.password = ""
-    url.search = ""
-    url.hash = ""
-    return `${url.origin}${url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "")}`
-  } catch {
-    return "OpenCode server"
-  }
-}
-
 export function sanitizePushHostPersisted(value: unknown) {
-  if (!isRecord(value) || !isRecord(value.servers)) return { servers: {} as HostPushSnapshot }
+  if (!isRecord(value) || value.version !== 2 || !isRecord(value.servers)) {
+    return { version: 2 as const, servers: {} as HostPushSnapshot }
+  }
   const servers = Object.fromEntries(
     Object.entries(value.servers).flatMap(([key, item]) => {
-      if (!/^ph_[0-9a-f]{64}$/.test(key)) return []
+      if (canonicalServerKey(key) !== key) return []
       const state = storedState(item)
       if (!state) return []
-      return [[key, { ...state, server: sanitizedServer(state.server) }]]
+      return [[key, { ...state, server: key }]]
     }),
   )
-  return { servers }
+  return { version: 2 as const, servers }
 }
 
 function issue(error: unknown, action: "register" | "unregister"): HostPushIssue {
@@ -263,8 +262,6 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
   const now = options.now ?? Date.now
   // Authenticated connections stay process-local. Hydrated removals cannot retry until the same server is re-added.
   const known = new Map<string, ServerConnection.Any>()
-  const keys = new Map<string, string>()
-  const displays = new Map<string, string>()
   const inflight = new Map<string, { kind: "register" | "unregister" | "test"; promise: Promise<unknown> }>()
   const desired = new Map<
     string,
@@ -337,25 +334,18 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
   const sync = async (input: CoordinatorInput) => {
     if (stopped) return
     latest = input
-    const cached = input.servers.map((conn) => {
-      const key = ServerConnection.key(conn)
-      const id = keys.get(key)
-      const display = id ? displays.get(id) : undefined
-      return id && display ? { conn, key, id, display } : undefined
+    const unique = new Map<
+      string,
+      { conn: ServerConnection.Any; key: ServerConnection.Key; id: string; display: string }
+    >()
+    input.servers.forEach((conn) => {
+      const identity = pushHostServerIdentity(conn)
+      if (!identity || unique.has(identity.id)) return
+      unique.set(identity.id, { conn, key: ServerConnection.key(conn), id: identity.id, display: identity.server })
     })
-    const servers = cached.every((value) => value !== undefined)
-      ? cached
-      : await Promise.all(
-          input.servers.map(async (conn) => {
-            const identity = await pushHostServerIdentity(conn)
-            return { conn, key: ServerConnection.key(conn), id: identity.id, display: identity.server }
-          }),
-        )
-    if (stopped) return
+    const servers = [...unique.values()]
     servers.forEach((value) => {
       known.set(value.id, value.conn)
-      keys.set(value.key, value.id)
-      displays.set(value.id, value.display)
     })
     configured = new Set(servers.map((value) => value.id))
     healthy = new Map(servers.map((value) => [value.id, input.health[value.key]]))
@@ -414,11 +404,11 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
       return nextPushHostRetryAt(options.state.entries(), available, time)
     },
     state(server: string) {
-      const id = keys.get(server)
+      const id = canonicalServerKey(server)
       return id ? options.state.get(id) : undefined
     },
     retry(server: string) {
-      const id = keys.get(server)
+      const id = canonicalServerKey(server)
       if (!id) return Promise.resolve()
       const current = options.state.get(id)
       if (!current) return Promise.resolve()
@@ -428,11 +418,11 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
       return sync(latest)
     },
     unregister(server: string) {
-      const id = keys.get(server)
+      const id = canonicalServerKey(server)
       return id ? unregister(id) : Promise.resolve()
     },
     test(server: string) {
-      const id = keys.get(server)
+      const id = canonicalServerKey(server)
       const current = id ? options.state.get(id) : undefined
       const conn = id ? known.get(id) : undefined
       if (!current || !conn) return Promise.reject(new PushHostError("push_host_not_registered"))
@@ -459,7 +449,7 @@ export const { use: usePushHost, provider: PushHostProvider } = createSimpleCont
         ...Persist.global("push.host", ["push.host.v1"]),
         migrate: sanitizePushHostPersisted,
       },
-      createStore<{ servers: HostPushSnapshot }>({ servers: {} }),
+      createStore<{ version: 2; servers: HostPushSnapshot }>({ version: 2, servers: {} }),
     )
     const [runtime, setRuntime] = createStore({ generation: -1, tick: 0 })
     const state = createPushHostState({}, (value) => setStore("servers", reconcile(value)))

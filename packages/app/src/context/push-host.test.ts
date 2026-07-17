@@ -112,15 +112,23 @@ describe("push host state", () => {
     })
   })
 
-  test("hashes auth-bearing server keys and persists only a sanitized display URL", async () => {
+  test("uses a synchronous credential-free canonical origin identity", async () => {
     const first = connection("https://user:password@example.com/api?token=secret-one#private")
     const second = connection("https://user:password@example.com/api?token=secret-two#private")
-    const one = await pushHostServerIdentity(first)
-    const two = await pushHostServerIdentity(second)
+    const other = connection("https://example.com:444/api?token=secret-one")
+    const one = pushHostServerIdentity(first)
+    const two = pushHostServerIdentity(second)
 
-    expect(one.id).toMatch(/^ph_[0-9a-f]{64}$/)
-    expect(one.server).toBe("https://example.com/api")
-    expect(two.id).not.toBe(one.id)
+    expect(one).toEqual({ id: "https://example.com", server: "https://example.com" })
+    expect(two).toEqual(one)
+    expect(pushHostServerIdentity(other)?.id).toBe("https://example.com:444")
+    expect(
+      pushHostServerIdentity({
+        type: "sidecar",
+        variant: "base",
+        http: { url: "http://localhost:4096" },
+      }),
+    ).toBeUndefined()
 
     const state = createPushHostState()
     const key = ServerConnection.key(first)
@@ -136,11 +144,12 @@ describe("push host state", () => {
     expect(persisted).not.toContain("password")
     expect(persisted).not.toContain("?token")
     expect(persisted).not.toContain("secret-one")
-    expect(persisted).toContain("https://example.com/api")
+    expect(persisted).toContain("https://example.com")
 
     const legacy = sanitizePushHostPersisted({
       servers: {
         [ServerConnection.key(first)]: state.list()[0],
+        "https://example.com": state.list()[0],
       },
     })
     expect(legacy.servers).toEqual({})
@@ -148,11 +157,12 @@ describe("push host state", () => {
   })
 
   test("resumes a persisted in-flight registration as pending", () => {
-    const id = `ph_${"a".repeat(64)}`
+    const id = "https://one.example"
     const persisted = sanitizePushHostPersisted({
+      version: 2,
       servers: {
         [id]: {
-          server: "https://user:password@one.example/path?token=secret#private",
+          server: id,
           device: "device-1",
           tokenGeneration: 2,
           status: "registering",
@@ -163,12 +173,12 @@ describe("push host state", () => {
     })
 
     expect(persisted.servers[id]?.status).toBe("pending")
-    expect(persisted.servers[id]?.server).toBe("https://one.example/path")
+    expect(persisted.servers[id]?.server).toBe(id)
     expect(JSON.stringify(persisted)).not.toContain("secret-fcm-token")
   })
 
   test("schedules removed unregister only when authenticated connection remains in memory", () => {
-    const id = `ph_${"b".repeat(64)}`
+    const id = "https://one"
     const pending = {
       server: "https://one",
       device: "device-1",
@@ -183,6 +193,118 @@ describe("push host state", () => {
 })
 
 describe("push host coordinator", () => {
+  test("deduplicates configured connections with the same canonical origin", async () => {
+    const first = connection("https://one/path?workspace=first")
+    const second = connection("https://one/other?workspace=second")
+    const calls: string[] = []
+    const coordinator = createPushHostCoordinator({
+      state: createPushHostState(),
+      register: async (server) => calls.push(server.http.url),
+      unregister: async () => undefined,
+      test: async () => undefined,
+    })
+
+    await coordinator.sync({
+      servers: [first, second],
+      health: { [ServerConnection.key(first)]: true, [ServerConnection.key(second)]: true },
+      registration: registration(),
+      enabled: true,
+    })
+
+    expect(calls).toEqual([first.http.url])
+    expect(coordinator.state(ServerConnection.key(second))?.status).toBe("active")
+  })
+
+  test("concurrent syncs finish with the newest generation and preferences", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const seen: Array<[number, boolean]> = []
+    const server = connection("https://one")
+    const key = ServerConnection.key(server)
+    const coordinator = createPushHostCoordinator({
+      state: createPushHostState(),
+      register: async (_server, payload) => {
+        seen.push([payload.token_generation, payload.prefs.complete])
+        if (seen.length === 1) await gate
+      },
+      unregister: async () => undefined,
+      test: async () => undefined,
+    })
+
+    const first = coordinator.sync({
+      servers: [server],
+      health: { [key]: true },
+      registration: registration(2),
+      enabled: true,
+    })
+    const third = coordinator.sync({
+      servers: [server],
+      health: { [key]: true },
+      registration: pushHostRegistration(registration(3), {
+        complete: false,
+        approval: true,
+        question: false,
+        error: true,
+      }),
+      enabled: true,
+    })
+    release()
+    await Promise.all([first, third])
+
+    expect(seen).toEqual([
+      [2, true],
+      [3, false],
+    ])
+    expect(coordinator.state(key)?.tokenGeneration).toBe(3)
+  })
+
+  test("hydrates canonical active and due error states without a side mapping", async () => {
+    const server = connection("https://one/path?token=private")
+    const activeServer = connection("https://two/other?token=private")
+    const key = ServerConnection.key(server)
+    const activeKey = ServerConnection.key(activeServer)
+    const id = "https://one"
+    const state = createPushHostState({
+      [id]: {
+        server: id,
+        device: "device-1",
+        tokenGeneration: 2,
+        status: "error",
+        updatedAt: 1_000,
+        retryAt: 6_000,
+      },
+      "https://two": {
+        server: "https://two",
+        device: "device-1",
+        tokenGeneration: 2,
+        status: "active",
+        updatedAt: 1_000,
+      },
+    })
+    let registrations = 0
+    const coordinator = createPushHostCoordinator({
+      state,
+      now: () => 10_000,
+      register: async () => {
+        registrations++
+      },
+      unregister: async () => undefined,
+      test: async () => undefined,
+    })
+
+    expect(state.get(id)?.status).toBe("error")
+    expect(coordinator.state(activeKey)?.status).toBe("active")
+    await coordinator.sync({
+      servers: [server, activeServer],
+      health: { [key]: true, [activeKey]: true },
+      registration: registration(2),
+      enabled: true,
+    })
+    expect(registrations).toBe(1)
+    expect(coordinator.state(key)?.status).toBe("active")
+    expect(coordinator.state(activeKey)?.status).toBe("active")
+  })
+
   test("shutdown unregisters active hosts and rejects later registration admission", async () => {
     const server = connection("https://one")
     const key = ServerConnection.key(server)
@@ -242,6 +364,37 @@ describe("push host coordinator", () => {
 
     expect(events).toEqual(["register", "unregister"])
     expect(coordinator.state(key)).toBeUndefined()
+  })
+
+  test("shutdown during initial sync unregisters synchronously admitted registration", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const events: string[] = []
+    const server = connection("https://one/path?token=private")
+    const key = ServerConnection.key(server)
+    const coordinator = createPushHostCoordinator({
+      state: createPushHostState(),
+      register: async () => {
+        events.push("register")
+        await gate
+      },
+      unregister: async () => {
+        events.push("unregister")
+      },
+      test: async () => undefined,
+    })
+
+    const syncing = coordinator.sync({
+      servers: [server],
+      health: { [key]: true },
+      registration: registration(),
+      enabled: true,
+    })
+    const shutdown = coordinator.shutdown()
+    release()
+    await Promise.all([syncing, shutdown])
+
+    expect(events).toEqual(["register", "unregister"])
   })
 
   test("coalesces concurrent attempts by normalized server key while servers remain independent", async () => {
@@ -464,7 +617,7 @@ describe("push host coordinator", () => {
     const server = connection("https://one")
     const key = ServerConnection.key(server)
     const state = createPushHostState()
-    const identity = await pushHostServerIdentity(server)
+    const identity = pushHostServerIdentity(server)!
     state.success(identity.id, "device-1", 2, identity.server)
     const coordinator = createPushHostCoordinator({
       state,
@@ -523,7 +676,7 @@ describe("push host coordinator", () => {
 
   test("keeps hydrated unregister dormant until the server is re-added authenticated", async () => {
     const key = "https://one"
-    const identity = await pushHostServerIdentity(connection(key))
+    const identity = pushHostServerIdentity(connection(key))!
     let attempts = 0
     const state = createPushHostState({
       [identity.id]: {
