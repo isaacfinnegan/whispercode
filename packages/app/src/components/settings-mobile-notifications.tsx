@@ -28,10 +28,12 @@ type PushAction = {
   run?: () => Promise<void>
 }
 
+type DynamicText = JSX.Element | ((value?: unknown) => JSX.Element)
+
 type Summary = {
   variant: "info" | "warning" | "error" | "success"
-  title: string
-  body: string
+  title: DynamicText
+  body: DynamicText
   detail?: string
   command?: string
   action?: PushAction
@@ -726,8 +728,8 @@ function AndroidDirectNotifications(props: {
 
   return (
     <AndroidHostDeliveryView
-      summary={hostCard()}
-      state={selectedHost()}
+      summary={hostCard}
+      state={selectedHost}
       busy={!!store.hostAction}
       prefs={{
         agent: settings.notifications.agent(),
@@ -806,12 +808,14 @@ function AndroidDirectNotifications(props: {
 }
 
 export function AndroidHostDeliveryView(props: {
-  summary: Summary
-  state?: {
-    status: "pending" | "registering" | "active" | "error" | "unregistering"
-    retryAt?: number
-    lastError?: { code: string; message: string }
-  }
+  summary: () => Summary
+  state: () =>
+    | {
+        status: "pending" | "registering" | "active" | "error" | "unregistering"
+        retryAt?: number
+        lastError?: { code: string; message: string }
+      }
+    | undefined
   busy: boolean
   prefs: { agent: boolean; permissions: boolean; errors: boolean }
   labels: { agent: string; permissions: string; errors: string; retry: string; unregister: string }
@@ -827,7 +831,18 @@ export function AndroidHostDeliveryView(props: {
   return (
     <div data-component="settings-push-host">
       <div class="py-4 border-b border-border-weak-base">
-        <StatusCard {...props.summary} busy={props.busy} />
+        <StatusCard
+          variant={props.summary().variant}
+          title={(_value?: unknown) => {
+            const title = props.summary().title
+            return typeof title === "function" ? title() : title
+          }}
+          body={(_value?: unknown) => {
+            const body = props.summary().body
+            return typeof body === "function" ? body() : body
+          }}
+          busy={props.busy}
+        />
       </div>
 
       {props.details}
@@ -852,12 +867,21 @@ export function AndroidHostDeliveryView(props: {
 
       {props.testRow}
 
-      <SettingsRow title={props.summary.title} description={props.summary.body}>
+      <SettingsRow
+        title={(_value?: unknown) => {
+          const title = props.summary().title
+          return typeof title === "function" ? title() : title
+        }}
+        description={(_value?: unknown) => {
+          const body = props.summary().body
+          return typeof body === "function" ? body() : body
+        }}
+      >
         <div class="flex flex-wrap items-center justify-end gap-2">
           <Button
             data-action="settings-push-host-retry"
             size="small"
-            disabled={props.busy || !hostRetryable(props.state)}
+            disabled={props.busy || !hostRetryable(props.state())}
             onClick={props.retry}
           >
             {props.labels.retry}
@@ -866,7 +890,7 @@ export function AndroidHostDeliveryView(props: {
             data-action="settings-push-host-unregister"
             size="small"
             variant="secondary"
-            disabled={props.busy || !props.state || props.state.status === "unregistering"}
+            disabled={props.busy || !props.state() || props.state()?.status === "unregistering"}
             onClick={props.unregister}
           >
             {props.labels.unregister}
@@ -882,8 +906,8 @@ function StatusCard(props: Summary & { busy: boolean }) {
     <Card variant={props.variant} class="rounded-lg px-4 py-3">
       <div class="flex flex-col gap-3">
         <div class="flex flex-col gap-1">
-          <span class="text-14-medium text-text-strong">{props.title}</span>
-          <span class="text-12-regular text-text-weak">{props.body}</span>
+          <span class="text-14-medium text-text-strong">{props.title as JSX.Element}</span>
+          <span class="text-12-regular text-text-weak">{props.body as JSX.Element}</span>
         </div>
 
         <Show when={props.detail}>
@@ -918,8 +942,8 @@ function StatusCard(props: Summary & { busy: boolean }) {
 }
 
 interface SettingsRowProps {
-  title: string | JSX.Element
-  description: string | JSX.Element
+  title: DynamicText
+  description: DynamicText
   children: JSX.Element
 }
 
@@ -927,8 +951,8 @@ const SettingsRow: Component<SettingsRowProps> = (props) => {
   return (
     <div class="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none">
       <div class="flex flex-col gap-0.5 min-w-0">
-        <span class="text-14-medium text-text-strong">{props.title}</span>
-        <span class="text-12-regular text-text-weak">{props.description}</span>
+        <span class="text-14-medium text-text-strong">{props.title as JSX.Element}</span>
+        <span class="text-12-regular text-text-weak">{props.description as JSX.Element}</span>
       </div>
       <div class="min-w-0 max-w-full flex-shrink-0">{props.children}</div>
     </div>

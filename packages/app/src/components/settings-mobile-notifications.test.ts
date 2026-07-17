@@ -6,13 +6,47 @@ import { createComponent, type Component } from "solid-js"
 import h from "solid-js/h"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import { isServer, render } from "solid-js/web"
+import { fileURLToPath } from "node:url"
 import { dict } from "../i18n/en"
 import { pushHostProviderMode } from "../context/push-host"
 import { PushFail } from "../utils/push-pair"
 import { shouldToastPairErr } from "./settings-mobile-notifications-helpers"
 import { diagRows, hostSummary } from "./settings-mobile-notifications-data"
 
-const renderedTest = isServer ? test.skip : test
+let renderedSuite: Promise<{ exit: number; output: string }> | undefined
+
+function renderedTest(name: string, run: () => void | Promise<void>) {
+  test(name, async () => {
+    if (!isServer) return run()
+    renderedSuite ??= runRenderedSuite()
+    const result = await renderedSuite
+    expect(result.output).toContain("3 pass")
+    expect(result.exit).toBe(0)
+  })
+}
+
+async function runRenderedSuite() {
+  const app = fileURLToPath(new URL("../../", import.meta.url))
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "test",
+      "--conditions=browser",
+      "--preload",
+      "./happydom.ts",
+      "./src/components/settings-mobile-notifications.test.ts",
+      "--test-name-pattern",
+      "renders absent|renders an immediate|gives every",
+    ],
+    { cwd: app, stdout: "pipe", stderr: "pipe" },
+  )
+  const [exit, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  return { exit, output: `${stdout}\n${stderr}` }
+}
 
 type RenderState = {
   status: "pending" | "registering" | "active" | "error" | "unregistering"
@@ -21,8 +55,8 @@ type RenderState = {
 }
 
 type ViewProps = {
-  summary: ReturnType<typeof hostSummary>
-  state?: RenderState
+  summary: () => ReturnType<typeof hostSummary>
+  state: () => RenderState | undefined
   busy: boolean
   prefs: { agent: boolean; permissions: boolean; errors: boolean }
   labels: { agent: string; permissions: string; errors: string; retry: string; unregister: string }
@@ -73,19 +107,16 @@ async function renderHostView(
   const dispose = render(
     () =>
       createComponent(View, {
-        get summary() {
-          return summary({
+        summary: () =>
+          summary({
             server: store.server,
             status: store.state?.status,
             retryAt: store.state?.retryAt,
             code: store.state?.lastError?.code,
             enabled: store.enabled,
             available: store.available,
-          })
-        },
-        get state() {
-          return store.state
-        },
+          }),
+        state: () => store.state,
         busy: false,
         get prefs() {
           return store.prefs
@@ -226,21 +257,22 @@ describe("settings mobile notifications", () => {
     expect(summary({ server: "Backend One", status: "registering", enabled: true, available: true }).title).toBe(
       "Registering",
     )
+    expect(summary({ server: "Backend One", status: "pending", enabled: true, available: true }).title).toBe(
+      "Registering",
+    )
   })
 
   renderedTest("renders absent and disabled state and reacts to selected backend changes", async () => {
     const view = await renderHostView()
     expect(view.container.textContent).toContain("Unregistered")
     expect(view.container.textContent).toContain("Backend One")
+
+    view.setStore("server", "Backend Two")
+    expect(view.container.textContent).toContain("Backend Two")
+
+    view.setStore("enabled", false)
+    expect(view.container.textContent).toContain("Push delivery disabled")
     view.dispose()
-
-    const changed = await renderHostView({ server: "Backend Two" })
-    expect(changed.container.textContent).toContain("Backend Two")
-    changed.dispose()
-
-    const disabled = await renderHostView({ enabled: false })
-    expect(disabled.container.textContent).toContain("Push delivery disabled")
-    disabled.dispose()
   })
 
   renderedTest("renders an immediate retry action for failed unregister", async () => {

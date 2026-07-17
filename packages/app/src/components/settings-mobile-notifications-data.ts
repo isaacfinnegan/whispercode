@@ -45,7 +45,9 @@ export function hostSummary(input: HostSummaryInput, copy: HostSummaryCopy = hos
   if (!input.server) return { variant: "warning" as const, title: copy.unavailable, body }
   if (input.available === false) return { variant: "warning" as const, title: copy.unavailable, body }
   if (input.status === "active") return { variant: "success" as const, title: copy.active, body }
-  if (input.status === "registering") return { variant: "info" as const, title: copy.registering, body }
+  if (input.status === "pending" || input.status === "registering") {
+    return { variant: "info" as const, title: copy.registering, body }
+  }
   if (input.status === "error" && ["fcm_unconfigured", "fcm_not_configured"].includes(input.code ?? "")) {
     return { variant: "warning" as const, title: copy.missing, body }
   }
