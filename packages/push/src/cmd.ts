@@ -27,7 +27,11 @@ export type Cmd =
   | "remove-device"
 
 export type CLIIO = {
-  stdin: AsyncIterable<string | Uint8Array>
+  stdin: AsyncIterable<string | Uint8Array> & {
+    isTTY?: boolean
+    isRaw?: boolean
+    setRawMode?(mode: boolean): void
+  }
   stdout: { write(value: string): unknown }
   stderr: { write(value: string): unknown }
 }
@@ -51,6 +55,8 @@ export type Opts = {
 }
 
 const MAX_REGISTER_BYTES = 16 * 1024
+// Task 7 transport must wait for this marker before writing registration JSON to a PTY.
+export const REGISTER_READY_LINE = '{"ready":true}\n'
 
 export async function run(cmd: string | undefined, opts: Opts, io = processIO(), dependencies: Partial<CmdDependencies> = {}) {
   const next = { ...opts, io }
@@ -81,16 +87,51 @@ export async function run(cmd: string | undefined, opts: Opts, io = processIO(),
 
 async function register(opts: Opts, dependencies: Partial<CmdDependencies>) {
   if (!opts.stdin) return directOut(opts, { ok: false, error: "missing_stdin" })
-  const line = await readRegisterLine(opts.io!.stdin, dependencies.convert, dependencies.concat)
-  if (!line.ok) return directOut(opts, line)
+  const input = opts.io!.stdin
+  if (!input.isTTY) return directOut(opts, await registerResult(input, dependencies))
+  if (!input.setRawMode) return directOut(opts, { ok: false, error: "terminal_setup_failed" })
+
+  const raw = input.isRaw ?? false
+  try {
+    input.setRawMode(true)
+  } catch {
+    try {
+      input.setRawMode(raw)
+    } catch {}
+    return directOut(opts, { ok: false, error: "terminal_setup_failed" })
+  }
+
+  let result: Record<string, unknown> = { ok: false, error: "input_error" }
+  let restored = true
+  try {
+    output(opts, REGISTER_READY_LINE)
+    result = await registerResult(input, dependencies, true)
+  } finally {
+    try {
+      input.setRawMode(raw)
+    } catch {
+      restored = false
+    }
+  }
+  if (!restored) return directOut(opts, { ok: false, error: "terminal_restore_failed" })
+  return directOut(opts, result)
+}
+
+async function registerResult(
+  input: AsyncIterable<string | Uint8Array>,
+  dependencies: Partial<CmdDependencies>,
+  interrupt = false,
+) {
+  const line = await readRegisterLine(input, dependencies.convert, dependencies.concat, interrupt)
+  if (!line.ok) return line
 
   let value: unknown
   try {
     value = JSON.parse(line.value)
   } catch {
-    return directOut(opts, { ok: false, error: "invalid_input" })
+    return { ok: false, error: "invalid_input" }
   }
-  if (!registerInput(value)) return directOut(opts, { ok: false, error: "invalid_input" })
+  if (!registerInput(value)) return { ok: false, error: "invalid_input" }
 
   const result = await registerDevice({
     id: value.device,
@@ -99,8 +140,8 @@ async function register(opts: Opts, dependencies: Partial<CmdDependencies>) {
     tokenGeneration: value.token_generation,
     prefs: value.prefs,
   }).catch(() => undefined)
-  if (!result) return directOut(opts, { ok: false, error: "invalid_input" })
-  return directOut(opts, { ok: true, device: result.id, token_generation: result.tokenGeneration })
+  if (!result) return { ok: false, error: "invalid_input" }
+  return { ok: true, device: result.id, token_generation: result.tokenGeneration }
 }
 
 async function unregister(opts: Opts) {
@@ -451,6 +492,7 @@ async function readRegisterLine(
   input: AsyncIterable<string | Uint8Array>,
   convert = (value: string | Uint8Array): Buffer => Buffer.from(value),
   concat = (chunks: Buffer[]): Buffer => Buffer.concat(chunks),
+  interrupt = false,
 ): Promise<{ ok: true; value: string } | { ok: false; error: string }> {
   const chunks: Buffer[] = []
   let bytes = 0
@@ -459,6 +501,7 @@ async function readRegisterLine(
       const length = typeof value === "string" ? Buffer.byteLength(value) : value.byteLength
       if (length > MAX_REGISTER_BYTES - bytes) return { ok: false, error: "input_too_large" }
       const chunk = convert(value)
+      if (interrupt && chunk.includes(0x03)) return { ok: false, error: "input_interrupted" }
       const newline = chunk.indexOf(0x0a)
       if (newline === -1) {
         bytes += chunk.length

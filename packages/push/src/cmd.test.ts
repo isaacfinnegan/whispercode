@@ -2,7 +2,18 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
-import { install, pair, parse, run, status, test as ping, unpair, type CLIIO, type Opts } from "./cmd"
+import {
+  REGISTER_READY_LINE,
+  install,
+  pair,
+  parse,
+  run,
+  status,
+  test as ping,
+  unpair,
+  type CLIIO,
+  type Opts,
+} from "./cmd"
 import { main } from "./cli"
 import { deactivate, loadDevices, register as registerDevice } from "./device"
 
@@ -31,6 +42,41 @@ function memoryIO(input = "", chunks?: Array<string | Uint8Array>) {
     stderr: { write: (value) => void (stderr += value) },
   }
   return { io, stdout: () => stdout, stderr: () => stderr }
+}
+
+function terminalIO(source: AsyncIterable<string | Uint8Array>, raw = false) {
+  let stdout = ""
+  let stderr = ""
+  const events: string[] = []
+  const stdin = {
+    isTTY: true,
+    isRaw: raw,
+    setRawMode(value: boolean) {
+      events.push(`raw:${value}`)
+      stdin.isRaw = value
+    },
+    async *[Symbol.asyncIterator]() {
+      for await (const chunk of source) {
+        events.push("read")
+        yield chunk
+      }
+    },
+  }
+  const io: CLIIO = {
+    stdin,
+    stdout: {
+      write(value) {
+        events.push(value === REGISTER_READY_LINE ? "ready" : "result")
+        stdout += value
+      },
+    },
+    stderr: { write: (value) => void (stderr += value) },
+  }
+  return { io, stdin, events, stdout: () => stdout, stderr: () => stderr }
+}
+
+async function* chunks(...values: Array<string | Uint8Array>) {
+  yield* values
 }
 
 const registration = (value: Record<string, unknown> = {}) => ({
@@ -213,6 +259,10 @@ describe("push cmd", () => {
 })
 
 describe("direct push cmd", () => {
+  test("exports the stable TTY readiness marker", () => {
+    expect(REGISTER_READY_LINE).toBe('{"ready":true}\n')
+  })
+
   test("register --stdin consumes one JSON line and never echoes the token", async () => {
     process.env.OPENCODE_TEST_HOME = await tmp()
     const value = registration()
@@ -228,6 +278,61 @@ describe("direct push cmd", () => {
       token: value.token,
       tokenGeneration: 2,
     })
+  })
+
+  test.each([
+    ["success", () => chunks(`${JSON.stringify(registration())}\n`), true, undefined],
+    ["parse error", () => chunks("malformed\n"), false, "invalid_input"],
+    ["oversized input", () => chunks(new Uint8Array(16 * 1024 + 1)), false, "input_too_large"],
+    [
+      "stream error",
+      () =>
+        (async function* () {
+          throw new Error("private stream failure")
+        })(),
+      false,
+      "input_error",
+    ],
+    ["interruption", () => chunks(new Uint8Array([3])), false, "input_interrupted"],
+  ] as const)("TTY registration disables echo before readiness and restores it on %s", async (_label, source, ok, error) => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const terminal = terminalIO(source())
+
+    const result = await run("register", parse(["register", "--stdin"]), terminal.io)
+
+    expect(result.ok).toBe(ok)
+    if (error) expect(result.error).toBe(error)
+    expect(terminal.events[0]).toBe("raw:true")
+    expect(terminal.events.indexOf("ready")).toBeGreaterThan(terminal.events.indexOf("raw:true"))
+    expect(terminal.events.indexOf("raw:false")).toBeGreaterThan(terminal.events.indexOf("ready"))
+    expect(terminal.events.indexOf("result")).toBeGreaterThan(terminal.events.indexOf("raw:false"))
+    expect(terminal.stdin.isRaw).toBe(false)
+    expect(terminal.stdout().startsWith('{"ready":true}\n')).toBe(true)
+    expect(terminal.stdout() + terminal.stderr()).not.toContain("private stream failure")
+  })
+
+  test("TTY registration restores an existing raw mode", async () => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const terminal = terminalIO(chunks("malformed\n"), true)
+
+    await run("register", parse(["register", "--stdin"]), terminal.io)
+
+    expect(terminal.events.filter((event) => event.startsWith("raw:"))).toEqual(["raw:true", "raw:true"])
+    expect(terminal.stdin.isRaw).toBe(true)
+  })
+
+  test("TTY setup failure is safe and emits no readiness marker", async () => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const terminal = terminalIO(chunks(`${JSON.stringify(registration())}\n`))
+    terminal.stdin.setRawMode = () => {
+      throw new Error("private terminal failure")
+    }
+
+    const result = await run("register", parse(["register", "--stdin"]), terminal.io)
+
+    expect(result).toEqual({ ok: false, error: "terminal_setup_failed" })
+    expect(terminal.stdout()).toBe('{"ok":false,"error":"terminal_setup_failed"}\n')
+    expect(terminal.stdout() + terminal.stderr()).not.toContain("private terminal failure")
   })
 
   test("register handles UTF-8 characters split across input chunks", async () => {
@@ -571,6 +676,75 @@ describe("direct push cmd", () => {
     expect(stdout).toBe('{"ok":false,"error":"invalid_input"}\n')
     expect(stdout + stderr).not.toContain("secret malformed input")
   })
+
+  const node = Bun.which("node")
+  const ptyTest = node ? test : test.skip
+
+  ptyTest(
+    "production TTY waits for readiness and does not echo registration input",
+    async () => {
+      const dir = await tmp()
+      const file = path.join(import.meta.dir, "cli.ts")
+      const harness = String.raw`
+        const pty = require("@lydell/node-pty")
+        const [bun, file, home, ready] = process.argv.slice(1)
+        let payload = ""
+        process.stdin.setEncoding("utf8")
+        process.stdin.on("data", (chunk) => payload += chunk)
+        process.stdin.on("end", () => {
+          const child = pty.spawn(bun, [file, "register", "--stdin"], {
+            cwd: process.cwd(),
+            env: { ...process.env, OPENCODE_TEST_HOME: home },
+            cols: 80,
+            rows: 24,
+          })
+          let output = ""
+          let sent = false
+          const timer = setTimeout(() => {
+            child.kill()
+            process.stderr.write("timed out waiting for PTY registration")
+            process.exit(1)
+          }, 5000)
+          child.onData((chunk) => {
+            output += chunk
+            if (sent || !output.includes(ready)) return
+            sent = true
+            child.write(payload)
+          })
+          child.onExit(({ exitCode }) => {
+            clearTimeout(timer)
+            process.stdout.write(JSON.stringify({ exitCode, sent, output }))
+          })
+        })
+      `
+      const proc = Bun.spawn([node!, "-e", harness, process.execPath, file, dir, REGISTER_READY_LINE.trim()], {
+        cwd: import.meta.dir,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const value = registration({ token: "pty-secret-token".padEnd(32, "x") })
+      const payload = JSON.stringify(value)
+      proc.stdin.write(`${payload}\n`)
+      proc.stdin.end()
+      const [code, stdout, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ])
+      const result = JSON.parse(stdout) as { exitCode: number; sent: boolean; output: string }
+
+      expect(code).toBe(0)
+      expect(stderr).toBe("")
+      expect(result.sent).toBe(true)
+      expect(result.exitCode).toBe(0)
+      expect(result.output).toContain(REGISTER_READY_LINE.trim())
+      expect(result.output).toContain('{"ok":true,"device":"device-1","token_generation":2}')
+      expect(result.output).not.toContain(value.token)
+      expect(result.output).not.toContain(payload)
+    },
+    10_000,
+  )
 
   test("CLI supports injected IO without changing process exit state", async () => {
     process.env.OPENCODE_TEST_HOME = await tmp()
