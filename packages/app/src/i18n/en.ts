@@ -1091,6 +1091,8 @@ export const dict = {
   "settings.general.notifications.push.action.test": "Send test",
   "settings.general.notifications.push.action.sending": "Sending...",
   "settings.general.notifications.push.backend.unavailable": "Backend unavailable",
+  "settings.general.notifications.push.backend.disabled": "Push delivery disabled",
+  "settings.general.notifications.push.backend.unregistered": "Unregistered",
   "settings.general.notifications.push.backend.select": "Select a backend",
   "settings.general.notifications.push.backend.registering": "Registering",
   "settings.general.notifications.push.backend.active": "Active",

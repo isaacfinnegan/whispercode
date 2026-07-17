@@ -9,10 +9,14 @@ type HostSummaryInput = {
   retryAt?: number
   code?: string
   message?: string
+  enabled?: boolean
+  available?: boolean
 }
 
 type HostSummaryCopy = {
   unavailable: string
+  disabled: string
+  unregistered: string
   registering: string
   active: string
   retrying: string
@@ -24,6 +28,8 @@ type HostSummaryCopy = {
 
 const hostCopy: HostSummaryCopy = {
   unavailable: "Backend unavailable",
+  disabled: "Push delivery disabled",
+  unregistered: "Unregistered",
   registering: "Registering",
   active: "Active",
   retrying: "Retrying",
@@ -35,17 +41,28 @@ const hostCopy: HostSummaryCopy = {
 
 export function hostSummary(input: HostSummaryInput, copy: HostSummaryCopy = hostCopy) {
   const body = input.server ?? copy.select
+  if (input.enabled === false) return { variant: "info" as const, title: copy.disabled, body }
   if (!input.server) return { variant: "warning" as const, title: copy.unavailable, body }
+  if (input.available === false) return { variant: "warning" as const, title: copy.unavailable, body }
   if (input.status === "active") return { variant: "success" as const, title: copy.active, body }
-  if (input.status === "unregistering") return { variant: "info" as const, title: copy.unregistering, body }
+  if (input.status === "registering") return { variant: "info" as const, title: copy.registering, body }
   if (input.status === "error" && ["fcm_unconfigured", "fcm_not_configured"].includes(input.code ?? "")) {
     return { variant: "warning" as const, title: copy.missing, body }
   }
-  if (input.status === "error" && input.retryAt !== undefined) {
+  if ((input.status === "error" || input.status === "unregistering") && input.retryAt !== undefined) {
     return { variant: "warning" as const, title: copy.retrying, body }
   }
   if (input.status === "error") return { variant: "error" as const, title: copy.failed, body }
-  return { variant: "info" as const, title: copy.registering, body }
+  if (input.status === "unregistering") return { variant: "info" as const, title: copy.unregistering, body }
+  return { variant: "info" as const, title: copy.unregistered, body }
+}
+
+export function hostRetryable(state?: {
+  status: HostSummaryInput["status"]
+  retryAt?: number
+  lastError?: { code: string; message: string }
+}) {
+  return state?.status === "error" || (state?.status === "unregistering" && !!state.lastError)
 }
 
 type Pair = {

@@ -20,7 +20,7 @@ import { pushIssue } from "@/utils/push-pair"
 import { DEFAULT_PUSH_RELAY_URL } from "@/utils/push-relay-url"
 import { sendPushTest } from "@/utils/push-test"
 import { shouldToastPairErr } from "./settings-mobile-notifications-helpers"
-import { diagRows, hostSummary } from "./settings-mobile-notifications-data"
+import { diagRows, hostRetryable, hostSummary } from "./settings-mobile-notifications-data"
 
 type PushAction = {
   label: string
@@ -667,6 +667,16 @@ function AndroidDirectNotifications(props: {
     const key = selectedKey()
     return key ? pushHost.state(key) : undefined
   })
+  const enabled = createMemo(() =>
+    [settings.notifications.agent(), settings.notifications.permissions(), settings.notifications.errors()].some(
+      Boolean,
+    ),
+  )
+  const available = createMemo(() => {
+    const value = selected()
+    if (!value || !selectedKey() || !value.http.password) return false
+    return global.servers.health[ServerConnection.key(value)]?.healthy === true
+  })
   const hostCard = createMemo(() => {
     const state = selectedHost()
     return hostSummary(
@@ -675,9 +685,13 @@ function AndroidDirectNotifications(props: {
         status: state?.status,
         retryAt: state?.retryAt,
         code: state?.lastError?.code,
+        enabled: enabled(),
+        available: available(),
       },
       {
         unavailable: language.t("settings.general.notifications.push.backend.unavailable"),
+        disabled: language.t("settings.general.notifications.push.backend.disabled"),
+        unregistered: language.t("settings.general.notifications.push.backend.unregistered"),
         select: language.t("settings.general.notifications.push.backend.select"),
         registering: language.t("settings.general.notifications.push.backend.registering"),
         active: language.t("settings.general.notifications.push.backend.active"),
@@ -711,105 +725,151 @@ function AndroidDirectNotifications(props: {
   }
 
   return (
-    <div data-component="settings-push-host">
-      <div class="py-4 border-b border-border-weak-base">
-        <StatusCard {...hostCard()} busy={!!store.hostAction} />
-      </div>
+    <AndroidHostDeliveryView
+      summary={hostCard()}
+      state={selectedHost()}
+      busy={!!store.hostAction}
+      prefs={{
+        agent: settings.notifications.agent(),
+        permissions: settings.notifications.permissions(),
+        errors: settings.notifications.errors(),
+      }}
+      labels={{
+        agent: language.t("settings.general.notifications.agent.title"),
+        permissions: language.t("settings.general.notifications.permissions.title"),
+        errors: language.t("settings.general.notifications.errors.title"),
+        retry: language.t("settings.general.notifications.push.backend.action.retry"),
+        unregister: language.t("settings.general.notifications.push.backend.action.unregister"),
+      }}
+      descriptions={{
+        agent: language.t("settings.general.notifications.agent.description"),
+        permissions: language.t("settings.general.notifications.permissions.description"),
+        errors: language.t("settings.general.notifications.errors.description"),
+      }}
+      setAgent={(value) => setPreference(settings.notifications.setAgent, value)}
+      setPermissions={(value) => setPreference(settings.notifications.setPermissions, value)}
+      setErrors={(value) => setPreference(settings.notifications.setErrors, value)}
+      retry={() => void runHostAction("retry")}
+      unregister={() => void runHostAction("unregister")}
+      details={
+        <>
+          <SettingsRow
+            title={language.t("settings.general.notifications.push.permission.title")}
+            description={props.pushDesc(props.push())}
+          >
+            <div data-action="settings-push-permission">
+              <Button
+                size="small"
+                variant="secondary"
+                disabled={props.asking || props.permissionAction().disabled}
+                onClick={() => void props.permissionAction().run?.()}
+              >
+                {props.asking
+                  ? language.t("settings.general.notifications.push.action.checking")
+                  : props.permissionAction().label}
+              </Button>
+            </div>
+          </SettingsRow>
 
-      <SettingsRow
-        title={language.t("settings.general.notifications.push.permission.title")}
-        description={props.pushDesc(props.push())}
-      >
-        <div data-action="settings-push-permission">
+          <SettingsRow
+            title={language.t("settings.general.notifications.push.backend.token.title")}
+            description={props.pushDesc(props.push())}
+          >
+            <span class="text-12-medium text-text-dimmed">
+              {props.push()?.registered
+                ? language.t("settings.general.notifications.push.backend.token.ready")
+                : language.t("settings.general.notifications.push.backend.token.pending")}
+            </span>
+          </SettingsRow>
+        </>
+      }
+      testRow={
+        <SettingsRow
+          title={language.t("settings.general.notifications.push.test.title")}
+          description={language.t("settings.general.notifications.push.test.description")}
+        >
           <Button
+            data-action="settings-push-test"
             size="small"
             variant="secondary"
-            disabled={props.asking || props.permissionAction().disabled}
-            onClick={() => void props.permissionAction().run?.()}
+            disabled={props.testing || selectedHost()?.status !== "active"}
+            onClick={() => void props.test({ selected: selectedKey()!, host: pushHost })}
           >
-            {props.asking
-              ? language.t("settings.general.notifications.push.action.checking")
-              : props.permissionAction().label}
+            {props.testing
+              ? language.t("settings.general.notifications.push.action.sending")
+              : language.t("settings.general.notifications.push.action.test")}
           </Button>
-        </div>
+        </SettingsRow>
+      }
+    />
+  )
+}
+
+export function AndroidHostDeliveryView(props: {
+  summary: Summary
+  state?: {
+    status: "pending" | "registering" | "active" | "error" | "unregistering"
+    retryAt?: number
+    lastError?: { code: string; message: string }
+  }
+  busy: boolean
+  prefs: { agent: boolean; permissions: boolean; errors: boolean }
+  labels: { agent: string; permissions: string; errors: string; retry: string; unregister: string }
+  descriptions?: { agent: string; permissions: string; errors: string }
+  setAgent(value: boolean): void
+  setPermissions(value: boolean): void
+  setErrors(value: boolean): void
+  retry(): void
+  unregister(): void
+  details?: JSX.Element
+  testRow?: JSX.Element
+}) {
+  return (
+    <div data-component="settings-push-host">
+      <div class="py-4 border-b border-border-weak-base">
+        <StatusCard {...props.summary} busy={props.busy} />
+      </div>
+
+      {props.details}
+
+      <SettingsRow title={props.labels.agent} description={props.descriptions?.agent ?? ""}>
+        <Switch checked={props.prefs.agent} onChange={props.setAgent} hideLabel>
+          {props.labels.agent}
+        </Switch>
       </SettingsRow>
 
-      <SettingsRow
-        title={language.t("settings.general.notifications.push.backend.token.title")}
-        description={props.pushDesc(props.push())}
-      >
-        <span class="text-12-medium text-text-dimmed">
-          {props.push()?.registered
-            ? language.t("settings.general.notifications.push.backend.token.ready")
-            : language.t("settings.general.notifications.push.backend.token.pending")}
-        </span>
+      <SettingsRow title={props.labels.permissions} description={props.descriptions?.permissions ?? ""}>
+        <Switch checked={props.prefs.permissions} onChange={props.setPermissions} hideLabel>
+          {props.labels.permissions}
+        </Switch>
       </SettingsRow>
 
-      <SettingsRow
-        title={language.t("settings.general.notifications.agent.title")}
-        description={language.t("settings.general.notifications.agent.description")}
-      >
-        <Switch
-          checked={settings.notifications.agent()}
-          onChange={(value) => setPreference(settings.notifications.setAgent, value)}
-        />
+      <SettingsRow title={props.labels.errors} description={props.descriptions?.errors ?? ""}>
+        <Switch checked={props.prefs.errors} onChange={props.setErrors} hideLabel>
+          {props.labels.errors}
+        </Switch>
       </SettingsRow>
 
-      <SettingsRow
-        title={language.t("settings.general.notifications.permissions.title")}
-        description={language.t("settings.general.notifications.permissions.description")}
-      >
-        <Switch
-          checked={settings.notifications.permissions()}
-          onChange={(value) => setPreference(settings.notifications.setPermissions, value)}
-        />
-      </SettingsRow>
+      {props.testRow}
 
-      <SettingsRow
-        title={language.t("settings.general.notifications.errors.title")}
-        description={language.t("settings.general.notifications.errors.description")}
-      >
-        <Switch
-          checked={settings.notifications.errors()}
-          onChange={(value) => setPreference(settings.notifications.setErrors, value)}
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        title={language.t("settings.general.notifications.push.test.title")}
-        description={language.t("settings.general.notifications.push.test.description")}
-      >
-        <Button
-          data-action="settings-push-test"
-          size="small"
-          variant="secondary"
-          disabled={props.testing || selectedHost()?.status !== "active"}
-          onClick={() => void props.test({ selected: selectedKey()!, host: pushHost })}
-        >
-          {props.testing
-            ? language.t("settings.general.notifications.push.action.sending")
-            : language.t("settings.general.notifications.push.action.test")}
-        </Button>
-      </SettingsRow>
-
-      <SettingsRow title={hostCard().title} description={hostCard().body}>
+      <SettingsRow title={props.summary.title} description={props.summary.body}>
         <div class="flex flex-wrap items-center justify-end gap-2">
           <Button
             data-action="settings-push-host-retry"
             size="small"
-            disabled={!!store.hostAction || selectedHost()?.status !== "error"}
-            onClick={() => void runHostAction("retry")}
+            disabled={props.busy || !hostRetryable(props.state)}
+            onClick={props.retry}
           >
-            {language.t("settings.general.notifications.push.backend.action.retry")}
+            {props.labels.retry}
           </Button>
           <Button
             data-action="settings-push-host-unregister"
             size="small"
             variant="secondary"
-            disabled={!!store.hostAction || !selectedHost() || selectedHost()?.status === "unregistering"}
-            onClick={() => void runHostAction("unregister")}
+            disabled={props.busy || !props.state || props.state.status === "unregistering"}
+            onClick={props.unregister}
           >
-            {language.t("settings.general.notifications.push.backend.action.unregister")}
+            {props.labels.unregister}
           </Button>
         </div>
       </SettingsRow>
