@@ -14,24 +14,29 @@ export function legacyPushEnabled(enabled?: boolean) {
 
 export function createLegacyPushOperation(enabled: () => boolean) {
   let generation = 0
+  let cancelledThrough = 0
   return {
     begin() {
       const id = ++generation
       const current = () => id === generation
-      return Object.assign(() => enabled() && current(), { enabled, current })
+      return Object.assign(() => enabled() && current(), {
+        generation: id,
+        cancelledThrough: () => cancelledThrough,
+        current,
+      })
     },
     cancel() {
-      generation++
+      cancelledThrough = ++generation
     },
   }
 }
 
 export async function settleLegacyPushOperation(
-  active: (() => boolean) & { enabled(): boolean; current(): boolean },
+  active: (() => boolean) & { generation: number; cancelledThrough(): number; current(): boolean },
   compensate?: () => unknown,
   discard?: () => void,
 ) {
-  if (active.enabled()) return active.current()
+  if (active.generation > active.cancelledThrough()) return active.current()
   await Promise.resolve()
     .then(() => compensate?.())
     .catch(() => undefined)

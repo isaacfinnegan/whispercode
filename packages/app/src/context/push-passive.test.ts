@@ -74,6 +74,30 @@ test("superseded relay completion is ignored without compensation while enabled"
   expect(second()).toBe(true)
 })
 
+test("passive cancellation still compensates an old completion after re-enable", async () => {
+  let enabled = true
+  let restores = 0
+  let discards = 0
+  const operation = createLegacyPushOperation(() => enabled)
+  const first = operation.begin()
+
+  enabled = false
+  operation.cancel()
+  enabled = true
+  const second = operation.begin()
+
+  expect(
+    await settleLegacyPushOperation(
+      first,
+      () => restores++,
+      () => discards++,
+    ),
+  ).toBe(false)
+  expect(restores).toBe(1)
+  expect(discards).toBe(1)
+  expect(second()).toBe(true)
+})
+
 test("stale relay completion restores the default relay and clears pairing", async () => {
   let enabled = true
   let release!: () => void
