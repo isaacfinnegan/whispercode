@@ -2,20 +2,27 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
-import type { PushMessage } from "@whispercode/push-provider"
+import type { PushMessage, PushResult } from "@whispercode/push-provider"
 import { loadDevices, register } from "./device"
 import { save, type Data } from "./state"
 
 const dirs: string[] = []
 const sent: PushMessage[] = []
+const used: number[] = []
+let adapters = 0
+let delivery = async (): Promise<PushResult> => ({ ok: true, invalid: false, code: "ok" })
 
 mock.module("@whispercode/push-provider", () => ({
-  createFcmAdapter: () => ({
-    send: async (_token: string, message: PushMessage) => {
-      sent.push(message)
-      return { ok: true, invalid: false, code: "ok" }
-    },
-  }),
+  createFcmAdapter: () => {
+    const id = ++adapters
+    return {
+      send: async (_token: string, message: PushMessage) => {
+        sent.push(message)
+        used.push(id)
+        return delivery()
+      },
+    }
+  },
 }))
 
 const { default: plugin } = await import("./index")
@@ -25,6 +32,9 @@ afterEach(async () => {
   delete process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID
   delete process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON
   sent.splice(0)
+  used.splice(0)
+  adapters = 0
+  delivery = async () => ({ ok: true, invalid: false, code: "ok" })
   await Promise.all(dirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 
@@ -41,17 +51,130 @@ async function setup() {
   })
 }
 
-async function notify() {
-  const hooks = await plugin({} as never)
+async function emit(hooks: Awaited<ReturnType<typeof plugin>>, session = "private-session") {
   await hooks.event?.({
-    event: { type: "session.created", properties: { info: { id: "private-session" } } },
+    event: { type: "session.created", properties: { info: { id: session } } },
   } as never)
   await hooks.event?.({
-    event: { type: "session.idle", properties: { sessionID: "private-session" } },
+    event: { type: "session.idle", properties: { sessionID: session } },
   } as never)
 }
 
+async function notify() {
+  const hooks = await plugin({} as never)
+  await emit(hooks)
+}
+
 describe("push plugin delivery", () => {
+  test("reuses one FCM adapter while backend credentials are unchanged", async () => {
+    await setup()
+    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
+    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
+      client_email: "push@example.com",
+      private_key: "private-key-1",
+    })
+    const hooks = await plugin({} as never)
+
+    await emit(hooks, "session-1")
+    await emit(hooks, "session-2")
+
+    expect(adapters).toBe(1)
+    expect(used).toEqual([1, 1])
+  })
+
+  test("creates a new FCM adapter when backend credentials rotate", async () => {
+    await setup()
+    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
+    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
+      client_email: "push@example.com",
+      private_key: "private-key-1",
+    })
+    const hooks = await plugin({} as never)
+    await emit(hooks, "session-1")
+
+    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
+      client_email: "push@example.com",
+      private_key: "private-key-2",
+    })
+    await emit(hooks, "session-2")
+
+    expect(adapters).toBe(2)
+    expect(used).toEqual([1, 2])
+  })
+
+  test("dispose drains an in-flight event before resolving", async () => {
+    await setup()
+    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
+    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
+      client_email: "push@example.com",
+      private_key: "private-key",
+    })
+    let release!: (result: PushResult) => void
+    let started!: () => void
+    const sending = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    delivery = () =>
+      new Promise<PushResult>((resolve) => {
+        release = resolve
+        started()
+      })
+    const hooks = await plugin({} as never)
+    await hooks.event?.({
+      event: { type: "session.created", properties: { info: { id: "session-1" } } },
+    } as never)
+    const pending = hooks.event?.({
+      event: { type: "session.idle", properties: { sessionID: "session-1" } },
+    } as never)
+    await sending
+
+    let disposed = false
+    const disposing = hooks.dispose?.().then(() => {
+      disposed = true
+    })
+    await Promise.resolve()
+    expect(disposed).toBe(false)
+
+    release({ ok: true, invalid: false, code: "ok" })
+    await disposing
+    await pending
+    expect(disposed).toBe(true)
+  })
+
+  test(
+    "dispose returns within a bound when delivery does not settle",
+    async () => {
+      await setup()
+      process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
+      process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
+        client_email: "push@example.com",
+        private_key: "private-key",
+      })
+      let started!: () => void
+      const sending = new Promise<void>((resolve) => {
+        started = resolve
+      })
+      delivery = () =>
+        new Promise<PushResult>(() => {
+          started()
+        })
+      const hooks = await plugin({} as never)
+      await hooks.event?.({
+        event: { type: "session.created", properties: { info: { id: "session-1" } } },
+      } as never)
+      void hooks.event?.({
+        event: { type: "session.idle", properties: { sessionID: "session-1" } },
+      } as never)
+      await sending
+
+      expect(hooks.dispose).toBeFunction()
+      const before = Date.now()
+      await hooks.dispose?.()
+      expect(Date.now() - before).toBeLessThan(2_500)
+    },
+    { timeout: 3_000 },
+  )
+
   test("default mode routes notification events through direct delivery and not relay", async () => {
     await setup()
     process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
