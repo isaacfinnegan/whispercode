@@ -172,7 +172,7 @@ async function execute(
   payload?: PushRegistration,
 ): Promise<Record<string, unknown>> {
   const fetch = input.fetch ?? globalThis.fetch
-  const spec = runPush([command, ...args], input.tool)
+  const spec = runPush(["--pty-hold", command, ...args], input.tool)
   const created = await deadline.run(
     fetch(new URL("/pty", input.server.http.url), {
       method: "POST",

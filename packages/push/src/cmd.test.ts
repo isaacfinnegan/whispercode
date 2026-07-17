@@ -681,6 +681,50 @@ describe("direct push cmd", () => {
   const ptyTest = node ? test : test.skip
 
   ptyTest(
+    "PTY hold keeps a fast command alive for delayed attachment",
+    async () => {
+      const dir = await tmp()
+      const file = path.join(import.meta.dir, "cli.ts")
+      const harness = String.raw`
+        const pty = require("@lydell/node-pty")
+        const [bun, file, home] = process.argv.slice(1)
+        const child = pty.spawn(bun, [file, "--pty-hold", "status", "--json"], {
+          cwd: process.cwd(),
+          env: { ...process.env, OPENCODE_TEST_HOME: home },
+          cols: 80,
+          rows: 24,
+        })
+        let output = ""
+        let exited = false
+        child.onData((chunk) => output += chunk)
+        child.onExit(() => exited = true)
+        setTimeout(() => {
+          const alive = !exited
+          if (alive) child.kill()
+          process.stdout.write(JSON.stringify({ alive, output }))
+        }, 100)
+      `
+      const proc = Bun.spawn([node!, "-e", harness, process.execPath, file, dir], {
+        cwd: import.meta.dir,
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [code, stdout, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ])
+      const result = JSON.parse(stdout) as { alive: boolean; output: string }
+
+      expect(code).toBe(0)
+      expect(stderr).toBe("")
+      expect(result.alive).toBe(true)
+      expect(result.output).toContain('{"mode":"direct"')
+    },
+    10_000,
+  )
+
+  ptyTest(
     "production TTY waits for readiness and does not echo registration input",
     async () => {
       const dir = await tmp()
@@ -692,7 +736,7 @@ describe("direct push cmd", () => {
         process.stdin.setEncoding("utf8")
         process.stdin.on("data", (chunk) => payload += chunk)
         process.stdin.on("end", () => {
-          const child = pty.spawn(bun, [file, "register", "--stdin"], {
+          const child = pty.spawn(bun, [file, "--pty-hold", "register", "--stdin"], {
             cwd: process.cwd(),
             env: { ...process.env, OPENCODE_TEST_HOME: home },
             cols: 80,
@@ -700,6 +744,8 @@ describe("direct push cmd", () => {
           })
           let output = ""
           let sent = false
+          let held = false
+          let wait
           const timer = setTimeout(() => {
             child.kill()
             process.stderr.write("timed out waiting for PTY registration")
@@ -710,10 +756,19 @@ describe("direct push cmd", () => {
             if (sent || !output.includes(ready)) return
             sent = true
             child.write(payload)
+            wait = setInterval(() => {
+              if (!output.includes('"token_generation":2')) return
+              clearInterval(wait)
+              setTimeout(() => {
+                held = true
+                child.kill()
+              }, 100)
+            }, 5)
           })
           child.onExit(({ exitCode }) => {
             clearTimeout(timer)
-            process.stdout.write(JSON.stringify({ exitCode, sent, output }))
+            clearInterval(wait)
+            process.stdout.write(JSON.stringify({ exitCode, sent, held, output }))
           })
         })
       `
@@ -732,11 +787,12 @@ describe("direct push cmd", () => {
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),
       ])
-      const result = JSON.parse(stdout) as { exitCode: number; sent: boolean; output: string }
+      const result = JSON.parse(stdout) as { exitCode: number; sent: boolean; held: boolean; output: string }
 
       expect(code).toBe(0)
       expect(stderr).toBe("")
       expect(result.sent).toBe(true)
+      expect(result.held).toBe(true)
       expect(result.exitCode).toBe(0)
       expect(result.output).toContain(REGISTER_READY_LINE.trim())
       expect(result.output).toContain('{"ok":true,"device":"device-1","token_generation":2}')

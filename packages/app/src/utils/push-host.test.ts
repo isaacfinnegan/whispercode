@@ -35,6 +35,7 @@ type Plan = {
   ticketHang?: boolean
   ticketStatus?: number
   disposeStatus?: number
+  requireHold?: boolean
 }
 
 async function within<T>(promise: Promise<T>, ms = 200): Promise<T> {
@@ -69,6 +70,9 @@ function trace(plan: Plan = {}, installed = true) {
   let created = false
   let deleteAborted = false
   let ticketAborted = false
+  let running = false
+  let runningAtTicket = false
+  let runningAtDelete = false
 
   class Socket extends EventTarget implements PushHostSocket {
     binaryType = "blob"
@@ -124,14 +128,21 @@ function trace(plan: Plan = {}, installed = true) {
     if (url.pathname === "/path") return Response.json({ state: "/tmp/opencode", directory: "/repo" })
     if (url.pathname === "/pty" && method === "POST") {
       created = true
+      const args = (body ? JSON.parse(body) : {}) as { args?: string[] }
+      running = !plan.requireHold || args.args?.includes("--pty-hold") === true
       return Response.json({ id: "pty-1" })
     }
     if (url.pathname === "/pty/pty-1/connect-token" && method === "POST") {
+      runningAtTicket = running
+      if (!running) return new Response("exited", { status: 404 })
       if (plan.ticketHang) return hang(init, () => (ticketAborted = true))
       if (plan.ticketStatus) return new Response("failed", { status: plan.ticketStatus })
       return Response.json({ ticket: plan.ticket ?? "ticket-1" })
     }
     if (url.pathname === "/pty/pty-1" && method === "DELETE") {
+      runningAtDelete = running
+      running = false
+      if (!runningAtDelete) return new Response("exited", { status: 409 })
       if (!plan.deleteHang) return Response.json(true)
       return new Promise<Response>((_resolve, reject) => {
         const abort = () => {
@@ -156,6 +167,8 @@ function trace(plan: Plan = {}, installed = true) {
     created: () => created,
     deleteAborted: () => deleteAborted,
     ticketAborted: () => ticketAborted,
+    runningAtTicket: () => runningAtTicket,
+    runningAtDelete: () => runningAtDelete,
   }
 }
 
@@ -316,7 +329,16 @@ describe("push host PTY", () => {
     const create = next.requests.find((request) => request.path === "/pty" && request.method === "POST")!
     expect(JSON.parse(create.body)).toEqual({
       command: "npx",
-      args: ["--yes", "--prefix", ".", `--package=${PushPlugin.spec}`, PushPlugin.bin, "register", "--stdin"],
+      args: [
+        "--yes",
+        "--prefix",
+        ".",
+        `--package=${PushPlugin.spec}`,
+        PushPlugin.bin,
+        "--pty-hold",
+        "register",
+        "--stdin",
+      ],
     })
     expect(JSON.stringify(create)).not.toContain(token)
     expect(next.websocketURL()).not.toContain(token)
@@ -407,6 +429,29 @@ describe("push host PTY", () => {
       ok: true,
     })
     expect(test.stdin).toEqual([])
+
+    expect(
+      [status, unregister, test].map((next) => {
+        const create = next.requests.find((request) => request.path === "/pty" && request.method === "POST")!
+        return (JSON.parse(create.body) as { args: string[] }).args.slice(5)
+      }),
+    ).toEqual([
+      ["--pty-hold", "status", "--json"],
+      ["--pty-hold", "unregister", "--device", "device-1"],
+      ["--pty-hold", "test", "--device", "device-1"],
+    ])
+  })
+
+  test("holds a fast command through delayed ticket attachment and deletion", async () => {
+    const next = trace({ output: '{"mode":"direct","configured":true,"devices":[]}\n', requireHold: true })
+
+    await expect(pushHostStatus({ server, fetch: next.fetch, socket: next.socket })).resolves.toEqual({
+      mode: "direct",
+      configured: true,
+      devices: [],
+    })
+    expect(next.runningAtTicket()).toBe(true)
+    expect(next.runningAtDelete()).toBe(true)
   })
 
   test("uses authenticated ticket fetch and a credential-free terminal websocket URL", async () => {
