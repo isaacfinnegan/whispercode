@@ -16,6 +16,8 @@ import {
 } from "./cmd"
 import { main } from "./cli"
 import { deactivate, loadDevices, register as registerDevice } from "./device"
+import { deviceFile } from "./path"
+import { load, save } from "./state"
 
 const base = (): Opts => ({ plugin: "@whisperopencode/push", json: true })
 
@@ -278,6 +280,58 @@ describe("direct push cmd", () => {
       token: value.token,
       tokenGeneration: 2,
     })
+  })
+
+  test("persists the backend registry with owner-only permissions", async () => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const memory = memoryIO(`${JSON.stringify(registration())}\n`)
+
+    expect(await run("register", parse(["register", "--stdin"]), memory.io)).toMatchObject({ ok: true })
+    expect((await fs.stat(deviceFile())).mode & 0o777).toBe(0o600)
+  })
+
+  test.each([
+    ["malformed", "secret malformed registration\n", "invalid_input"],
+    ["oversized", `${"secret-oversized-registration".repeat(700)}\n`, "input_too_large"],
+  ])("rejects %s stdin before creating registry state", async (_label, input, code) => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const memory = memoryIO(input)
+
+    expect(await run("register", parse(["register", "--stdin"]), memory.io)).toEqual({ ok: false, error: code })
+    await expect(fs.stat(deviceFile())).rejects.toMatchObject({ code: "ENOENT" })
+    expect(memory.stdout() + memory.stderr()).not.toContain(input.trim())
+  })
+
+  test("retains explicit relay mode and data when a direct registration is received", async () => {
+    process.env.OPENCODE_TEST_HOME = await tmp()
+    const requests: string[] = []
+    const relay = Bun.serve({
+      port: 0,
+      fetch(req) {
+        requests.push(new URL(req.url).pathname)
+        return Response.json({ ok: true, accepted: true })
+      },
+    })
+    const legacy = {
+      url: `http://127.0.0.1:${relay.port}`,
+      channel: "legacy-channel",
+      secret: "legacy-secret",
+      server: "legacy-server",
+    }
+    await save({ v: 1, mode: "relay", root: {}, cool: {}, relay: legacy })
+
+    try {
+      const memory = memoryIO(`${JSON.stringify(registration())}\n`)
+      expect(await run("register", parse(["register", "--stdin"]), memory.io)).toMatchObject({ ok: true })
+      expect(await load()).toMatchObject({ mode: "relay", relay: legacy })
+
+      await ping(base())
+      expect(requests.filter((route) => route === "/v1/events/publish")).toHaveLength(1)
+      expect((await load()).mode).toBe("relay")
+      expect((await load()).relay).toMatchObject(legacy)
+    } finally {
+      relay.stop()
+    }
   })
 
   test.each([

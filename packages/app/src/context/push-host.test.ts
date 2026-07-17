@@ -194,6 +194,64 @@ describe("push host state", () => {
 })
 
 describe("push host coordinator", () => {
+  test("scopes the first successful direct registration to only that backend", async () => {
+    const one = connection("https://one")
+    const two = connection("https://two")
+    const oneKey = ServerConnection.key(one)
+    const twoKey = ServerConnection.key(two)
+    const calls: string[] = []
+    const state = createPushHostState()
+    const coordinator = createPushHostCoordinator({
+      state,
+      register: async (server) => calls.push(ServerConnection.key(server)),
+      unregister: async () => undefined,
+      test: async () => undefined,
+    })
+
+    await coordinator.sync({ servers: [one], health: { [oneKey]: true }, registration: registration(), enabled: true })
+    expect(calls).toEqual([oneKey])
+    expect(coordinator.state(oneKey)?.status).toBe("active")
+    expect(coordinator.state(twoKey)).toBeUndefined()
+
+    await coordinator.sync({
+      servers: [one, two],
+      health: { [oneKey]: true, [twoKey]: true },
+      registration: registration(),
+      enabled: true,
+    })
+    expect(calls).toEqual([oneKey, twoKey])
+    expect(coordinator.state(oneKey)?.status).toBe("active")
+    expect(coordinator.state(twoKey)?.status).toBe("active")
+  })
+
+  test("keeps direct diagnostics and persisted state free of registration and backend secrets", async () => {
+    const server = connection("https://one/path?private=transport-secret")
+    const key = ServerConnection.key(server)
+    const serviceKey = "backend-service-account-private-key"
+    const state = createPushHostState()
+    const coordinator = createPushHostCoordinator({
+      state,
+      register: async () => {
+        throw new PushHostError("host_unavailable", `transport failed for ${registration().token}`)
+      },
+      unregister: async () => undefined,
+      test: async () => undefined,
+    })
+
+    await coordinator.sync({ servers: [server], health: { [key]: true }, registration: registration(), enabled: true })
+
+    const diagnostics = JSON.stringify(coordinator.state(key))
+    const persisted = JSON.stringify(sanitizePushHostPersisted({ version: 2, servers: state.snapshot() }))
+    for (const secret of [registration().token, serviceKey, "operator-secret", "transport-secret"]) {
+      expect(diagnostics).not.toContain(secret)
+      expect(persisted).not.toContain(secret)
+    }
+    expect(coordinator.state(key)?.lastError).toEqual({
+      code: "host_unavailable",
+      message: "Push registration failed",
+    })
+  })
+
   test("deduplicates configured connections with the same canonical origin", async () => {
     const first = connection("https://one/path?workspace=first")
     const second = connection("https://one/other?workspace=second")
