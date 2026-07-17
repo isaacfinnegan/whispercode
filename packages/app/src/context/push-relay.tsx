@@ -16,8 +16,9 @@ export function createLegacyPushOperation(enabled: () => boolean) {
   let generation = 0
   return {
     begin() {
-      const current = ++generation
-      return () => enabled() && current === generation
+      const id = ++generation
+      const current = () => id === generation
+      return Object.assign(() => enabled() && current(), { enabled, current })
     },
     cancel() {
       generation++
@@ -26,11 +27,11 @@ export function createLegacyPushOperation(enabled: () => boolean) {
 }
 
 export async function settleLegacyPushOperation(
-  active: () => boolean,
+  active: (() => boolean) & { enabled(): boolean; current(): boolean },
   compensate?: () => unknown,
   discard?: () => void,
 ) {
-  if (active()) return true
+  if (active.enabled()) return active.current()
   await Promise.resolve()
     .then(() => compensate?.())
     .catch(() => undefined)

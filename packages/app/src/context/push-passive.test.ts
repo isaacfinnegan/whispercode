@@ -54,6 +54,26 @@ test("stale native completion performs caught compensating cleanup", async () =>
   expect(discards).toBe(1)
 })
 
+test("superseded relay completion is ignored without compensation while enabled", async () => {
+  let enabled = true
+  let restores = 0
+  let discards = 0
+  const operation = createLegacyPushOperation(() => enabled)
+  const first = operation.begin()
+  const second = operation.begin()
+
+  expect(
+    await settleLegacyPushOperation(
+      first,
+      () => restores++,
+      () => discards++,
+    ),
+  ).toBe(false)
+  expect(restores).toBe(0)
+  expect(discards).toBe(0)
+  expect(second()).toBe(true)
+})
+
 test("stale relay completion restores the default relay and clears pairing", async () => {
   let enabled = true
   let release!: () => void
