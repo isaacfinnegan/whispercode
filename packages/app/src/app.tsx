@@ -294,8 +294,8 @@ function PushProviders(props: ParentProps) {
     return pushHostProviderStack(platform.platform, push?.paired === true, push?.diag?.relay).includes("host")
   })
   return (
-    <PushRelayProvider>
-      <PushPairProvider>
+    <PushRelayProvider enabled={!host()}>
+      <PushPairProvider enabled={!host()}>
         <Show when={host()} fallback={props.children}>
           <PushHostProvider>{props.children}</PushHostProvider>
         </Show>

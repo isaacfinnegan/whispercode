@@ -5,7 +5,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createEffect, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { type PairInfo, type PairState, usePlatform } from "@/context/platform"
-import { usePushRelay } from "@/context/push-relay"
+import { legacyPushEnabled, usePushRelay } from "@/context/push-relay"
 import { useServer } from "@/context/server"
 import { Persist, persisted } from "@/utils/persist"
 import { mergePushIssue, PushFail, type PushIssue, type PushPhase, runPushSetup } from "@/utils/push-pair"
@@ -111,10 +111,11 @@ function limited(err: unknown) {
 export const { use: usePushPair, provider: PushPairProvider } = createSimpleContext({
   name: "PushPair",
   gate: false,
-  init: () => {
+  init: (props: { enabled?: boolean }) => {
     const platform = usePlatform()
     const relay = usePushRelay()
     const server = useServer()
+    const enabled = () => legacyPushEnabled(props.enabled)
     const [pair, setPair, , ready] = persisted(
       Persist.global("push.pair", ["push.pair.v3", "push.pair.v2", "push.pair.v1"]),
       createStore<Pair>({
@@ -184,6 +185,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     }
 
     const setup = async (opts?: { ask?: boolean; source?: "settings" | "auto" }) => {
+      if (!enabled()) return false
       if (state.run || state.clear) return false
 
       setState("run", true)
@@ -217,6 +219,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     }
 
     const clear = async () => {
+      if (!enabled()) return
       if (!platform.clearPushPairing || state.clear) return
       setState("clear", true)
       try {
@@ -260,10 +263,13 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
 
     onMount(() => {
       const sync = () => {
+        if (!enabled()) return
         setState("show", document.visibilityState === "visible")
         bump()
       }
-      const wake = () => bump()
+      const wake = () => {
+        if (enabled()) bump()
+      }
       sync()
       document.addEventListener("visibilitychange", sync)
       window.addEventListener("focus", wake)
@@ -278,6 +284,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     })
 
     createEffect(() => {
+      if (!enabled()) return
       const next = relay.current()
       if (!relaySwitched({ prev: lastRelay, next })) {
         lastRelay = next
@@ -290,6 +297,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     })
 
     createEffect(() => {
+      if (!enabled()) return
       const push = platform.pushState?.()
       if (push?.paired) {
         save(
@@ -309,6 +317,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     })
 
     createEffect(() => {
+      if (!enabled()) return
       state.tick
       if (!platform.getPushPairing) return
       if (state.run || state.clear) return
@@ -338,6 +347,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     })
 
     createEffect(() => {
+      if (!enabled()) return
       if (pair.status !== "pending" && pair.status !== "claimed") return
       if (!expired(pair.expires)) return
       stop(
@@ -351,6 +361,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     })
 
     createEffect(() => {
+      if (!enabled()) return
       if (!platform.getPushPairing) return
       if (state.run || state.clear) return
       if (
@@ -416,6 +427,7 @@ export const { use: usePushPair, provider: PushPairProvider } = createSimpleCont
     })
 
     createEffect(() => {
+      if (!enabled()) return
       state.tick
       const now = Date.now()
       const push = platform.pushState?.()

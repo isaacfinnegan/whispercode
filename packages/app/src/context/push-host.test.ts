@@ -122,7 +122,7 @@ describe("push host state", () => {
     expect(JSON.stringify(persisted)).not.toContain("secret-fcm-token")
   })
 
-  test("keeps removed or unauthenticated unregister retries dormant", () => {
+  test("schedules removed unregister only when authenticated connection remains in memory", () => {
     const pending = {
       server: "https://one",
       device: "device-1",
@@ -132,6 +132,7 @@ describe("push host state", () => {
       retryAt: 6_000,
     }
     expect(nextPushHostRetryAt([pending], [], {}, 10_000)).toBeUndefined()
+    expect(nextPushHostRetryAt([pending], [], {}, 10_000, [connection("https://one")])).toBe(10_000)
     expect(
       nextPushHostRetryAt([pending], [{ type: "http", http: { url: "https://one" } }], { "https://one": true }, 10_000),
     ).toBeUndefined()
@@ -307,7 +308,8 @@ describe("push host coordinator", () => {
     expect(state.get(key)?.status).toBe("unregistering")
 
     now = 6_000
-    await coordinator.retry(key)
+    expect(coordinator.nextRetryAt(now)).toBe(now)
+    await coordinator.sync({ servers: [], health: {}, registration: registration(), enabled: true })
     expect(attempts).toBe(2)
     expect(state.get(key)).toBeUndefined()
   })
@@ -382,6 +384,7 @@ describe("push host coordinator", () => {
     await coordinator.sync({ servers: [], health: {}, registration: registration(), enabled: true })
     expect(attempts).toBe(0)
     expect(state.get(key)?.retryAt).toBe(6_000)
+    expect(coordinator.nextRetryAt(10_000)).toBeUndefined()
 
     const unauthenticated = { type: "http" as const, http: { url: key } }
     await coordinator.sync({
@@ -392,6 +395,7 @@ describe("push host coordinator", () => {
     })
     expect(attempts).toBe(0)
     expect(state.get(key)?.status).toBe("unregistering")
+    expect(coordinator.nextRetryAt(10_000)).toBeUndefined()
 
     await coordinator.sync({
       servers: [connection(key)],

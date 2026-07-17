@@ -8,11 +8,16 @@ import { usePlatform } from "@/context/platform"
 import { Persist, persisted } from "@/utils/persist"
 import { DEFAULT_PUSH_RELAY_URL, normalizePushRelayURL } from "@/utils/push-relay-url"
 
+export function legacyPushEnabled(enabled?: boolean) {
+  return enabled !== false
+}
+
 export const { use: usePushRelay, provider: PushRelayProvider } = createSimpleContext({
   name: "PushRelay",
   gate: false,
-  init: () => {
+  init: (props: { enabled?: boolean }) => {
     const platform = usePlatform()
+    const enabled = () => legacyPushEnabled(props.enabled)
 
     const [store, setStore, , ready] = persisted(
       Persist.global("push.relay", ["push.relay.v1"]),
@@ -25,6 +30,10 @@ export const { use: usePushRelay, provider: PushRelayProvider } = createSimpleCo
     let last: string | undefined
 
     createEffect(() => {
+      if (!enabled()) {
+        last = undefined
+        return
+      }
       const next = current()
       if (!platform.setPushRelayURL || next === last) return
       last = next
@@ -36,9 +45,11 @@ export const { use: usePushRelay, provider: PushRelayProvider } = createSimpleCo
       current,
       custom: () => store.url,
       set(value?: string) {
+        if (!enabled()) return
         setStore("url", normalizePushRelayURL(value))
       },
       clear() {
+        if (!enabled()) return
         setStore("url", undefined)
       },
     }

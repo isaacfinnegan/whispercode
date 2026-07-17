@@ -49,16 +49,19 @@ export function pushHostRetryAt(now: number, attempt: number) {
 
 export function nextPushHostRetryAt(
   states: HostPushState[],
-  servers: ServerConnection.Any[],
+  configured: ServerConnection.Any[],
   health: Record<string, boolean | undefined>,
   now: number,
+  known: ServerConnection.Any[] = configured,
 ) {
-  const available = new Set<string>(
-    servers.flatMap((server) => {
-      const key = ServerConnection.key(server)
-      return server.http.password && health[key] === true ? [key] : []
-    }),
-  )
+  const current = new Set<string>(configured.map(ServerConnection.key))
+  const available = new Set<string>()
+  known.forEach((server) => {
+    const key = ServerConnection.key(server)
+    if (!server.http.password) return
+    if (current.has(key) && health[key] !== true) return
+    available.add(key)
+  })
   const retries = states.flatMap((state) =>
     state.retryAt !== undefined && available.has(state.server) ? [Math.max(now, state.retryAt)] : [],
   )
@@ -249,6 +252,7 @@ type PushHostCoordinatorOptions = {
 
 export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
   const now = options.now ?? Date.now
+  // Authenticated connections stay process-local. Hydrated removals cannot retry until the same server is re-added.
   const known = new Map<string, ServerConnection.Any>()
   const inflight = new Map<string, { kind: "register" | "unregister" | "test"; promise: Promise<unknown> }>()
   const desired = new Map<string, { server: ServerConnection.Any; payload: PushRegistration; signature: string }>()
@@ -323,8 +327,9 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
       .list()
       .filter((state) => {
         if (state.status === "unregistering") {
-          const conn = currentServers.get(state.server)
-          if (!conn?.http.password || input.health[state.server] !== true) return false
+          const conn = known.get(state.server)
+          if (!conn?.http.password) return false
+          if (currentServers.has(state.server) && input.health[state.server] !== true) return false
           return state.retryAt === undefined || shouldRetryUnregister(state, now())
         }
         return !input.enabled || !current.has(state.server)
@@ -357,6 +362,11 @@ export function createPushHostCoordinator(options: PushHostCoordinatorOptions) {
 
   return {
     sync,
+    nextRetryAt(time = now()) {
+      return nextPushHostRetryAt(options.state.list(), latest?.servers ?? [], latest?.health ?? {}, time, [
+        ...known.values(),
+      ])
+    },
     retry(server: string) {
       const current = options.state.get(server)
       if (!current) return Promise.resolve()
@@ -470,17 +480,9 @@ export const { use: usePushHost, provider: PushHostProvider } = createSimpleCont
     })
 
     createEffect(() => {
-      const retryAt = nextPushHostRetryAt(
-        Object.values(store.servers),
-        global.servers.list(),
-        Object.fromEntries(
-          global.servers.list().map((target) => {
-            const key = ServerConnection.key(target)
-            return [key, global.servers.health[key]?.healthy]
-          }),
-        ),
-        Date.now(),
-      )
+      Object.values(store.servers)
+      global.servers.list()
+      const retryAt = coordinator.nextRetryAt(Date.now())
       if (retryAt === undefined) return
       const timer = globalThis.setTimeout(bump, Math.max(0, retryAt - Date.now()))
       onCleanup(() => globalThis.clearTimeout(timer))
