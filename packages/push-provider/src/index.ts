@@ -17,4 +17,4 @@ export type PushAdapter = {
   send(token: string, message: PushMessage): Promise<PushResult>
 }
 
-export { createFcmAdapter, createGoogleAccessToken } from "./fcm"
+export { createFcmAdapter, createGoogleAccessToken } from "./fcm.js"

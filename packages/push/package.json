@@ -19,9 +19,6 @@
     "src",
     "dist"
   ],
-  "bundledDependencies": [
-    "@whispercode/push-provider"
-  ],
   "dependencies": {
     "@opencode-ai/plugin": "workspace:*",
     "@opencode-ai/sdk": "workspace:*",

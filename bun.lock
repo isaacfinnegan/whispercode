@@ -795,7 +795,7 @@
         "google-auth-library": "10.5.0",
       },
       "devDependencies": {
-        "@tsconfig/bun": "catalog:",
+        "@tsconfig/node22": "catalog:",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "@typescript/native-preview": "catalog:",

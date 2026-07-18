@@ -51,9 +51,9 @@ console.log("\n=== ui ===\n")
 await $`bun ./packages/ui/script/publish.ts`
 
 console.log("\n=== push ===\n")
-await import(`../packages/push/script/publish.ts`)
+await $`bun ./packages/push-provider/script/publish.ts`
+await $`bun ./packages/push/script/publish.ts`
 
-const dir = fileURLToPath(new URL("..", import.meta.url))
 process.chdir(dir)
 
 if (Script.release) {

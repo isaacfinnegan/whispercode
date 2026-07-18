@@ -8,14 +8,18 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "build": "tsc",
     "test": "bun test src",
     "typecheck": "tsgo --noEmit"
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "google-auth-library": "10.5.0"
   },
   "devDependencies": {
-    "@tsconfig/bun": "catalog:",
+    "@tsconfig/node22": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
