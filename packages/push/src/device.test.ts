@@ -113,6 +113,36 @@ describe("push device registry", () => {
     expect(data.devices[0]).toMatchObject({ ...next, createdAt, active: true })
   })
 
+  test("rejects registration with lower tokenGeneration", async () => {
+    await home()
+    const newer = input("device-1", "n".repeat(32))
+    newer.tokenGeneration = 5
+    await register(newer)
+
+    const stale = input("device-1", "s".repeat(32))
+    stale.tokenGeneration = 3
+    const result = await register(stale)
+    const data = await loadDevices()
+
+    expect(result).toMatchObject({ id: "device-1", tokenGeneration: 5 })
+    expect(data.devices).toHaveLength(1)
+    expect(data.devices[0]?.token).toBe("n".repeat(32))
+    expect(data.devices[0]?.tokenGeneration).toBe(5)
+  })
+
+  test("accepts registration with equal tokenGeneration", async () => {
+    await home()
+    await register(input())
+    const same = input("device-1", "s".repeat(32))
+    same.tokenGeneration = 1
+
+    const result = await register(same)
+    const data = await loadDevices()
+
+    expect(result).toMatchObject({ id: "device-1", tokenGeneration: 1 })
+    expect(data.devices[0]?.token).toBe("s".repeat(32))
+  })
+
   test("updates preferences", async () => {
     await home()
     await register(input())

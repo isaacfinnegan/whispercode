@@ -6,5 +6,6 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["bun", "node"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
 }

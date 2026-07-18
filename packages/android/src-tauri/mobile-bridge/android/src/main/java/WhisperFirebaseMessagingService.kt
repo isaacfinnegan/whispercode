@@ -20,11 +20,15 @@ internal fun decideMessage(
     channel: String?,
     device: String?,
     secret: String?,
+    directDeviceId: String?,
     data: Map<String, String>,
     foreground: Boolean,
 ): MessageDecision {
-    if (channel.isNullOrBlank() || device.isNullOrBlank() || secret.isNullOrBlank()) return MessageDecision.IGNORE
-    if (data["channel_id"] != channel || data["v"] != "1") return MessageDecision.IGNORE
+    val isRelay = !channel.isNullOrBlank() && !device.isNullOrBlank() && !secret.isNullOrBlank() &&
+        data["channel_id"] == channel && data["v"] == "1"
+    val isDirect = !directDeviceId.isNullOrBlank() &&
+        data["device_id"] == directDeviceId
+    if (!isRelay && !isDirect) return MessageDecision.IGNORE
     if ((data["title"]?.length ?: 0) > 100) return MessageDecision.IGNORE
     if ((data["body"]?.length ?: 0) > 500) return MessageDecision.IGNORE
     if ((data["href"]?.length ?: 0) > 2048) return MessageDecision.IGNORE
@@ -44,6 +48,7 @@ class WhisperFirebaseMessagingService : FirebaseMessagingService() {
             prefs.getChannelId(),
             prefs.getDeviceId(),
             prefs.getDeviceSecret(),
+            prefs.getDirectDeviceId(),
             payload,
             AppLifecycleTracker.isAppInForeground(),
         )) {

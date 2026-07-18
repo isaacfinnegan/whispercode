@@ -285,6 +285,8 @@ class SecurePreferencesManager private constructor(
         FcmRegistrationSnapshot(token, prefs.getLong(KEY_FCM_TOKEN_GENERATION, 0L))
     }
 
+    fun getDirectDeviceId(): String? = sharedPreferences?.getString(KEY_DIRECT_DEVICE_ID, null)?.takeIf { it.isNotBlank() }
+
     fun getOrCreateDirectDeviceId(): String {
         val prefs = sharedPreferences ?: return UUID.randomUUID().toString()
         return synchronized(FCM_REGISTRATION_LOCK) {

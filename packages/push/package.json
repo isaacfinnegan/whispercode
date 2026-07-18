@@ -16,7 +16,11 @@
     ".": "./src/index.ts"
   },
   "files": [
+    "src",
     "dist"
+  ],
+  "bundledDependencies": [
+    "@whispercode/push-provider"
   ],
   "dependencies": {
     "@opencode-ai/plugin": "workspace:*",

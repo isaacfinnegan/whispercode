@@ -437,6 +437,9 @@ export async function register(value: DeviceRegistrationInput): Promise<DeviceSt
     const now = Date.now()
     const index = file.devices.findIndex((device) => device.id === next.id)
     const previous = file.devices[index]
+    if (previous && next.tokenGeneration < previous.tokenGeneration) {
+      return project(previous)
+    }
     const device: DeviceRegistration = {
       id: next.id,
       provider: next.provider,
