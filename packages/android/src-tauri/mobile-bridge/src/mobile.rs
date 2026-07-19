@@ -62,6 +62,13 @@ impl<R: Runtime> MobileBridge<R> {
     }
 
     #[cfg(target_os = "android")]
+    pub fn get_push_registration(&self) -> crate::Result<serde_json::Value> {
+        self.0
+            .run_mobile_plugin("getPushRegistration", ())
+            .map_err(Into::into)
+    }
+
+    #[cfg(target_os = "android")]
     pub fn push_listeners_ready(&self) -> crate::Result<()> {
         self.0
             .run_mobile_plugin("pushListenersReady", ())

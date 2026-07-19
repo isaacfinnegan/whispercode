@@ -2,6 +2,7 @@ package ai.opencode.mobilebridge
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -9,6 +10,42 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class PushStateTest {
+    @Test
+    fun `push registration has the exact private payload shape`() {
+        val registration = pushRegistrationJson(
+            PushRegistrationSnapshot(
+                device = "stable-device",
+                token = "secret-fcm-token",
+                tokenGeneration = 2,
+            ),
+        )
+
+        assertEquals(
+            setOf("version", "device", "provider", "token", "token_generation", "prefs"),
+            registration.keys().asSequence().toSet(),
+        )
+        assertEquals(1, registration.getInt("version"))
+        assertEquals("stable-device", registration.getString("device"))
+        assertEquals("fcm", registration.getString("provider"))
+        assertEquals("secret-fcm-token", registration.getString("token"))
+        assertEquals(2L, registration.getLong("token_generation"))
+
+        val prefs = registration.getJSONObject("prefs")
+        assertEquals(setOf("complete", "approval", "question", "error"), prefs.keys().asSequence().toSet())
+        assertTrue(prefs.getBoolean("complete"))
+        assertTrue(prefs.getBoolean("approval"))
+        assertTrue(prefs.getBoolean("question"))
+        assertTrue(prefs.getBoolean("error"))
+    }
+
+    @Test
+    fun `push registration uses stable permission and token errors`() {
+        assertEquals("push_permission_required", pushRegistrationError(false, "secret-fcm-token"))
+        assertEquals("push_registration_pending", pushRegistrationError(true, null))
+        assertEquals("push_registration_pending", pushRegistrationError(true, "   "))
+        assertNull(pushRegistrationError(true, "secret-fcm-token"))
+    }
+
     @Test
     fun `late token completions are ignored after timeout or destruction`() {
         assertTrue(isCurrentPushRequest(3, 3, false))
@@ -24,6 +61,7 @@ class PushStateTest {
 
     @Test
     fun `push state includes the complete canonical diagnostic shape`() {
+        val rawToken = "secret-fcm-token"
         val state = pushStateJson(
             PushStateSnapshot(
                 permission = "denied",
@@ -58,6 +96,7 @@ class PushStateTest {
         assertFalse(diag.has("device"))
         assertFalse(diag.has("pairExpires"))
         assertFalse(diag.has("lastError"))
+        assertFalse(state.toString().contains(rawToken))
     }
 
     @Test

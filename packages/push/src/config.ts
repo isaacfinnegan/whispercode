@@ -5,6 +5,28 @@ import { cfgDir } from "./path.js"
 
 const files = ["opencode.jsonc", "opencode.json", "config.json"]
 
+export function fcm(env: NodeJS.ProcessEnv = process.env) {
+  const projectID = env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID
+  const serviceAccountJSON = env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON
+  if (!projectID?.trim() || !serviceAccountJSON) return
+
+  try {
+    const credentials = JSON.parse(serviceAccountJSON) as unknown
+    if (!credentials || typeof credentials !== "object" || Array.isArray(credentials)) return
+    if (
+      !("client_email" in credentials) ||
+      typeof credentials.client_email !== "string" ||
+      !credentials.client_email.trim()
+    )
+      return
+    if (!("private_key" in credentials) || typeof credentials.private_key !== "string" || !credentials.private_key.trim())
+      return
+    return { projectID: projectID.trim(), serviceAccountJSON }
+  } catch {
+    return
+  }
+}
+
 export function name(spec: string) {
   const idx = spec.lastIndexOf("@")
   if (idx > 0) return spec.slice(0, idx)

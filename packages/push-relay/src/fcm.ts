@@ -1,5 +1,7 @@
-import { GoogleAuth } from "google-auth-library"
+import { createGoogleAccessToken } from "@whispercode/push-provider"
 import type { PushAdapter, PushMsg, PushRes } from "./push"
+
+export { createFcmAdapter, createGoogleAccessToken } from "@whispercode/push-provider"
 
 type Mode = "mock" | "disabled" | "live"
 
@@ -70,9 +72,5 @@ function parse(value?: string) {
 }
 
 function token(serviceAccount?: string) {
-  if (!serviceAccount) return
-  const credentials = parse(serviceAccount)
-  if (!credentials) return
-  const auth = new GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/firebase.messaging"] })
-  return async () => (await auth.getAccessToken()) ?? ""
+  return createGoogleAccessToken(serviceAccount)
 }

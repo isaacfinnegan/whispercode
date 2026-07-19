@@ -1,4 +1,48 @@
-import type { PairInfo, PushDiag, PushState } from "@opencode-ai/app"
+import type { PairInfo, Platform, PushDiag, PushState } from "@opencode-ai/app"
+
+type PushRegistration = Awaited<ReturnType<NonNullable<Platform["getPushRegistration"]>>>
+
+export const normalizeRegistration = (value: unknown): PushRegistration | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const input = value as Record<string, unknown>
+  const prefs = input.prefs
+  if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) return null
+  const settings = prefs as Record<string, unknown>
+  if (
+    Object.keys(input).some(
+      (key) => !["version", "device", "provider", "token", "token_generation", "prefs"].includes(key),
+    ) ||
+    Object.keys(settings).some((key) => !["complete", "approval", "question", "error"].includes(key)) ||
+    input.version !== 1 ||
+    typeof input.device !== "string" ||
+    !input.device ||
+    input.provider !== "fcm" ||
+    typeof input.token !== "string" ||
+    !input.token ||
+    typeof input.token_generation !== "number" ||
+    !Number.isSafeInteger(input.token_generation) ||
+    input.token_generation < 0 ||
+    typeof settings.complete !== "boolean" ||
+    typeof settings.approval !== "boolean" ||
+    typeof settings.question !== "boolean" ||
+    typeof settings.error !== "boolean"
+  ) {
+    return null
+  }
+  return {
+    version: 1,
+    device: input.device,
+    provider: "fcm",
+    token: input.token,
+    token_generation: input.token_generation,
+    prefs: {
+      complete: settings.complete,
+      approval: settings.approval,
+      question: settings.question,
+      error: settings.error,
+    },
+  }
+}
 
 export const normalizePush = (value: unknown): PushState | null => {
   if (!value || typeof value !== "object") return null

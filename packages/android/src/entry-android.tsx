@@ -25,6 +25,7 @@ import {
   initializeNativePush,
   normalizePair,
   normalizePush,
+  normalizeRegistration,
   queuePushDeepLink,
   revokeNativePushListeners,
   routePushHref,
@@ -272,6 +273,12 @@ const App = () => {
     stopVoiceInput,
     pushState: push,
     getPushState: async () => refreshPush(),
+    getPushRegistration: async () => {
+      const result = await bridge.sendAsync<unknown>("getPushRegistration")
+      const registration = normalizeRegistration(result)
+      if (!registration) throw new Error("Push registration unavailable")
+      return registration
+    },
     requestPushPermission: async () => {
       const result = await bridge.sendAsync<PushState>("requestPushPermission")
       const next = normalizePush(result) ?? push() ?? emptyPush

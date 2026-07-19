@@ -23,8 +23,14 @@ const COMMANDS: &[&str] = &[
     "clear_push_pairing",
 ];
 
+const ANDROID_COMMANDS: &[&str] = &["get_push_registration"];
+
 fn main() {
-    tauri_plugin::Builder::new(COMMANDS)
+    let mut commands = COMMANDS.to_vec();
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
+        commands.extend_from_slice(ANDROID_COMMANDS);
+    }
+    tauri_plugin::Builder::new(&commands)
         .android_path("android")
         .try_build()
         .unwrap();

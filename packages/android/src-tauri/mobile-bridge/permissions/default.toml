@@ -1,5 +1,11 @@
 "$schema" = "schemas/schema.json"
 
+[[permission]]
+identifier = "allow-get-push-registration-android"
+description = "Allows the private backend push registration command on Android"
+platforms = ["android"]
+commands.allow = ["get_push_registration"]
+
 [default]
 description = "Default permissions for the mobile bridge plugin"
 permissions = [
@@ -14,6 +20,7 @@ permissions = [
   "allow-cancel-scan",
   "allow-share",
   "allow-get-push-state",
+  "allow-get-push-registration-android",
   "allow-push-listeners-ready",
   "allow-push-listeners-not-ready",
   "allow-request-push-permission",

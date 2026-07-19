@@ -16,14 +16,17 @@
     ".": "./src/index.ts"
   },
   "files": [
+    "src",
     "dist"
   ],
   "dependencies": {
     "@opencode-ai/plugin": "workspace:*",
     "@opencode-ai/sdk": "workspace:*",
+    "@whispercode/push-provider": "workspace:*",
     "jsonc-parser": "3.3.1"
   },
   "devDependencies": {
+    "@lydell/node-pty": "catalog:",
     "@tsconfig/node22": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",

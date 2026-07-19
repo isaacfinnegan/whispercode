@@ -41,7 +41,7 @@ OpenCode backend
 
 The Android app is never the runtime sender. It registers an FCM token while it is online. The running OpenCode backend plugin later sends directly to FCM when it observes a notification-worthy event. FCM owns eventual delivery while the app is backgrounded or its process is not running.
 
-Each OpenCode backend has its own registry. A device registered with backend A never receives an event from backend B unless it is independently registered with B.
+Each OpenCode backend has its own registry. A device registered with backend A never receives an event from backend B unless it is independently registered with B. Registering the same Android device with two authenticated backends creates one independent backend-local record in each registry; completion and approval events published by different backends each produce only their corresponding backend send.
 
 ## Backend Plugin
 
@@ -61,22 +61,28 @@ opencode-push test --device <id>
 The registration record contains only what the plugin needs to deliver and filter pushes:
 
 ```ts
+type DevicePreferences = {
+  complete: boolean
+  approval: boolean
+  question: boolean
+  error: boolean
+}
+
 type DeviceRegistration = {
   id: string
-  fcmToken: string
-  prefs: {
-    complete: boolean
-    approval: boolean
-    question: boolean
-    error: boolean
-  }
+  provider: "fcm"
+  token: string
+  tokenGeneration: number
+  prefs: DevicePreferences
+  active: boolean
   createdAt: number
   updatedAt: number
-  lastError?: string
+  lastSuccessAt?: number
+  lastError?: { code: string; at: number }
 }
 ```
 
-Registrations live in the existing push plugin state directory with `0600` file permissions. The FCM token and Firebase credential are never included in plugin logs, CLI output, Android diagnostics, or app UI state.
+Registrations live in the existing push plugin state directory with `0600` file permissions. Malformed JSON and input larger than the registration limit are rejected before registry state is written. The FCM token and Firebase private key are never included in command arguments, PTY URLs or create bodies, plugin logs, CLI output, Android diagnostics, persisted app state, sanitized status data, or surfaced UI and transport errors.
 
 The plugin reuses the FCM HTTP v1 delivery behavior already established in `packages/push-relay`: high-priority data payloads, short request timeout, `UNREGISTERED` and `SENDER_ID_MISMATCH` deactivation, and non-fatal handling of transient delivery failures. The implementation moves or shares this adapter through a fork-owned package boundary without making `packages/push` depend on an externally deployed relay.
 
@@ -97,7 +103,7 @@ For every authenticated OpenCode HTTP server connection:
 
 1. The app checks whether that server has an active direct-push registration for the current device/token generation.
 2. If not, it opens a short-lived authenticated PTY running `opencode-push register --stdin`.
-3. The app sends the registration payload to PTY standard input over the WebSocket, then closes input and waits for the non-sensitive status response.
+3. The app sends one registration JSON line to PTY standard input over the WebSocket and leaves input open while it waits for the non-sensitive status response. PTY deletion and cleanup terminate the PTY parent and child after the response or on failure.
 4. The app records server-scoped success or sanitized failure state locally.
 5. The app retries transient failures after the next successful connection or native FCM token refresh.
 
@@ -143,7 +149,7 @@ If an OpenCode backend is stopped, it cannot send. If the Android app is stopped
 
 ## Compatibility And Migration
 
-The external `packages/push-relay` remains available for existing deployments during the transition but is no longer the default Android path. The app stops presenting a relay URL or relay pairing command for direct-backend registration.
+The external `packages/push-relay` remains available for existing deployments during the transition but is no longer the default Android path. A backend with explicit `mode: "relay"` continues relay check-in and publishing and is never silently converted to direct delivery. Existing relay URL, channel, secret, and device data are retained; direct registration does not migrate or delete them. A first successful Android direct registration selects direct delivery only for the non-relay backend that accepted it. There is no automatic migration or cleanup. The app stops presenting a relay URL or relay pairing command for direct-backend registration.
 
 The current `@whisperopencode/push` plugin installation remains compatible: the app can ensure it is present in a backend's OpenCode plugin configuration using existing `/global/config`, `/global/dispose`, and PTY APIs. A backend running an older push plugin reports a clear upgrade-required registration error.
 
@@ -159,7 +165,9 @@ Tests must cover:
 - PTY registration transport using standard input, including proof that no FCM token appears in command arguments or captured output;
 - app server-scoped registration state, auto-registration after connection/token refresh, retry behavior, unregister behavior, and Send Test target selection;
 - Android native one-time payload creation and token-refresh signaling;
-- an integration fixture that runs a controlled OpenCode server with the push plugin, registers a fake device through an authenticated PTY, and observes a mock FCM send.
+- an integration fixture that runs two controlled authenticated backend boundaries with independent plugin registries, registers the same fake Android device through bounded standard input, publishes completion and approval events on separate backends, and observes exactly one corresponding mock FCM send from each;
+- aggregate security assertions covering command arguments, PTY create bodies and URLs, plugin logs, CLI output, backend registry permissions, app persistence, diagnostics, and surfaced errors;
+- coexistence assertions proving explicit relay delivery and retained relay data without automatic mode conversion, migration, or deletion.
 
 ## Implementation Boundaries
 

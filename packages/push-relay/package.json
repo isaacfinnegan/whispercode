@@ -10,7 +10,7 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "google-auth-library": "10.5.0"
+    "@whispercode/push-provider": "workspace:*"
   },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",

@@ -99,6 +99,32 @@ data class PushStateSnapshot(
     val channel: String? = null,
 )
 
+data class PushRegistrationSnapshot(
+    val device: String,
+    val token: String,
+    val tokenGeneration: Long,
+)
+
+fun pushRegistrationError(permissionGranted: Boolean, token: String?): String? = when {
+    !permissionGranted -> "push_permission_required"
+    token.isNullOrBlank() -> "push_registration_pending"
+    else -> null
+}
+
+fun pushRegistrationJson(snapshot: PushRegistrationSnapshot): JSObject = JSObject().apply {
+    put("version", 1)
+    put("device", snapshot.device)
+    put("provider", "fcm")
+    put("token", snapshot.token)
+    put("token_generation", snapshot.tokenGeneration)
+    put("prefs", JSObject().apply {
+        put("complete", true)
+        put("approval", true)
+        put("question", true)
+        put("error", true)
+    })
+}
+
 fun pushStateJson(snapshot: PushStateSnapshot): JSObject = JSObject().apply {
     put("supported", true)
     put("permission", snapshot.permission)
@@ -719,6 +745,25 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
     @Command
     fun getPushState(invoke: Invoke) {
         invoke.resolve(pushState())
+    }
+
+    @Command
+    fun getPushRegistration(invoke: Invoke) {
+        val registration = prefs.getFcmRegistrationSnapshot()
+        val error = pushRegistrationError(permissionState() == "authorized", registration?.token)
+        if (error != null) {
+            invoke.reject(error)
+            return
+        }
+        invoke.resolve(
+            pushRegistrationJson(
+                PushRegistrationSnapshot(
+                    device = prefs.getOrCreateDirectDeviceId(),
+                    token = registration!!.token,
+                    tokenGeneration = registration.generation,
+                ),
+            ),
+        )
     }
 
     @Command

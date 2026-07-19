@@ -29,7 +29,7 @@
     },
     "packages/android": {
       "name": "@opencode-ai/android",
-      "version": "1.18.0-whispercode-287",
+      "version": "1.18.0-whispercode-333",
       "dependencies": {
         "@opencode-ai/app": "workspace:*",
         "@opencode-ai/ui": "workspace:*",
@@ -776,7 +776,23 @@
       "dependencies": {
         "@opencode-ai/plugin": "workspace:*",
         "@opencode-ai/sdk": "workspace:*",
+        "@whispercode/push-provider": "workspace:*",
         "jsonc-parser": "3.3.1",
+      },
+      "devDependencies": {
+        "@lydell/node-pty": "catalog:",
+        "@tsconfig/node22": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/push-provider": {
+      "name": "@whispercode/push-provider",
+      "version": "0.1.0",
+      "dependencies": {
+        "google-auth-library": "10.5.0",
       },
       "devDependencies": {
         "@tsconfig/node22": "catalog:",
@@ -790,7 +806,7 @@
       "name": "@whispercode/push-relay",
       "version": "0.1.0",
       "dependencies": {
-        "google-auth-library": "10.5.0",
+        "@whispercode/push-provider": "workspace:*",
       },
       "devDependencies": {
         "@tsconfig/bun": "catalog:",
@@ -3147,6 +3163,8 @@
     "@webcontainer/env": ["@webcontainer/env@1.1.1", "", {}, "sha512-6aN99yL695Hi9SuIk1oC88l9o0gmxL1nGWWQ/kNy81HigJ0FoaoTXpytCj6ItzgyCEwA9kF1wixsTuv5cjsgng=="],
 
     "@webgpu/types": ["@webgpu/types@0.1.54", "", {}, "sha512-81oaalC8LFrXjhsczomEQ0u3jG+TqE6V9QHLA8GNZq/Rnot0KDugu3LhSYSlie8tSdooAN1Hov05asrUUp9qgg=="],
+
+    "@whispercode/push-provider": ["@whispercode/push-provider@workspace:packages/push-provider"],
 
     "@whispercode/push-relay": ["@whispercode/push-relay@workspace:packages/push-relay"],
 
