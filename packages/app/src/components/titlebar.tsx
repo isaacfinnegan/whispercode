@@ -67,7 +67,7 @@ export function useTitlebarRightMount() {
   return mount
 }
 
-export function Titlebar(props: { update?: TitlebarUpdate }) {
+export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visible: boolean; toggle: () => void } }) {
   const layout = useLayout()
   const platform = usePlatform()
   const command = useCommand()
@@ -392,7 +392,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                   id: "tab.new",
                   category: "tab",
                   title: language.t("command.session.new"),
-                  keybind: "mod+t",
+                  keybind: "mod+t,mod+n",
                   hidden: true,
                   onSelect: openNewTab,
                 },
@@ -462,7 +462,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                   "md:pl-4": !mac(),
                 }}
               >
-                <ChannelIndicator />
+                <ChannelIndicator debugTools={props.debugTools} />
                 <Show when={windows() || linux()}>
                   <WindowsAppMenu command={command} platform={platform} variant="v2" />
                 </Show>
@@ -660,9 +660,9 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                       </div>
                     </Show>
                     <div id="opencode-titlebar-left" class="flex items-center gap-3 min-w-0 px-2" />
-                    <ChannelIndicator />
                   </div>
                 </div>
+                <ChannelIndicator debugTools={props.debugTools} />
               </div>
             </div>
 
@@ -747,6 +747,7 @@ function TitlebarUpdateIconButton(props: { state: TitlebarUpdatePillState }) {
   )
 }
 
-function ChannelIndicator() {
+function ChannelIndicator(props: { debugTools?: { visible: boolean; toggle: () => void } }) {
+  void props
   return null
 }
