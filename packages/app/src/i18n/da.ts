@@ -102,6 +102,7 @@ export const dict = {
   "dialog.provider.empty": "Ingen udbydere fundet",
   "dialog.provider.group.popular": "Populære",
   "dialog.provider.group.other": "Andre",
+  "dialog.provider.custom.label": "Tilpasset OpenAI-kompatibel udbyder",
   "dialog.provider.tag.recommended": "Anbefalet",
   "dialog.provider.opencode.note": "Udvalgte modeller inklusive Claude, GPT, Gemini og flere",
   "dialog.provider.opencode.tagline": "Pålidelige optimerede modeller",
@@ -122,6 +123,7 @@ export const dict = {
 
   "dialog.model.unpaid.freeModels.title": "Gratis modeller leveret af OpenCode",
   "dialog.model.unpaid.addMore.title": "Tilføj flere modeller fra populære udbydere",
+  "dialog.model.unpaid.viewMoreProviders": "Se mere end 70 udbydere",
 
   "dialog.provider.viewAll": "Vis flere udbydere",
 

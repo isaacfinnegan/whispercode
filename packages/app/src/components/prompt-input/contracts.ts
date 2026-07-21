@@ -1,9 +1,18 @@
 import type { useLocal } from "@/context/local"
+import type { usePlatform } from "@/context/platform"
 import type { Prompt, usePrompt } from "@/context/prompt"
 import type { PromptInputHistory } from "./history-store"
 import type { FollowupDraft } from "./submit"
 
 export type PromptInputState = ReturnType<typeof usePrompt>
+
+export const shouldUsePromptInputV2 = (platform: ReturnType<typeof usePlatform>["platform"], enabled: boolean) =>
+  enabled && platform !== "ios" && platform !== "android"
+
+export const focusPromptInput = (v2: boolean, legacy: HTMLDivElement | undefined, restoreV2: () => void) => {
+  if (v2) return restoreV2()
+  legacy?.focus()
+}
 
 export type PromptInputSubmission = {
   abort: () => Promise<void> | void

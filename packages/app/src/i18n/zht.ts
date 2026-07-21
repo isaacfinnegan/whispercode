@@ -106,6 +106,7 @@ export const dict = {
   "dialog.provider.empty": "找不到提供者",
   "dialog.provider.group.popular": "熱門",
   "dialog.provider.group.other": "其他",
+  "dialog.provider.custom.label": "自訂 OpenAI 相容供應商",
   "dialog.provider.tag.recommended": "推薦",
   "dialog.provider.opencode.note": "精選模型，包含 Claude、GPT、Gemini 等等",
   "dialog.provider.opencode.tagline": "可靠的優化模型",
@@ -126,6 +127,7 @@ export const dict = {
 
   "dialog.model.unpaid.freeModels.title": "OpenCode 提供的免費模型",
   "dialog.model.unpaid.addMore.title": "從熱門提供者新增更多模型",
+  "dialog.model.unpaid.viewMoreProviders": "查看另外 70 多個供應商",
 
   "dialog.provider.viewAll": "查看更多提供者",
 

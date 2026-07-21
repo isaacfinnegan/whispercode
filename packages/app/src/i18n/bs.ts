@@ -102,6 +102,7 @@ export const dict = {
   "dialog.provider.empty": "Nema pronađenih provajdera",
   "dialog.provider.group.popular": "Popularno",
   "dialog.provider.group.other": "Ostalo",
+  "dialog.provider.custom.label": "Prilagođeni pružalac kompatibilan s OpenAI",
   "dialog.provider.tag.recommended": "Preporučeno",
   "dialog.provider.opencode.note": "Kurirani modeli uključujući Claude, GPT, Gemini i druge",
   "dialog.provider.opencode.tagline": "Pouzdani optimizovani modeli",
@@ -122,6 +123,7 @@ export const dict = {
 
   "dialog.model.unpaid.freeModels.title": "Besplatni modeli koje obezbjeđuje OpenCode",
   "dialog.model.unpaid.addMore.title": "Dodaj još modela od popularnih provajdera",
+  "dialog.model.unpaid.viewMoreProviders": "Pogledajte još 70+ pružalaca",
 
   "dialog.provider.viewAll": "Prikaži više provajdera",
 

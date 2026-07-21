@@ -285,15 +285,13 @@ function BodyDesignClass() {
 // shell (router root) so they stay mounted regardless of the active server/route.
 function SharedProviders(props: ParentProps) {
   return (
-    <SettingsProvider>
-      <PushProviders>
-        <BodyDesignClass />
-        <CommandProvider>
-          <DesktopCommands />
-          <HighlightsProvider>{props.children}</HighlightsProvider>
-        </CommandProvider>
-      </PushProviders>
-    </SettingsProvider>
+    <PushProviders>
+      <BodyDesignClass />
+      <CommandProvider>
+        <DesktopCommands />
+        <HighlightsProvider>{props.children}</HighlightsProvider>
+      </CommandProvider>
+    </PushProviders>
   )
 }
 
