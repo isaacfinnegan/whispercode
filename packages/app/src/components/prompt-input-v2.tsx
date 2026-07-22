@@ -8,7 +8,7 @@ import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
 import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 import type { Prompt, ReferenceInfo } from "@opencode-ai/sdk/v2/client"
-import { createEffect, createMemo, createSignal, on, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js"
 import { ModelSelectorPopoverV2 } from "@/components/dialog-select-model"
 import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpaid-v2"
 import type { PromptInputProps } from "@/components/prompt-input/contracts"
@@ -35,6 +35,8 @@ import {
   type PromptInputV2Interaction,
 } from "@opencode-ai/session-ui/v2/prompt-input/interaction"
 import {
+  createPromptInputV2AppendTranscription,
+  createPromptInputV2TranscriptionHandler,
   createPromptInputV2VoiceStart,
   promptInputV2VoiceAvailable,
   promptInputV2VoiceDisabled,
@@ -53,6 +55,7 @@ export type PromptInputV2ComposerProps = {
 export type PromptInputV2ControllerProps = Omit<PromptInputProps, "class" | "edit" | "onEditLoaded" | "submission">
 export type PromptInputV2ComposerController = PromptInputV2Interaction & {
   readonly model: PromptInputProps["controls"]["model"]
+  appendTranscription(text: string): void
 }
 
 export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
@@ -75,6 +78,11 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
         description: message,
         variant: "error",
       }),
+  })
+  onMount(() => {
+    const handleTranscription = createPromptInputV2TranscriptionHandler(props.controller.appendTranscription)
+    window.addEventListener("opencode:transcription", handleTranscription)
+    onCleanup(() => window.removeEventListener("opencode:transcription", handleTranscription))
   })
 
   useCommands(props)
@@ -514,7 +522,16 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       },
     },
   })
-  Object.defineProperty(controller, "model", { get: () => props.controls.model })
+  Object.defineProperties(controller, {
+    model: { get: () => props.controls.model },
+    appendTranscription: {
+      value: createPromptInputV2AppendTranscription({
+        current: prompt.current,
+        set: prompt.set,
+        queueScroll: () => requestAnimationFrame(() => controller.editor()?.scrollIntoView({ block: "nearest" })),
+      }),
+    },
+  })
   return controller as PromptInputV2ComposerController
 }
 

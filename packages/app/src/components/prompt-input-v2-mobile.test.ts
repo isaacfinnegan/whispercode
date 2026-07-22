@@ -1,10 +1,79 @@
 import { describe, expect, test } from "bun:test"
 import type { VoiceStartResult, VoiceState } from "@/context/platform"
 import {
+  createPromptInputV2AppendTranscription,
+  createPromptInputV2TranscriptionHandler,
   createPromptInputV2VoiceStart,
   promptInputV2VoiceAvailable,
   promptInputV2VoiceDisabled,
 } from "./prompt-input-v2-mobile"
+import type { Prompt } from "@/context/prompt"
+
+describe("createPromptInputV2AppendTranscription", () => {
+  test("trims final text, updates the prompt and cursor, then queues scrolling", () => {
+    let prompt: Prompt = [{ type: "agent", name: "reviewer", content: "@reviewer", start: 5, end: 14 }]
+    const updates: Array<{ prompt: Prompt; cursor: number }> = []
+    let scrolls = 0
+    const append = createPromptInputV2AppendTranscription({
+      current: () => prompt,
+      set: (next, cursor) => {
+        prompt = next
+        updates.push({ prompt: next, cursor })
+      },
+      queueScroll: () => scrolls++,
+    })
+
+    append("  hello  ")
+
+    expect(updates).toEqual([
+      {
+        prompt: [
+          { type: "agent", name: "reviewer", content: "@reviewer", start: 0, end: 9 },
+          { type: "text", content: "hello", start: 9, end: 14 },
+        ],
+        cursor: 14,
+      },
+    ])
+    expect(scrolls).toBe(1)
+  })
+
+  test("ignores blank text", () => {
+    let updates = 0
+    let scrolls = 0
+    const append = createPromptInputV2AppendTranscription({
+      current: () => [],
+      set: () => updates++,
+      queueScroll: () => scrolls++,
+    })
+
+    append("   ")
+
+    expect(updates).toBe(0)
+    expect(scrolls).toBe(0)
+  })
+})
+
+describe("createPromptInputV2TranscriptionHandler", () => {
+  test("dispatches final transcription text", () => {
+    const values: string[] = []
+    const handle = createPromptInputV2TranscriptionHandler((text) => values.push(text))
+
+    handle(new CustomEvent("opencode:transcription", { detail: { text: "hello", isFinal: true } }))
+
+    expect(values).toEqual(["hello"])
+  })
+
+  test("ignores absent text and interim transcription", () => {
+    const values: string[] = []
+    const handle = createPromptInputV2TranscriptionHandler((text) => values.push(text))
+
+    handle(new CustomEvent("opencode:transcription", { detail: { isFinal: true } }))
+    handle(new CustomEvent("opencode:transcription", { detail: { text: "draft", isFinal: false } }))
+    handle(new Event("opencode:transcription"))
+
+    expect(values).toEqual([])
+  })
+})
 
 describe("promptInputV2VoiceAvailable", () => {
   test.each([
