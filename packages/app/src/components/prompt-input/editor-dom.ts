@@ -1,10 +1,3 @@
-import {
-  isPromptInputV2Block,
-  promptInputV2NodeText,
-  promptInputV2Text,
-  promptInputV2TextLength,
-} from "@opencode-ai/session-ui/v2/prompt-input/cursor"
-
 const MAX_BREAKS = 200
 // UPSTREAM-DIVERGENCE-FILE: These editor DOM helpers were added after upstream sync 6b9ce5e63 for the
 // fork's mobile keyboard delete-word action. Preserve them when upstream changes cursor math.
@@ -24,6 +17,17 @@ function pill(node: Node) {
     element.dataset.mention === "agent" ||
     element.dataset.mention === "reference"
   )
+}
+
+function text(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replace(/\u200B/g, "")
+  if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR") return "\n"
+
+  let value = ""
+  for (const child of Array.from(node.childNodes)) {
+    value += text(child)
+  }
+  return value
 }
 
 function offset(parent: HTMLElement, node: Node, pos: number) {
@@ -78,11 +82,18 @@ export function createTextFragment(content: string): DocumentFragment {
 }
 
 export function getNodeLength(node: Node): number {
-  return promptInputV2NodeText(node).length
+  if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR") return 1
+  return (node.textContent ?? "").replace(/\u200B/g, "").length
 }
 
 export function getTextLength(node: Node): number {
-  return promptInputV2TextLength(node)
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replace(/\u200B/g, "").length
+  if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR") return 1
+  let length = 0
+  for (const child of Array.from(node.childNodes)) {
+    length += getTextLength(child)
+  }
+  return length
 }
 
 export function getCursorPosition(parent: HTMLElement): number {
@@ -97,7 +108,7 @@ export function getCursorPosition(parent: HTMLElement): number {
 }
 
 export function getEditorText(parent: HTMLElement) {
-  return promptInputV2Text(parent)
+  return text(parent)
 }
 
 // UPSTREAM-DIVERGENCE: Mobile delete-word needs selection offsets in editor text coordinates rather
@@ -168,10 +179,6 @@ export function setSelectionRange(parent: HTMLElement, range: Range, start: numb
 
 export function setRangeEdge(parent: HTMLElement, range: Range, edge: "start" | "end", offset: number) {
   let remaining = offset
-  const after = (node: Node) => {
-    if (edge === "start") range.setStartAfter(node)
-    if (edge === "end") range.setEndAfter(node)
-  }
   const visit = (node: Node): boolean => {
     const length = getNodeLength(node)
     const isText = node.nodeType === Node.TEXT_NODE
@@ -200,19 +207,5 @@ export function setRangeEdge(parent: HTMLElement, range: Range, edge: "start" | 
     return Array.from(node.childNodes).some(visit)
   }
 
-  const nodes = Array.from(parent.childNodes)
-  nodes.some((node, index) => {
-    if (!isPromptInputV2Block(node)) return visit(node)
-
-    const length = getNodeLength(node)
-    if (remaining < length) return visit(node)
-    if (remaining === length) {
-      after(node)
-      return true
-    }
-
-    remaining -= length
-    if (index < nodes.length - 1) remaining -= 1
-    return false
-  })
+  Array.from(parent.childNodes).some(visit)
 }
