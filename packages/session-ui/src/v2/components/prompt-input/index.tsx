@@ -21,7 +21,7 @@ import type {
   PromptInputV2Suggestion,
 } from "./types"
 import type { PromptInputV2Interaction, PromptInputV2SelectControl } from "./interaction"
-import { promptInputV2Cursor } from "./cursor"
+import { isPromptInputV2Block, promptInputV2Cursor } from "./cursor"
 import { isPromptInputV2VoiceSwipe, isPromptInputV2VoiceSwipeEnabled, type PromptInputV2SwipePoint } from "./swipe"
 
 export type {
@@ -381,7 +381,7 @@ function parsePromptInputV2Editor(editor: HTMLDivElement) {
 
   Array.from(editor.childNodes).forEach((node, index, nodes) => {
     visit(node)
-    if (node instanceof HTMLElement && ["DIV", "P"].includes(node.tagName) && index < nodes.length - 1) buffer += "\n"
+    if (isPromptInputV2Block(node) && index < nodes.length - 1) buffer += "\n"
   })
   flush()
   if (

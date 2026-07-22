@@ -270,4 +270,59 @@ describe("prompt-input editor dom", () => {
 
     container.remove()
   })
+
+  test.each([
+    ["div", "div"],
+    ["div", "p"],
+    ["p", "div"],
+    ["p", "p"],
+  ] as const)("uses parser coordinates across sibling %s/%s blocks", (firstTag, secondTag) => {
+    const container = document.createElement("div")
+    const first = document.createElement(firstTag)
+    const second = document.createElement(secondTag)
+    first.textContent = "alpha"
+    second.textContent = "beta"
+    container.append(first, second)
+    document.body.appendChild(container)
+
+    expect(getEditorText(container)).toBe("alpha\nbeta")
+    expect(getTextLength(container)).toBe(10)
+
+    setCursorPosition(container, 10)
+    expect(getCursorPosition(container)).toBe(10)
+
+    const span = getDeleteWordRange(getEditorText(container), getSelectionRange(container))
+    expect(span).toEqual({ start: 5, end: 10 })
+    const range = document.createRange()
+    setSelectionRange(container, range, span!.start, span!.end)
+    range.deleteContents()
+    setCursorPosition(container, span!.start)
+
+    expect(getEditorText(container)).toBe("alpha")
+    expect(getCursorPosition(container)).toBe(5)
+
+    container.remove()
+  })
+
+  test("does not add separators between non-block wrappers", () => {
+    const container = document.createElement("div")
+    const first = document.createElement("span")
+    const second = document.createElement("span")
+    first.textContent = "alpha"
+    second.textContent = "beta"
+    container.append(first, second)
+
+    expect(getEditorText(container)).toBe("alphabeta")
+    expect(getTextLength(container)).toBe(9)
+  })
+
+  test("counts an explicit break once inside a terminal block", () => {
+    const container = document.createElement("div")
+    const block = document.createElement("div")
+    block.append("alpha", document.createElement("br"))
+    container.appendChild(block)
+
+    expect(getEditorText(container)).toBe("alpha\n")
+    expect(getTextLength(container)).toBe(6)
+  })
 })
