@@ -21,6 +21,7 @@ import type {
   PromptInputV2Suggestion,
 } from "./types"
 import type { PromptInputV2Interaction, PromptInputV2SelectControl } from "./interaction"
+import { promptInputV2Cursor } from "./cursor"
 import { isPromptInputV2VoiceSwipe, isPromptInputV2VoiceSwipeEnabled, type PromptInputV2SwipePoint } from "./swipe"
 
 export type {
@@ -391,15 +392,6 @@ function parsePromptInputV2Editor(editor: HTMLDivElement) {
   }
   if (parts.length > 0) return parts
   return [{ type: "text" as const, content: "", start: 0, end: 0 }]
-}
-
-function promptInputV2Cursor(editor: HTMLDivElement) {
-  const selection = window.getSelection()
-  if (!selection?.rangeCount || !editor.contains(selection.anchorNode)) return editor.textContent?.length ?? 0
-  const range = selection.getRangeAt(0).cloneRange()
-  range.selectNodeContents(editor)
-  range.setEnd(selection.anchorNode!, selection.anchorOffset)
-  return range.toString().length
 }
 
 export function PromptInputV2Attachments(props: {

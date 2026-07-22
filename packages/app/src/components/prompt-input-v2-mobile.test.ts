@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { promptInputV2Cursor } from "@opencode-ai/session-ui/v2/prompt-input/cursor"
 import type { VoiceStartResult, VoiceState } from "@/context/platform"
 import {
   createPromptInputV2AppendTranscription,
@@ -82,6 +83,25 @@ describe("createPromptInputV2DeleteWord", () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.inputType).toBe("deleteWordBackward")
     expect(events[0]?.bubbles).toBe(true)
+
+    editor.remove()
+  })
+
+  test("reconciles the editor cursor after a preceding break", () => {
+    const editor = document.createElement("div")
+    editor.contentEditable = "true"
+    editor.append("foo", document.createElement("br"), "bar baz")
+    document.body.appendChild(editor)
+    editor.focus()
+    setCursorPosition(editor, 11)
+    let cursor: number | undefined
+    editor.addEventListener("input", () => (cursor = promptInputV2Cursor(editor)))
+    const deleteWord = createPromptInputV2DeleteWord({ editor: () => editor })
+
+    deleteWord()
+
+    expect(getEditorText(editor)).toBe("foo\nbar")
+    expect(cursor).toBe(7)
 
     editor.remove()
   })
