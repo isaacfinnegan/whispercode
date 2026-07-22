@@ -16,6 +16,8 @@
 - Execute this plan in a new isolated worktree based on the verified `dev` merge result.
 - Do not modify `packages/opencode/**`; the native bridges already emit the required events.
 - Keep `shouldUsePromptInputV2(...)` returning `false` for Android and iOS until Task 7.
+- Task 6 native delete-word support was dropped to keep upstream V2 editor, store, and cursor behavior unchanged.
+- Task 8 must not add native delete-word coverage.
 - Use Bun 1.3.10 for every command: `rtk npx bun@1.3.10 ...`.
 - Run tests from package directories, never the repository root.
 
@@ -33,7 +35,7 @@
 
 - `packages/session-ui/src/v2/components/prompt-input/index.tsx` - optional voice control and editor swipe wiring.
 - `packages/session-ui/src/v2/components/prompt-input/interaction.ts` - guarded programmatic focus and editor accessor.
-- `packages/app/src/components/prompt-input-v2.tsx` - platform adapter, voice control, native event listeners, transcription, and delete-word action.
+- `packages/app/src/components/prompt-input-v2.tsx` - platform adapter, voice control, native event listeners, and transcription.
 - `packages/app/src/components/prompt-input/contracts.ts` - final native V2 rollout gate.
 - `packages/app/src/components/prompt-input/contracts.test.ts` - native rollout expectations.
 - `packages/app/src/components/prompt-input/editor-dom.ts` - treat V2 `data-mention` spans as atomic editor tokens.
@@ -602,7 +604,9 @@ rtk git add packages/app/src/components/prompt-input/transcription.ts \
 rtk git commit -m "feat(app): handle native transcription in prompt v2"
 ```
 
-### Task 6: Port Native Delete-Word to V2
+### Task 6: Port Native Delete-Word to V2 (Dropped)
+
+This task was intentionally dropped. Do not execute the steps below or modify upstream V2 editor, store, or cursor behavior.
 
 **Files:**
 
@@ -870,15 +874,6 @@ test("handles final transcription once and ignores partial transcription", async
   })
   await expect(input).toHaveText("final words")
 })
-
-test("handles native delete-word in the mounted v2 editor", async ({ page }) => {
-  const input = await openComposer(page)
-  await input.fill("alpha beta")
-  await input.focus()
-  await page.keyboard.press("End")
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent("opencode:keyboard-delete-word")))
-  await expect(input).toHaveText("alpha ")
-})
 ```
 
 Voice-button visibility, recording-state disablement, and swipe invocation remain covered by pure unit tests plus native smoke tests because web e2e does not mount the Android/iOS platform adapters.
@@ -971,7 +966,7 @@ On the device verify: no initial keyboard popup, voice button and swipe start re
 
 - [ ] **Step 5: iOS device smoke test**
 
-Run the iOS development target without uploading a release. Verify the Android scenarios plus the keyboard accessory delete-word button. Confirm file/agent/reference mentions delete atomically rather than becoming partial text.
+Run the iOS development target without uploading a release. Verify the Android scenarios.
 
 - [ ] **Step 6: Inspect changes and graph impact before the final commit**
 
@@ -1016,7 +1011,6 @@ Do not push without explicit user authorization.
 - Voice button and fast left swipe start the existing native recording flow exactly once.
 - Recording and processing states disable the voice button.
 - Final transcription appends exactly once without focusing the editor; partial transcription is ignored.
-- iOS delete-word updates both V2 DOM and prompt state and treats file, agent, and reference mentions atomically.
 - Successful submission dismisses the native keyboard.
 - Attachments, history, shell mode, command menu, model/agent/variant selection, comments, and populated command drafts retain upstream V2 behavior.
 - Session/new-session production benchmark scenarios complete without a consistent regression.
@@ -1027,4 +1021,4 @@ Do not push without explicit user authorization.
 - Do not delete the legacy `PromptInput` in this work. It remains the non-V2 design implementation and a rollback path.
 - Do not move app-native voice concepts into `packages/session-ui`; retain optional generic hooks.
 - Do not change Android or iOS native bridge APIs unless smoke testing proves the existing event contract is defective.
-- Android has no current native delete-word producer; keep the V2 browser listener platform-neutral for future parity.
+- Native delete-word parity is out of scope; keep upstream V2 editor, store, and cursor behavior unchanged.
