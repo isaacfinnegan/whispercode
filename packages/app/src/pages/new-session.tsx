@@ -37,6 +37,7 @@ import { Persist, persisted } from "@/utils/persist"
 import createPresence from "solid-presence"
 import { useLocal } from "@/context/local"
 import { createPromptModelSelection } from "@/pages/session/composer/prompt-model-selection"
+import { isMobilePlatform } from "@/components/terminal"
 
 const workspaceBarEnabled = import.meta.env.VITE_OPENCODE_CHANNEL !== "prod"
 const providerTipDismissalDuration = 30 * 24 * 60 * 60 * 1000
@@ -109,7 +110,7 @@ export default function NewSessionPage() {
     onSubmit: () => comments.clear(),
   })
   let legacyInput: HTMLDivElement | undefined
-  const useV2 = () => shouldUsePromptInputV2(platform.platform, true)
+  const useV2 = () => shouldUsePromptInputV2(platform.platform, settings.general.newLayoutDesigns())
   const focusInput = () => focusPromptInput(useV2(), legacyInput, promptInputV2Controller.restoreFocus)
   const projectController = createPromptProjectController({
     controls: projectControls,
@@ -148,6 +149,7 @@ export default function NewSessionPage() {
   createEffect(() => {
     if (!prompt.ready()) return
     if (!useV2()) return
+    if (isMobilePlatform(platform)) return
     promptInputV2Controller.restoreFocus()
   })
 

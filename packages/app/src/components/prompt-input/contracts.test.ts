@@ -2,11 +2,23 @@ import { describe, expect, test } from "bun:test"
 import { focusPromptInput, shouldUsePromptInputV2 } from "./contracts"
 
 describe("shouldUsePromptInputV2", () => {
-  test("keeps native mobile on the legacy composer", () => {
-    expect(shouldUsePromptInputV2("ios", true)).toBe(false)
-    expect(shouldUsePromptInputV2("android", true)).toBe(false)
+  test("uses v2 on every platform when the design is enabled", () => {
+    expect(shouldUsePromptInputV2("ios", true)).toBe(true)
+    expect(shouldUsePromptInputV2("android", true)).toBe(true)
     expect(shouldUsePromptInputV2("desktop", true)).toBe(true)
+    expect(shouldUsePromptInputV2("web", true)).toBe(true)
+  })
+
+  test("keeps legacy input when the design is disabled", () => {
+    expect(shouldUsePromptInputV2("ios", false)).toBe(false)
+    expect(shouldUsePromptInputV2("android", false)).toBe(false)
+    expect(shouldUsePromptInputV2("desktop", false)).toBe(false)
     expect(shouldUsePromptInputV2("web", false)).toBe(false)
+  })
+
+  test("new-session selection follows the design setting", async () => {
+    const source = await Bun.file(new URL("../../pages/new-session.tsx", import.meta.url)).text()
+    expect(source).toMatch(/shouldUsePromptInputV2\(platform\.platform,\s*settings\.general\.newLayoutDesigns\(\)\)/)
   })
 })
 

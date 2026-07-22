@@ -6,8 +6,8 @@ import type { FollowupDraft } from "./submit"
 
 export type PromptInputState = ReturnType<typeof usePrompt>
 
-export const shouldUsePromptInputV2 = (platform: ReturnType<typeof usePlatform>["platform"], enabled: boolean) =>
-  enabled && platform !== "ios" && platform !== "android"
+export const shouldUsePromptInputV2 = (_platform: ReturnType<typeof usePlatform>["platform"], enabled: boolean) =>
+  enabled
 
 export const focusPromptInput = (v2: boolean, legacy: HTMLDivElement | undefined, restoreV2: () => void) => {
   if (v2) return restoreV2()
