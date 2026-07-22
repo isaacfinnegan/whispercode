@@ -190,4 +190,33 @@ describe("prompt-input editor dom", () => {
 
     container.remove()
   })
+
+  test.each(["file", "agent", "reference"] as const)(
+    "setSelectionRange deletes a V2 %s mention atomically",
+    (mention) => {
+      const container = document.createElement("div")
+      const pill = document.createElement("span")
+      pill.dataset.mention = mention
+      pill.contentEditable = "false"
+      pill.textContent = `@${mention}`
+      container.appendChild(pill)
+      document.body.appendChild(container)
+
+      const text = getEditorText(container)
+      const span = getDeleteWordRange(text, { start: text.length, end: text.length })
+      const selection = window.getSelection()
+      const range = document.createRange()
+      setSelectionRange(container, range, span!.start, span!.end)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      range.deleteContents()
+      setCursorPosition(container, span!.start)
+
+      expect(getEditorText(container)).toBe("")
+      expect(container.childNodes).toHaveLength(0)
+      expect(getCursorPosition(container)).toBe(0)
+
+      container.remove()
+    },
+  )
 })

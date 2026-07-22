@@ -3,6 +3,13 @@ import { promptLength } from "@/components/prompt-input/history"
 import { appendTranscription } from "@/components/prompt-input/transcription"
 import type { PlatformName, VoiceStartResult, VoiceState } from "@/context/platform"
 import type { Prompt } from "@/context/prompt"
+import {
+  getDeleteWordRange,
+  getEditorText,
+  getSelectionRange,
+  setCursorPosition,
+  setSelectionRange,
+} from "./prompt-input/editor-dom"
 
 export function createPromptInputV2AppendTranscription(input: {
   current(): Prompt
@@ -19,6 +26,30 @@ export function createPromptInputV2AppendTranscription(input: {
       const editor = input.editor()
       editor?.scrollTo({ top: editor.scrollHeight })
     })
+  }
+}
+
+export function createPromptInputV2DeleteWord(input: { editor(): HTMLElement | undefined }): () => void {
+  return () => {
+    const editor = input.editor()
+    if (!editor) return
+
+    const anchor = window.getSelection()?.anchorNode
+    if (document.activeElement !== editor && (!anchor || !editor.contains(anchor))) return
+
+    const text = getEditorText(editor)
+    const selection = getSelectionRange(editor)
+    const deletion = getDeleteWordRange(text, selection)
+    if (!deletion) return
+
+    const range = document.createRange()
+    setSelectionRange(editor, range, deletion.start, deletion.end)
+    const current = window.getSelection()
+    current?.removeAllRanges()
+    current?.addRange(range)
+    range.deleteContents()
+    setCursorPosition(editor, deletion.start)
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteWordBackward" }))
   }
 }
 

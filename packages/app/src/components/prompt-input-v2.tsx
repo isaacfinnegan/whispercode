@@ -36,6 +36,7 @@ import {
 } from "@opencode-ai/session-ui/v2/prompt-input/interaction"
 import {
   createPromptInputV2AppendTranscription,
+  createPromptInputV2DeleteWord,
   createPromptInputV2TranscriptionHandler,
   createPromptInputV2VoiceStart,
   promptInputV2VoiceAvailable,
@@ -56,6 +57,7 @@ export type PromptInputV2ControllerProps = Omit<PromptInputProps, "class" | "edi
 export type PromptInputV2ComposerController = PromptInputV2Interaction & {
   readonly model: PromptInputProps["controls"]["model"]
   appendTranscription(text: string): void
+  deleteWord(): void
 }
 
 export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
@@ -81,8 +83,13 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   })
   onMount(() => {
     const handleTranscription = createPromptInputV2TranscriptionHandler(props.controller.appendTranscription)
+    const handleDeleteWord = () => props.controller.deleteWord()
     window.addEventListener("opencode:transcription", handleTranscription)
-    onCleanup(() => window.removeEventListener("opencode:transcription", handleTranscription))
+    window.addEventListener("opencode:keyboard-delete-word", handleDeleteWord)
+    onCleanup(() => {
+      window.removeEventListener("opencode:transcription", handleTranscription)
+      window.removeEventListener("opencode:keyboard-delete-word", handleDeleteWord)
+    })
   })
 
   useCommands(props)
@@ -531,6 +538,9 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
         editor: controller.editor,
         queueScroll: (scroll) => requestAnimationFrame(scroll),
       }),
+    },
+    deleteWord: {
+      value: createPromptInputV2DeleteWord({ editor: controller.editor }),
     },
   })
   return controller as PromptInputV2ComposerController
