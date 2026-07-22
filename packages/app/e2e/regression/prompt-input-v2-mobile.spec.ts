@@ -36,16 +36,22 @@ test("mounts v2 without autofocus on mobile web", async ({ page }) => {
   const input = await openComposer(page)
 
   await expect(input).toBeVisible()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
   await expect(input).not.toBeFocused()
 })
 
 test("appends final transcription once and ignores partial transcription", async ({ page }) => {
   const input = await openComposer(page)
+  await input.fill("existing draft")
+  await expect(input).toHaveText("existing draft")
 
   await page.evaluate(() => {
     window.dispatchEvent(new CustomEvent("opencode:transcription", { detail: { text: "partial", isFinal: false } }))
     window.dispatchEvent(new CustomEvent("opencode:transcription", { detail: { text: "final words", isFinal: true } }))
   })
 
-  await expect(input).toHaveText("final words")
+  await expect(input).toHaveText("existing draft final words")
+  await expect(input).not.toContainText("partial")
 })
