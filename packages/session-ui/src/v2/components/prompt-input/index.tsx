@@ -21,6 +21,7 @@ import type {
   PromptInputV2Suggestion,
 } from "./types"
 import type { PromptInputV2Interaction, PromptInputV2SelectControl } from "./interaction"
+import { isPromptInputV2VoiceSwipe, type PromptInputV2SwipePoint } from "./swipe"
 
 export type {
   PromptInputV2Attachment,
@@ -39,6 +40,8 @@ export type PromptInputV2Props = {
   borderUnderlay?: boolean
   class?: string
   modelControl?: JSX.Element
+  voiceControl?: JSX.Element
+  onVoiceSwipe?: () => void
   attachKeybind?: string[]
   attachShortcut?: string
 }
@@ -48,6 +51,8 @@ export function PromptInputV2(props: PromptInputV2Props) {
   const view = props.controller.view
   let editor: HTMLDivElement | undefined
   let localInput = false
+  let swipeStart: PromptInputV2SwipePoint | undefined
+  let swipeTriggered = false
   const updateCursor = () => {
     if (!editor || !window.getSelection()?.isCollapsed) return
     props.controller.onCursor(promptInputV2Cursor(editor))
@@ -175,6 +180,28 @@ export function PromptInputV2(props: PromptInputV2Props) {
             }}
             onKeyUp={updateCursor}
             onPointerUp={updateCursor}
+            onTouchStart={(event) => {
+              const touch = event.touches[0]
+              if (!touch) return
+              swipeStart = { x: touch.clientX, y: touch.clientY, time: performance.now() }
+              swipeTriggered = false
+            }}
+            onTouchMove={(event) => {
+              const touch = event.touches[0]
+              if (!touch || !swipeStart || swipeTriggered) return
+              const end = { x: touch.clientX, y: touch.clientY, time: performance.now() }
+              if (!isPromptInputV2VoiceSwipe(swipeStart, end)) return
+              swipeTriggered = true
+              props.onVoiceSwipe?.()
+            }}
+            onTouchEnd={() => {
+              swipeStart = undefined
+              swipeTriggered = false
+            }}
+            onTouchCancel={() => {
+              swipeStart = undefined
+              swipeTriggered = false
+            }}
             onPaste={props.controller.onPaste}
             onFocus={() => props.controller.dispatch({ type: "focus.editor" })}
           />
@@ -244,6 +271,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
               )}
             </Show>
           </div>
+          {props.voiceControl}
           <PromptInputV2SubmitButton
             mode={state.mode}
             stopping={view.submit.stopping()}
