@@ -21,7 +21,7 @@ import type {
   PromptInputV2Suggestion,
 } from "./types"
 import type { PromptInputV2Interaction, PromptInputV2SelectControl } from "./interaction"
-import { isPromptInputV2VoiceSwipe, type PromptInputV2SwipePoint } from "./swipe"
+import { isPromptInputV2VoiceSwipe, isPromptInputV2VoiceSwipeEnabled, type PromptInputV2SwipePoint } from "./swipe"
 
 export type {
   PromptInputV2Attachment,
@@ -181,12 +181,21 @@ export function PromptInputV2(props: PromptInputV2Props) {
             onKeyUp={updateCursor}
             onPointerUp={updateCursor}
             onTouchStart={(event) => {
+              if (!isPromptInputV2VoiceSwipeEnabled(props)) {
+                swipeStart = undefined
+                swipeTriggered = false
+                return
+              }
               const touch = event.touches[0]
               if (!touch) return
               swipeStart = { x: touch.clientX, y: touch.clientY, time: performance.now() }
               swipeTriggered = false
             }}
             onTouchMove={(event) => {
+              if (!isPromptInputV2VoiceSwipeEnabled(props)) {
+                swipeStart = undefined
+                return
+              }
               const touch = event.touches[0]
               if (!touch || !swipeStart || swipeTriggered) return
               const end = { x: touch.clientX, y: touch.clientY, time: performance.now() }

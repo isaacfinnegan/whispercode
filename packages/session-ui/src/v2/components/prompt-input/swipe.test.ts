@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { isPromptInputV2VoiceSwipe, type PromptInputV2SwipePoint } from "./swipe"
+import { isPromptInputV2VoiceSwipe, isPromptInputV2VoiceSwipeEnabled, type PromptInputV2SwipePoint } from "./swipe"
 
 describe("isPromptInputV2VoiceSwipe", () => {
   const start: PromptInputV2SwipePoint = { x: 100, y: 100, time: 100 }
@@ -15,5 +15,21 @@ describe("isPromptInputV2VoiceSwipe", () => {
     ["rightward", { x: 160, y: 100, time: 200 }],
   ] as const)("rejects a %s gesture", (_name, end) => {
     expect(isPromptInputV2VoiceSwipe(start, end)).toBe(false)
+  })
+})
+
+describe("isPromptInputV2VoiceSwipeEnabled", () => {
+  const onVoiceSwipe = () => {}
+
+  test("enables an editable prompt with a callback", () => {
+    expect(isPromptInputV2VoiceSwipeEnabled({ onVoiceSwipe })).toBe(true)
+  })
+
+  test.each([
+    ["disabled", { disabled: true, onVoiceSwipe }],
+    ["read-only", { readOnly: true, onVoiceSwipe }],
+    ["callback-free", {}],
+  ] as const)("rejects a %s prompt", (_name, props) => {
+    expect(isPromptInputV2VoiceSwipeEnabled(props)).toBe(false)
   })
 })
