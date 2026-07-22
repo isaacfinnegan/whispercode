@@ -1,8 +1,10 @@
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { Icon as VoiceIcon } from "@opencode-ai/ui/icon"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
 import { Icon } from "@opencode-ai/ui/v2/icon"
+import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
 import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 import type { Prompt, ReferenceInfo } from "@opencode-ai/sdk/v2/client"
@@ -21,12 +23,16 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { usePermission } from "@/context/permission"
 import { type ImageAttachmentPart, usePrompt } from "@/context/prompt"
-import { usePlatform } from "@/context/platform"
+import { usePlatform, type PlatformName, type VoiceState } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { showToast } from "@/utils/toast"
-import { PromptInputV2, type PromptInputV2Suggestion } from "@opencode-ai/session-ui/v2/prompt-input"
+import {
+  PromptInputV2,
+  type PromptInputV2Mode,
+  type PromptInputV2Suggestion,
+} from "@opencode-ai/session-ui/v2/prompt-input"
 import {
   createPromptInputV2Controller,
   createPromptInputV2State,
@@ -46,10 +52,30 @@ export type PromptInputV2ComposerController = PromptInputV2Interaction & {
   readonly model: PromptInputProps["controls"]["model"]
 }
 
+export function promptInputV2VoiceAvailable(
+  platform: PlatformName,
+  mode: PromptInputV2Mode,
+  available: boolean,
+): boolean {
+  return (platform === "ios" || platform === "android") && mode === "normal" && available
+}
+
+export function promptInputV2VoiceDisabled(state: VoiceState | undefined): boolean {
+  return state === "recording" || state === "processing"
+}
+
 export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   const dialog = useDialog()
   const command = useCommand()
   const language = useLanguage()
+  const platform = usePlatform()
+  const voiceAvailable = () =>
+    promptInputV2VoiceAvailable(platform.platform, props.controller.state.mode, !!platform.startVoiceInput)
+  const startVoice = () => {
+    if (!platform.startVoiceInput) return
+    platform.haptic?.("light")
+    void platform.startVoiceInput()
+  }
 
   useCommands(props)
   useEditHandler(props)
@@ -62,6 +88,22 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
         class={props.class}
         attachKeybind={command.keybindParts("file.attach")}
         attachShortcut={command.keybind("file.attach")}
+        onVoiceSwipe={voiceAvailable() ? startVoice : undefined}
+        voiceControl={
+          <Show when={voiceAvailable()}>
+            <TooltipV2 placement="top" gutter={4} value="Voice input">
+              <IconButtonV2
+                data-action="prompt-voice"
+                type="button"
+                icon={<VoiceIcon name="microphone" class="size-4" />}
+                variant="ghost-muted"
+                aria-label="Voice input"
+                disabled={promptInputV2VoiceDisabled(platform.voiceStatus?.().state)}
+                onClick={startVoice}
+              />
+            </TooltipV2>
+          </Show>
+        }
         modelControl={
           <PromptInputV2ModelControl
             loading={props.controller.model.loading}
