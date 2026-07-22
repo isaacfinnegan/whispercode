@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { createStore } from "solid-js/store"
+import { renderToString } from "solid-js/web"
 import { createPromptInputV2Controller } from "./interaction"
 import type { PromptInputV2PersistedState } from "./types"
 
@@ -9,19 +10,23 @@ test("restoreFocus respects a denied focus policy", () => {
     cursor: 0,
     context: { items: [] },
   })
-  const controller = createPromptInputV2Controller({
-    store,
-    commands: () => [],
-    context: () => [],
-    searchContextFiles: () => [],
-    canRestoreFocus: () => false,
-    view: {
-      submit: {
-        stopping: () => false,
-        onSubmit() {},
-        onStop() {},
+  let controller!: ReturnType<typeof createPromptInputV2Controller>
+  renderToString(() => {
+    controller = createPromptInputV2Controller({
+      store,
+      commands: () => [],
+      context: () => [],
+      searchContextFiles: () => [],
+      canRestoreFocus: () => false,
+      view: {
+        submit: {
+          stopping: () => false,
+          onSubmit() {},
+          onStop() {},
+        },
       },
-    },
+    })
+    return ""
   })
   let focused = false
   let error: unknown
