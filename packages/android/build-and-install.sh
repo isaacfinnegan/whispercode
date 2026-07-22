@@ -33,15 +33,16 @@ fi
 
 CLI_BIN="$SCRIPT_DIR/../../packages/opencode/dist/opencode-${OS}-${ARCH}/bin/opencode"
 
-if [ -f "$CLI_BIN" ]; then
-  echo "==> Installing CLI to ~/.opencode/bin/..."
-  mkdir -p "$HOME/.opencode/bin"
-  cp "$CLI_BIN" "$HOME/.opencode/bin/opencode"
-  echo "==> Installed CLI: $($HOME/.opencode/bin/opencode --version)"
-else
-  echo "ERROR: CLI binary not found at $CLI_BIN"
+if [ ! -x "$CLI_BIN" ]; then
+  echo "ERROR: CLI binary not found or not executable at $CLI_BIN"
   exit 1
 fi
+
+if ! CLI_VERSION="$("$CLI_BIN" --version)"; then
+  echo "ERROR: Built CLI failed validation at $CLI_BIN"
+  exit 1
+fi
+echo "==> Built CLI: $CLI_VERSION"
 
 echo "==> Syncing Android version to match CLI version..."
 (cd "$SCRIPT_DIR/../.." && bun run script/sync-android-version.ts)
@@ -60,4 +61,8 @@ fi
 
 echo "==> Pushing to pixel-10-pro-fold via Tailscale..."
 /usr/local/bin/tailscale file cp "$APK" "pixel-10-pro-fold:"
-echo "==> Done! Pushed to pixel-10-pro-fold via Tailscale."
+echo "==> Pushed to pixel-10-pro-fold via Tailscale."
+
+echo "==> Installing validated CLI to ~/.opencode/bin/..."
+bash "$SCRIPT_DIR/script/install-cli.sh" "$CLI_BIN" "$HOME/.opencode/bin/opencode"
+echo "==> Done!"
