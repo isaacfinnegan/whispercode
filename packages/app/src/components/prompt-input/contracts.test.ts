@@ -15,6 +15,11 @@ describe("shouldUsePromptInputV2", () => {
     expect(shouldUsePromptInputV2("desktop", false)).toBe(false)
     expect(shouldUsePromptInputV2("web", false)).toBe(false)
   })
+
+  test("new-session selection follows the design setting", async () => {
+    const source = await Bun.file(new URL("../../pages/new-session.tsx", import.meta.url)).text()
+    expect(source).toMatch(/shouldUsePromptInputV2\(platform\.platform,\s*settings\.general\.newLayoutDesigns\(\)\)/)
+  })
 })
 
 describe("focusPromptInput", () => {

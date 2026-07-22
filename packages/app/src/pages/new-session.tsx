@@ -109,7 +109,7 @@ export default function NewSessionPage() {
     onSubmit: () => comments.clear(),
   })
   let legacyInput: HTMLDivElement | undefined
-  const useV2 = () => shouldUsePromptInputV2(platform.platform, true)
+  const useV2 = () => shouldUsePromptInputV2(platform.platform, settings.general.newLayoutDesigns())
   const focusInput = () => focusPromptInput(useV2(), legacyInput, promptInputV2Controller.restoreFocus)
   const projectController = createPromptProjectController({
     controls: projectControls,
