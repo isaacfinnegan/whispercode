@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { VoiceState } from "@/context/platform"
-import { promptInputV2VoiceAvailable, promptInputV2VoiceDisabled } from "./prompt-input-v2"
+import { promptInputV2VoiceAvailable, promptInputV2VoiceDisabled } from "./prompt-input-v2-mobile"
 
 describe("promptInputV2VoiceAvailable", () => {
   test.each([

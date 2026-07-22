@@ -23,21 +23,20 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { usePermission } from "@/context/permission"
 import { type ImageAttachmentPart, usePrompt } from "@/context/prompt"
-import { usePlatform, type PlatformName, type VoiceState } from "@/context/platform"
+import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { showToast } from "@/utils/toast"
-import {
-  PromptInputV2,
-  type PromptInputV2Mode,
-  type PromptInputV2Suggestion,
-} from "@opencode-ai/session-ui/v2/prompt-input"
+import { PromptInputV2, type PromptInputV2Suggestion } from "@opencode-ai/session-ui/v2/prompt-input"
 import {
   createPromptInputV2Controller,
   createPromptInputV2State,
   type PromptInputV2Interaction,
 } from "@opencode-ai/session-ui/v2/prompt-input/interaction"
+import { promptInputV2VoiceAvailable, promptInputV2VoiceDisabled } from "./prompt-input-v2-mobile"
+
+export { promptInputV2VoiceAvailable, promptInputV2VoiceDisabled } from "./prompt-input-v2-mobile"
 
 export type PromptInputV2ComposerProps = {
   class?: string
@@ -50,18 +49,6 @@ export type PromptInputV2ComposerProps = {
 export type PromptInputV2ControllerProps = Omit<PromptInputProps, "class" | "edit" | "onEditLoaded" | "submission">
 export type PromptInputV2ComposerController = PromptInputV2Interaction & {
   readonly model: PromptInputProps["controls"]["model"]
-}
-
-export function promptInputV2VoiceAvailable(
-  platform: PlatformName,
-  mode: PromptInputV2Mode,
-  available: boolean,
-): boolean {
-  return (platform === "ios" || platform === "android") && mode === "normal" && available
-}
-
-export function promptInputV2VoiceDisabled(state: VoiceState | undefined): boolean {
-  return state === "recording" || state === "processing"
 }
 
 export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
