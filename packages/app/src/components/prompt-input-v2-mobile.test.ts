@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { VoiceStartResult, VoiceState } from "@/context/platform"
 import {
   createPromptInputV2AppendTranscription,
+  createPromptInputV2TranscriptionOwner,
   createPromptInputV2TranscriptionHandler,
   createPromptInputV2VoiceStart,
   promptInputV2VoiceAvailable,
@@ -62,24 +63,70 @@ describe("createPromptInputV2AppendTranscription", () => {
 })
 
 describe("createPromptInputV2TranscriptionHandler", () => {
-  test("dispatches final transcription text", () => {
-    const values: string[] = []
-    const handle = createPromptInputV2TranscriptionHandler((text) => values.push(text))
+  test("only the composer that successfully started recording consumes the final transcription", async () => {
+    const firstValues: string[] = []
+    const secondValues: string[] = []
+    const first = createPromptInputV2TranscriptionOwner()
+    const second = createPromptInputV2TranscriptionOwner()
+    const firstHandle = createPromptInputV2TranscriptionHandler((text) => firstValues.push(text), first)
+    const secondHandle = createPromptInputV2TranscriptionHandler((text) => secondValues.push(text), second)
+    const startVoice = createPromptInputV2VoiceStart({
+      disabled: () => false,
+      start: () => ({ ok: true }),
+      onStart: () => {},
+      onSuccess: first.claim,
+      onPending: () => {},
+      onFailure: () => {},
+    })
 
-    handle(new CustomEvent("opencode:transcription", { detail: { text: "hello", isFinal: true } }))
+    startVoice()
+    await Promise.resolve()
+    await Promise.resolve()
 
-    expect(values).toEqual(["hello"])
+    const event = new CustomEvent("opencode:transcription", { detail: { text: "private draft", isFinal: true } })
+    secondHandle(event)
+    firstHandle(event)
+
+    expect(firstValues).toEqual(["private draft"])
+    expect(secondValues).toEqual([])
+    expect(first.owns()).toBe(false)
   })
 
-  test("ignores absent text and interim transcription", () => {
+  test("does not deliver a released recording to either its old or a newly mounted composer", () => {
+    const oldValues: string[] = []
+    const newValues: string[] = []
+    const oldOwner = createPromptInputV2TranscriptionOwner()
+    oldOwner.claim()
+    const oldHandle = createPromptInputV2TranscriptionHandler((text) => oldValues.push(text), oldOwner)
+    oldOwner.dispose()
+    const newOwner = createPromptInputV2TranscriptionOwner()
+    const newHandle = createPromptInputV2TranscriptionHandler((text) => newValues.push(text), newOwner)
+
+    const event = new CustomEvent("opencode:transcription", { detail: { text: "private draft", isFinal: true } })
+    oldHandle(event)
+    newHandle(event)
+
+    expect(oldValues).toEqual([])
+    expect(newValues).toEqual([])
+  })
+
+  test("ignores absent and interim transcription while retaining ownership for the final event", () => {
     const values: string[] = []
-    const handle = createPromptInputV2TranscriptionHandler((text) => values.push(text))
+    const owner = createPromptInputV2TranscriptionOwner()
+    owner.claim()
+    const handle = createPromptInputV2TranscriptionHandler((text) => values.push(text), owner)
 
     handle(new CustomEvent("opencode:transcription", { detail: { isFinal: true } }))
     handle(new CustomEvent("opencode:transcription", { detail: { text: "draft", isFinal: false } }))
     handle(new Event("opencode:transcription"))
 
     expect(values).toEqual([])
+    expect(owner.owns()).toBe(true)
+
+    handle(new CustomEvent("opencode:transcription", { detail: { text: "final", isFinal: true } }))
+
+    expect(values).toEqual(["final"])
+    expect(owner.owns()).toBe(false)
   })
 })
 
@@ -122,6 +169,7 @@ describe("createPromptInputV2VoiceStart", () => {
         return { ok: true }
       },
       onStart: () => {},
+      onSuccess: () => {},
       onPending: (value) => pending.push(value),
       onFailure: () => {},
     })
@@ -148,6 +196,7 @@ describe("createPromptInputV2VoiceStart", () => {
         return result
       },
       onStart: () => haptics++,
+      onSuccess: () => {},
       onPending: (value) => {
         pending.push(value)
         if (!value) resolveSettled()
@@ -178,10 +227,12 @@ describe("createPromptInputV2VoiceStart", () => {
       let resolveSettled!: () => void
       const settled = new Promise<void>((resolve) => (resolveSettled = resolve))
       const failures: string[] = []
+      const owner = createPromptInputV2TranscriptionOwner()
       const startVoice = createPromptInputV2VoiceStart({
         disabled: () => false,
         start,
         onStart: () => {},
+        onSuccess: owner.claim,
         onPending: (value) => {
           if (!value) resolveSettled()
         },
@@ -192,6 +243,7 @@ describe("createPromptInputV2VoiceStart", () => {
       await settled
 
       expect(failures).toEqual([message])
+      expect(owner.owns()).toBe(false)
     },
   )
 })

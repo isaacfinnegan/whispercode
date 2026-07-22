@@ -42,7 +42,7 @@ test("mounts v2 without autofocus on mobile web", async ({ page }) => {
   await expect(input).not.toBeFocused()
 })
 
-test("appends final transcription once and ignores partial transcription", async ({ page }) => {
+test("ignores unowned final and partial transcription", async ({ page }) => {
   const input = await openComposer(page)
   await input.fill("existing draft")
   await expect(input).toHaveText("existing draft")
@@ -52,6 +52,7 @@ test("appends final transcription once and ignores partial transcription", async
     window.dispatchEvent(new CustomEvent("opencode:transcription", { detail: { text: "final words", isFinal: true } }))
   })
 
-  await expect(input).toHaveText("existing draft final words")
+  await expect(input).toHaveText("existing draft")
   await expect(input).not.toContainText("partial")
+  await expect(input).not.toContainText("final words")
 })

@@ -4,6 +4,28 @@ import { appendTranscription } from "@/components/prompt-input/transcription"
 import type { PlatformName, VoiceStartResult, VoiceState } from "@/context/platform"
 import type { Prompt } from "@/context/prompt"
 
+// Native voice recording is process-global, so only its starter may consume the final event.
+let transcriptionOwner: symbol | undefined
+
+export function createPromptInputV2TranscriptionOwner() {
+  const id = Symbol()
+  let active = true
+  const release = () => {
+    if (transcriptionOwner === id) transcriptionOwner = undefined
+  }
+  return {
+    claim: () => {
+      if (active) transcriptionOwner = id
+    },
+    owns: () => transcriptionOwner === id,
+    release,
+    dispose: () => {
+      active = false
+      release()
+    },
+  }
+}
+
 export function createPromptInputV2AppendTranscription(input: {
   current(): Prompt
   set(prompt: Prompt, cursor: number): void
@@ -22,11 +44,15 @@ export function createPromptInputV2AppendTranscription(input: {
   }
 }
 
-export function createPromptInputV2TranscriptionHandler(append: (text: string) => void): (event: Event) => void {
+export function createPromptInputV2TranscriptionHandler(
+  append: (text: string) => void,
+  owner: ReturnType<typeof createPromptInputV2TranscriptionOwner>,
+): (event: Event) => void {
   return (event) => {
     if (!(event instanceof CustomEvent)) return
     const detail = event.detail as { text?: string; isFinal?: boolean } | undefined
-    if (!detail?.text || detail.isFinal === false) return
+    if (!detail?.text || detail.isFinal === false || !owner.owns()) return
+    owner.release()
     append(detail.text)
   }
 }
@@ -47,6 +73,7 @@ export function createPromptInputV2VoiceStart(input: {
   disabled(): boolean
   start(): VoiceStartResult | Promise<VoiceStartResult>
   onStart(): void
+  onSuccess(): void
   onPending(value: boolean): void
   onFailure(message: string): void
 }): () => void {
@@ -61,7 +88,11 @@ export function createPromptInputV2VoiceStart(input: {
         return input.start()
       })
       .then((result) => {
-        if (!result.ok) input.onFailure(result.message ?? "Voice input is unavailable.")
+        if (!result.ok) {
+          input.onFailure(result.message ?? "Voice input is unavailable.")
+          return
+        }
+        input.onSuccess()
       })
       .catch((error: unknown) => input.onFailure(error instanceof Error ? error.message : String(error)))
       .finally(() => {

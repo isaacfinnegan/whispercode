@@ -36,6 +36,7 @@ import {
 } from "@opencode-ai/session-ui/v2/prompt-input/interaction"
 import {
   createPromptInputV2AppendTranscription,
+  createPromptInputV2TranscriptionOwner,
   createPromptInputV2TranscriptionHandler,
   createPromptInputV2VoiceStart,
   promptInputV2VoiceAvailable,
@@ -64,6 +65,7 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   const language = useLanguage()
   const platform = usePlatform()
   const [voicePending, setVoicePending] = createSignal(false)
+  const transcriptionOwner = createPromptInputV2TranscriptionOwner()
   const voiceAvailable = () =>
     promptInputV2VoiceAvailable(platform.platform, props.controller.state.mode, !!platform.startVoiceInput)
   const voiceDisabled = () => promptInputV2VoiceDisabled(platform.voiceStatus?.().state, voicePending())
@@ -71,6 +73,7 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
     disabled: () => !platform.startVoiceInput || voiceDisabled(),
     start: () => platform.startVoiceInput!(),
     onStart: () => platform.haptic?.("light"),
+    onSuccess: transcriptionOwner.claim,
     onPending: setVoicePending,
     onFailure: (message) =>
       showToast({
@@ -80,9 +83,15 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
       }),
   })
   onMount(() => {
-    const handleTranscription = createPromptInputV2TranscriptionHandler(props.controller.appendTranscription)
+    const handleTranscription = createPromptInputV2TranscriptionHandler(
+      props.controller.appendTranscription,
+      transcriptionOwner,
+    )
     window.addEventListener("opencode:transcription", handleTranscription)
-    onCleanup(() => window.removeEventListener("opencode:transcription", handleTranscription))
+    onCleanup(() => {
+      window.removeEventListener("opencode:transcription", handleTranscription)
+      transcriptionOwner.dispose()
+    })
   })
 
   useCommands(props)
