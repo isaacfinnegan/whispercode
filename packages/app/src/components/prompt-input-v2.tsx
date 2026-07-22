@@ -39,6 +39,7 @@ import {
   createPromptInputV2TranscriptionOwner,
   createPromptInputV2TranscriptionHandler,
   createPromptInputV2VoiceStart,
+  createPromptInputV2VoiceStateObserver,
   promptInputV2VoiceAvailable,
   promptInputV2VoiceDisabled,
 } from "./prompt-input-v2-mobile"
@@ -66,14 +67,17 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   const platform = usePlatform()
   const [voicePending, setVoicePending] = createSignal(false)
   const transcriptionOwner = createPromptInputV2TranscriptionOwner()
+  const observeVoiceState = createPromptInputV2VoiceStateObserver(transcriptionOwner)
+  createEffect(() => observeVoiceState(platform.voiceStatus?.().state))
   const voiceAvailable = () =>
     promptInputV2VoiceAvailable(platform.platform, props.controller.state.mode, !!platform.startVoiceInput)
   const voiceDisabled = () => promptInputV2VoiceDisabled(platform.voiceStatus?.().state, voicePending())
   const startVoice = createPromptInputV2VoiceStart({
     disabled: () => !platform.startVoiceInput || voiceDisabled(),
+    acquire: transcriptionOwner.claim,
+    release: transcriptionOwner.release,
     start: () => platform.startVoiceInput!(),
     onStart: () => platform.haptic?.("light"),
-    onSuccess: transcriptionOwner.claim,
     onPending: setVoicePending,
     onFailure: (message) =>
       showToast({

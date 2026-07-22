@@ -5,6 +5,7 @@ import {
   createPromptInputV2TranscriptionOwner,
   createPromptInputV2TranscriptionHandler,
   createPromptInputV2VoiceStart,
+  createPromptInputV2VoiceStateObserver,
   promptInputV2VoiceAvailable,
   promptInputV2VoiceDisabled,
 } from "./prompt-input-v2-mobile"
@@ -72,9 +73,10 @@ describe("createPromptInputV2TranscriptionHandler", () => {
     const secondHandle = createPromptInputV2TranscriptionHandler((text) => secondValues.push(text), second)
     const startVoice = createPromptInputV2VoiceStart({
       disabled: () => false,
+      acquire: first.claim,
+      release: first.release,
       start: () => ({ ok: true }),
       onStart: () => {},
-      onSuccess: first.claim,
       onPending: () => {},
       onFailure: () => {},
     })
@@ -130,6 +132,62 @@ describe("createPromptInputV2TranscriptionHandler", () => {
   })
 })
 
+describe("createPromptInputV2VoiceStateObserver", () => {
+  test("releases an active recording after ready when no final transcription arrives", () => {
+    const owner = createPromptInputV2TranscriptionOwner()
+    const queued: Array<() => void> = []
+    owner.claim()
+    const observe = createPromptInputV2VoiceStateObserver(owner, (task) => queued.push(task))
+
+    observe("recording")
+    observe("processing")
+    observe("ready")
+
+    expect(owner.owns()).toBe(true)
+    expect(queued).toHaveLength(1)
+
+    queued[0]?.()
+
+    expect(owner.owns()).toBe(false)
+  })
+
+  test("lets a synchronous final transcription consume ownership before deferred ready cleanup", () => {
+    const values: string[] = []
+    const owner = createPromptInputV2TranscriptionOwner()
+    const queued: Array<() => void> = []
+    owner.claim()
+    const observe = createPromptInputV2VoiceStateObserver(owner, (task) => queued.push(task))
+    const handle = createPromptInputV2TranscriptionHandler((text) => values.push(text), owner)
+
+    observe("recording")
+    observe("ready")
+
+    expect(queued).toHaveLength(1)
+
+    handle(new CustomEvent("opencode:transcription", { detail: { text: "final", isFinal: true } }))
+
+    expect(values).toEqual(["final"])
+    expect(owner.owns()).toBe(false)
+
+    queued[0]?.()
+
+    expect(values).toEqual(["final"])
+  })
+
+  test("releases ownership immediately on error", () => {
+    const owner = createPromptInputV2TranscriptionOwner()
+    const queued: Array<() => void> = []
+    owner.claim()
+    const observe = createPromptInputV2VoiceStateObserver(owner, (task) => queued.push(task))
+
+    observe("recording")
+    observe("error")
+
+    expect(owner.owns()).toBe(false)
+    expect(queued).toEqual([])
+  })
+})
+
 describe("promptInputV2VoiceAvailable", () => {
   test.each([
     ["ios", "normal", true, true],
@@ -164,12 +222,13 @@ describe("createPromptInputV2VoiceStart", () => {
     const pending: boolean[] = []
     const startVoice = createPromptInputV2VoiceStart({
       disabled: () => true,
+      acquire: () => true,
+      release: () => {},
       start: () => {
         starts++
         return { ok: true }
       },
       onStart: () => {},
-      onSuccess: () => {},
       onPending: (value) => pending.push(value),
       onFailure: () => {},
     })
@@ -179,6 +238,40 @@ describe("createPromptInputV2VoiceStart", () => {
 
     expect(starts).toBe(0)
     expect(pending).toEqual([])
+  })
+
+  test("reserves the global recorder before simultaneous composers can start", async () => {
+    const first = createPromptInputV2TranscriptionOwner()
+    const second = createPromptInputV2TranscriptionOwner()
+    const starts: string[] = []
+    const createStart = (name: string, owner: typeof first) =>
+      createPromptInputV2VoiceStart({
+        disabled: () => false,
+        acquire: owner.claim,
+        release: owner.release,
+        start: () => {
+          starts.push(name)
+          return { ok: true }
+        },
+        onStart: () => {},
+        onPending: () => {},
+        onFailure: () => {},
+      })
+
+    const startFirst = createStart("first", first)
+    const startSecond = createStart("second", second)
+    startFirst()
+    startSecond()
+
+    expect(first.owns()).toBe(true)
+    expect(second.owns()).toBe(false)
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(starts).toEqual(["first"])
+    expect(first.owns()).toBe(true)
+    first.release()
   })
 
   test("coalesces starts while the first call is unresolved", async () => {
@@ -191,12 +284,13 @@ describe("createPromptInputV2VoiceStart", () => {
     let haptics = 0
     const startVoice = createPromptInputV2VoiceStart({
       disabled: () => false,
+      acquire: () => true,
+      release: () => {},
       start: () => {
         starts++
         return result
       },
       onStart: () => haptics++,
-      onSuccess: () => {},
       onPending: (value) => {
         pending.push(value)
         if (!value) resolveSettled()
@@ -230,9 +324,10 @@ describe("createPromptInputV2VoiceStart", () => {
       const owner = createPromptInputV2TranscriptionOwner()
       const startVoice = createPromptInputV2VoiceStart({
         disabled: () => false,
+        acquire: owner.claim,
+        release: owner.release,
         start,
         onStart: () => {},
-        onSuccess: owner.claim,
         onPending: (value) => {
           if (!value) resolveSettled()
         },

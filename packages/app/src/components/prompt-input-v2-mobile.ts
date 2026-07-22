@@ -15,7 +15,9 @@ export function createPromptInputV2TranscriptionOwner() {
   }
   return {
     claim: () => {
-      if (active) transcriptionOwner = id
+      if (!active || transcriptionOwner) return false
+      transcriptionOwner = id
+      return true
     },
     owns: () => transcriptionOwner === id,
     release,
@@ -23,6 +25,27 @@ export function createPromptInputV2TranscriptionOwner() {
       active = false
       release()
     },
+  }
+}
+
+export function createPromptInputV2VoiceStateObserver(
+  owner: ReturnType<typeof createPromptInputV2TranscriptionOwner>,
+  queue: (task: () => void) => void = (task) => queueMicrotask(task),
+): (state: VoiceState | undefined) => void {
+  let active = false
+  return (state) => {
+    if (state === "recording" || state === "processing") {
+      active = true
+      return
+    }
+    if (state === "error") {
+      active = false
+      owner.release()
+      return
+    }
+    if (state !== "ready" || !active) return
+    active = false
+    queue(owner.release)
   }
 }
 
@@ -71,15 +94,17 @@ export function promptInputV2VoiceDisabled(state: VoiceState | undefined, pendin
 
 export function createPromptInputV2VoiceStart(input: {
   disabled(): boolean
+  acquire(): boolean
+  release(): void
   start(): VoiceStartResult | Promise<VoiceStartResult>
   onStart(): void
-  onSuccess(): void
   onPending(value: boolean): void
   onFailure(message: string): void
 }): () => void {
   let pending = false
   return () => {
     if (pending || input.disabled()) return
+    if (!input.acquire()) return
     pending = true
     input.onPending(true)
     void Promise.resolve()
@@ -89,12 +114,14 @@ export function createPromptInputV2VoiceStart(input: {
       })
       .then((result) => {
         if (!result.ok) {
+          input.release()
           input.onFailure(result.message ?? "Voice input is unavailable.")
-          return
         }
-        input.onSuccess()
       })
-      .catch((error: unknown) => input.onFailure(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => {
+        input.release()
+        input.onFailure(error instanceof Error ? error.message : String(error))
+      })
       .finally(() => {
         pending = false
         input.onPending(false)
