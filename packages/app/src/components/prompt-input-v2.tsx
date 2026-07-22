@@ -8,7 +8,7 @@ import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
 import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 import type { Prompt, ReferenceInfo } from "@opencode-ai/sdk/v2/client"
-import { createEffect, createMemo, on, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, Show } from "solid-js"
 import { ModelSelectorPopoverV2 } from "@/components/dialog-select-model"
 import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpaid-v2"
 import type { PromptInputProps } from "@/components/prompt-input/contracts"
@@ -34,7 +34,11 @@ import {
   createPromptInputV2State,
   type PromptInputV2Interaction,
 } from "@opencode-ai/session-ui/v2/prompt-input/interaction"
-import { promptInputV2VoiceAvailable, promptInputV2VoiceDisabled } from "./prompt-input-v2-mobile"
+import {
+  createPromptInputV2VoiceStart,
+  promptInputV2VoiceAvailable,
+  promptInputV2VoiceDisabled,
+} from "./prompt-input-v2-mobile"
 
 export { promptInputV2VoiceAvailable, promptInputV2VoiceDisabled } from "./prompt-input-v2-mobile"
 
@@ -56,13 +60,22 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   const command = useCommand()
   const language = useLanguage()
   const platform = usePlatform()
+  const [voicePending, setVoicePending] = createSignal(false)
   const voiceAvailable = () =>
     promptInputV2VoiceAvailable(platform.platform, props.controller.state.mode, !!platform.startVoiceInput)
-  const startVoice = () => {
-    if (!platform.startVoiceInput) return
-    platform.haptic?.("light")
-    void platform.startVoiceInput()
-  }
+  const voiceDisabled = () => promptInputV2VoiceDisabled(platform.voiceStatus?.().state, voicePending())
+  const startVoice = createPromptInputV2VoiceStart({
+    disabled: () => !platform.startVoiceInput || voiceDisabled(),
+    start: () => platform.startVoiceInput!(),
+    onStart: () => platform.haptic?.("light"),
+    onPending: setVoicePending,
+    onFailure: (message) =>
+      showToast({
+        title: "Voice input failed",
+        description: message,
+        variant: "error",
+      }),
+  })
 
   useCommands(props)
   useEditHandler(props)
@@ -75,7 +88,7 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
         class={props.class}
         attachKeybind={command.keybindParts("file.attach")}
         attachShortcut={command.keybind("file.attach")}
-        onVoiceSwipe={voiceAvailable() ? startVoice : undefined}
+        onVoiceSwipe={voiceAvailable() && !voiceDisabled() ? startVoice : undefined}
         voiceControl={
           <Show when={voiceAvailable()}>
             <TooltipV2 placement="top" gutter={4} value="Voice input">
@@ -85,7 +98,7 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
                 icon={<VoiceIcon name="microphone" class="size-4" />}
                 variant="ghost-muted"
                 aria-label="Voice input"
-                disabled={promptInputV2VoiceDisabled(platform.voiceStatus?.().state)}
+                disabled={voiceDisabled()}
                 onClick={startVoice}
               />
             </TooltipV2>
