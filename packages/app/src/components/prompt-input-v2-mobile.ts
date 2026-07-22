@@ -7,14 +7,18 @@ import type { Prompt } from "@/context/prompt"
 export function createPromptInputV2AppendTranscription(input: {
   current(): Prompt
   set(prompt: Prompt, cursor: number): void
-  queueScroll(): void
+  editor(): { readonly scrollHeight: number; scrollTo(options: ScrollToOptions): void } | undefined
+  queueScroll(task: () => void): void
 }): (text: string) => void {
   return (text) => {
     const value = text.trim()
     if (!value) return
     const next = appendTranscription(input.current(), value)
     input.set(next, promptLength(next))
-    input.queueScroll()
+    input.queueScroll(() => {
+      const editor = input.editor()
+      editor?.scrollTo({ top: editor.scrollHeight })
+    })
   }
 }
 

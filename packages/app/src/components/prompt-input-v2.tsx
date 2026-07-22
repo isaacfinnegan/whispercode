@@ -528,7 +528,8 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       value: createPromptInputV2AppendTranscription({
         current: prompt.current,
         set: prompt.set,
-        queueScroll: () => requestAnimationFrame(() => controller.editor()?.scrollIntoView({ block: "nearest" })),
+        editor: controller.editor,
+        queueScroll: (scroll) => requestAnimationFrame(scroll),
       }),
     },
   })

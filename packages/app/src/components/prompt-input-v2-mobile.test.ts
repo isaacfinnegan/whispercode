@@ -13,17 +13,24 @@ describe("createPromptInputV2AppendTranscription", () => {
   test("trims final text, updates the prompt and cursor, then queues scrolling", () => {
     let prompt: Prompt = [{ type: "agent", name: "reviewer", content: "@reviewer", start: 5, end: 14 }]
     const updates: Array<{ prompt: Prompt; cursor: number }> = []
-    let scrolls = 0
+    const scrolls: ScrollToOptions[] = []
+    let scroll: (() => void) | undefined
+    const editor = {
+      scrollHeight: 240,
+      scrollTo: (options: ScrollToOptions) => scrolls.push(options),
+    }
     const append = createPromptInputV2AppendTranscription({
       current: () => prompt,
       set: (next, cursor) => {
         prompt = next
         updates.push({ prompt: next, cursor })
       },
-      queueScroll: () => scrolls++,
+      editor: () => editor,
+      queueScroll: (task) => (scroll = task),
     })
 
     append("  hello  ")
+    scroll?.()
 
     expect(updates).toEqual([
       {
@@ -34,7 +41,7 @@ describe("createPromptInputV2AppendTranscription", () => {
         cursor: 14,
       },
     ])
-    expect(scrolls).toBe(1)
+    expect(scrolls).toEqual([{ top: 240 }])
   })
 
   test("ignores blank text", () => {
@@ -43,6 +50,7 @@ describe("createPromptInputV2AppendTranscription", () => {
     const append = createPromptInputV2AppendTranscription({
       current: () => [],
       set: () => updates++,
+      editor: () => undefined,
       queueScroll: () => scrolls++,
     })
 
