@@ -2,14 +2,12 @@ import { describe, expect, test } from "bun:test"
 import type { VoiceStartResult, VoiceState } from "@/context/platform"
 import {
   createPromptInputV2AppendTranscription,
-  createPromptInputV2DeleteWord,
   createPromptInputV2TranscriptionHandler,
   createPromptInputV2VoiceStart,
   promptInputV2VoiceAvailable,
   promptInputV2VoiceDisabled,
 } from "./prompt-input-v2-mobile"
 import type { Prompt } from "@/context/prompt"
-import { getCursorPosition, getEditorText, setCursorPosition } from "./prompt-input/editor-dom"
 
 describe("createPromptInputV2AppendTranscription", () => {
   test("trims final text, updates the prompt and cursor, then queues scrolling", () => {
@@ -60,60 +58,6 @@ describe("createPromptInputV2AppendTranscription", () => {
 
     expect(updates).toBe(0)
     expect(scrolls).toBe(0)
-  })
-})
-
-describe("createPromptInputV2DeleteWord", () => {
-  test("deletes the previous word and dispatches a bubbling input event", () => {
-    const editor = document.createElement("div")
-    editor.contentEditable = "true"
-    editor.textContent = "alpha beta"
-    document.body.appendChild(editor)
-    editor.focus()
-    setCursorPosition(editor, 10)
-    const events: InputEvent[] = []
-    editor.addEventListener("input", (event) => events.push(event as InputEvent))
-    const deleteWord = createPromptInputV2DeleteWord({ editor: () => editor })
-
-    deleteWord()
-
-    expect(getEditorText(editor)).toBe("alpha")
-    expect(getCursorPosition(editor)).toBe(5)
-    expect(events).toHaveLength(1)
-    expect(events[0]?.inputType).toBe("deleteWordBackward")
-    expect(events[0]?.bubbles).toBe(true)
-
-    editor.remove()
-  })
-
-  test("deletes when the current selection anchor is inside an unfocused editor", () => {
-    const editor = document.createElement("div")
-    editor.textContent = "alpha beta"
-    const button = document.createElement("button")
-    document.body.append(editor, button)
-    button.focus()
-    setCursorPosition(editor, 10)
-    const deleteWord = createPromptInputV2DeleteWord({ editor: () => editor })
-
-    deleteWord()
-
-    expect(getEditorText(editor)).toBe("alpha")
-
-    editor.remove()
-    button.remove()
-  })
-
-  test("does nothing without an active editor or contained selection", () => {
-    const editor = document.createElement("div")
-    editor.textContent = "alpha beta"
-    document.body.appendChild(editor)
-    const deleteWord = createPromptInputV2DeleteWord({ editor: () => editor })
-
-    deleteWord()
-
-    expect(getEditorText(editor)).toBe("alpha beta")
-
-    editor.remove()
   })
 })
 

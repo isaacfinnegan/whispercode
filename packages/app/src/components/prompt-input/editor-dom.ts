@@ -7,18 +7,6 @@ function gap(char?: string) {
   return !!char && GAP.test(char)
 }
 
-function pill(node: Node) {
-  if (node.nodeType !== Node.ELEMENT_NODE) return false
-  const element = node as HTMLElement
-  return (
-    element.dataset.type === "file" ||
-    element.dataset.type === "agent" ||
-    element.dataset.mention === "file" ||
-    element.dataset.mention === "agent" ||
-    element.dataset.mention === "reference"
-  )
-}
-
 function text(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replace(/\u200B/g, "")
   if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR") return "\n"
@@ -161,7 +149,9 @@ export function setCursorPosition(parent: HTMLElement, position: number) {
   while (node) {
     const length = getNodeLength(node)
     const isText = node.nodeType === Node.TEXT_NODE
-    const isPill = pill(node)
+    const isPill =
+      node.nodeType === Node.ELEMENT_NODE &&
+      ((node as HTMLElement).dataset.type === "file" || (node as HTMLElement).dataset.type === "agent")
     const isBreak = node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR"
 
     if (isText && remaining <= length) {
@@ -237,7 +227,9 @@ export function setRangeEdge(parent: HTMLElement, range: Range, edge: "start" | 
   for (const node of nodes) {
     const length = getNodeLength(node)
     const isText = node.nodeType === Node.TEXT_NODE
-    const isPill = pill(node)
+    const isPill =
+      node.nodeType === Node.ELEMENT_NODE &&
+      ((node as HTMLElement).dataset.type === "file" || (node as HTMLElement).dataset.type === "agent")
     const isBreak = node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR"
 
     if (isText && remaining <= length) {
