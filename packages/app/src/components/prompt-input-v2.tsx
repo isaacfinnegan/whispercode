@@ -421,6 +421,8 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       editor = element as HTMLDivElement
       props.ref?.(editor)
     },
+    canRestoreFocus: (element) =>
+      (platform.platform !== "ios" && platform.platform !== "android") || document.activeElement === element,
     onSuggestionSelect(item) {
       if (item.kind !== "command") return
       const selected = slashCommands().find((entry) => entry.id === item.id)

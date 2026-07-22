@@ -65,6 +65,7 @@ export function createPromptInputV2Controller(input: {
   openContext?: (key: string) => void
   onContextRemove?: (item: PromptInputV2Comment) => void
   onEditor?: (element: HTMLElement) => void
+  canRestoreFocus?: (editor: HTMLElement) => boolean
   onSuggestionSelect?: (item: PromptInputV2Suggestion) => (() => void) | void
   view: PromptInputV2ViewConfig
   attachments?: PromptInputV2AttachmentConfig
@@ -245,8 +246,10 @@ export function createPromptInputV2Controller(input: {
 
   const restoreFocus = (cursor = draft.state.cursor ?? promptLength(draft.state.prompt)) => {
     requestAnimationFrame(() => {
-      editor?.focus()
-      setEditorCursor(editor, cursor)
+      const element = editor
+      if (!element || input.canRestoreFocus?.(element) === false) return
+      element.focus()
+      setEditorCursor(element, cursor)
     })
   }
 
@@ -336,6 +339,9 @@ export function createPromptInputV2Controller(input: {
     setEditor(element: HTMLElement) {
       editor = element
       input.onEditor?.(element)
+    },
+    editor() {
+      return editor
     },
     restoreFocus,
     onInput(value: string, prompt?: PromptInputV2PersistedState["prompt"], cursor?: number) {
