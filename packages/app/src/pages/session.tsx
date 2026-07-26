@@ -550,7 +550,6 @@ export default function Page() {
 
   const info = createMemo(() => (params.id ? sync().session.get(params.id) : undefined))
   const isChildSession = createMemo(() => !!info()?.parentID)
-  const diffs = createMemo(() => (params.id ? list(sync().data.session_diff[params.id]) : []))
   const canReview = createMemo(() => !!sync().project)
   const reviewTab = createMemo(() => isDesktop())
   const tabState = createSessionTabs({
@@ -781,17 +780,22 @@ export default function Page() {
       queryFn: mode
         ? async () => {
             try {
-              if (mode === "git" && mobilePlatform()) {
+              const legacy = (await serverSDK().protocol) === "v1"
+              if (legacy && mode === "git" && mobilePlatform()) {
                 const status = await sdk()
                   .client.file.status()
                   .then((result) => result.data ?? [])
                 if (setReviewLimit("git", status.length)) return []
               }
 
-              const data = await sdk()
-                .client.vcs.diff({ mode })
-                .then((result) => result.data ?? [])
-              const diffs = list(data)
+              const data = legacy
+                ? await sdk()
+                    .client.vcs.diff({ mode })
+                    .then((result) => result.data ?? [])
+                : await sdk()
+                    .api.vcs.diff({ location: { directory: sdk().directory }, mode: mode === "git" ? "working" : mode })
+                    .then((result) => result.data)
+              const diffs = legacy ? list(data) : data
               if (setReviewLimit(mode, diffs.length)) return []
               if (diffs.length > 0 || mode !== "git") return diffs
               return fallbackGitDiff()
@@ -843,8 +847,12 @@ export default function Page() {
           retry: 2,
           queryFn: () =>
             sdk()
-              .client.vcs.diff({ mode, directory: scope, context })
-              .then((result) => result.data ?? []),
+              .api.vcs.diff({
+                location: { directory: scope },
+                mode: mode === "git" ? "working" : mode,
+                context,
+              })
+              .then((result) => result.data),
         })
         .then((diffs) => diffs.find((diff) => diff.file === file))
 
@@ -1061,10 +1069,11 @@ export default function Page() {
   )
 
   const stopVcs = sdk().event.listen((evt) => {
-    if (evt.details.type !== "file.watcher.updated") return
+    const details = evt.details as { type: string; properties?: unknown }
+    if (details.type !== "file.watcher.updated" && details.type !== "filesystem.changed") return
     const props =
-      typeof evt.details.properties === "object" && evt.details.properties
-        ? (evt.details.properties as Record<string, unknown>)
+      typeof details.properties === "object" && details.properties
+        ? (details.properties as Record<string, unknown>)
         : undefined
     const file = typeof props?.file === "string" ? props.file : undefined
     if (!file || file.startsWith(".git/")) return
@@ -1602,7 +1611,7 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    if (!wantsReview()) return
+    if (!wantsReview() || serverSDK().protocolKind() !== "v1") return
     if (mobilePlatform() && reviewMode() !== "turn") return
     if (mobilePlatform() && activeReviewLimit()) return
     if (sync().data.session_diff[id] !== undefined) return
@@ -1619,7 +1628,7 @@ export default function Page() {
         if (diffTimer !== undefined) window.clearTimeout(diffTimer)
         diffFrame = undefined
         diffTimer = undefined
-        if (!wants) return
+        if (!wants || serverSDK().protocolKind() !== "v1") return
         if (mobilePlatform() && reviewMode() !== "turn") return
         if (mobilePlatform() && activeReviewLimit()) return
 
@@ -1639,7 +1648,6 @@ export default function Page() {
       { defer: true },
     ),
   )
-
   let treeDir: string | undefined
   createEffect(() => {
     const dir = sdk().directory
@@ -1899,7 +1907,7 @@ export default function Page() {
       setFollowup("failed", input.sessionID, undefined)
 
       const ok = await sendFollowupDraft({
-        client: sdk().client,
+        api: sdk().api.session,
         sync: sync(),
         serverSync: serverSync(),
         draft: item,
@@ -1995,13 +2003,13 @@ export default function Page() {
   const halt = (sessionID: string) =>
     busy(sessionID)
       ? sdk()
-          .client.session.abort({ sessionID })
+          .api.session.interrupt({ sessionID })
           .catch(() => {})
       : Promise.resolve()
 
   const revertMutation = useMutation(() => ({
     mutationFn: async (input: { sessionID: string; messageID: string }) => {
-      const client = sdk().client
+      const session = sdk().api.session
       const target = sync()
       const last = target.session.get(input.sessionID)?.revert
       const value = draft(input.messageID)
@@ -2011,10 +2019,8 @@ export default function Page() {
           roll(input.sessionID, { messageID: input.messageID }, target)
           prompt.set(value)
         },
-        request: () => halt(input.sessionID).then(() => client.session.revert(input)),
-        complete: (result) => {
-          if (result.data) merge(result.data, target)
-        },
+        request: () => halt(input.sessionID).then(() => session.revert.stage(input)),
+        complete: () => undefined,
         rollback: () => roll(input.sessionID, last, target),
         fail,
       })
@@ -2026,7 +2032,7 @@ export default function Page() {
       const sessionID = params.id
       if (!sessionID) return
 
-      const client = sdk().client
+      const session = sdk().api.session
       const target = sync()
       const next = userMessages().find((item) => item.id > id)
       const last = target.session.get(sessionID)?.revert
@@ -2043,11 +2049,9 @@ export default function Page() {
         },
         request: () =>
           !next
-            ? halt(sessionID).then(() => client.session.unrevert({ sessionID }))
-            : halt(sessionID).then(() => client.session.revert({ sessionID, messageID: next.id })),
-        complete: (result) => {
-          if (result.data) merge(result.data, target)
-        },
+            ? halt(sessionID).then(() => session.revert.clear({ sessionID }))
+            : halt(sessionID).then(() => session.revert.stage({ sessionID, messageID: next.id }).then(() => undefined)),
+        complete: () => undefined,
         rollback: () => roll(sessionID, last, target),
         fail,
       })
@@ -2529,9 +2533,6 @@ export default function Page() {
                     reviewHasFocusableContent={() => hasReview() || reviewV2State.sidebarOpened()}
                     reviewCount={reviewCount}
                     reviewPanel={reviewPanelV2}
-                    diffVersion={vcsQuery.dataUpdatedAt}
-                    loadDiff={loadReviewDiff}
-                    expandUnchanged={reviewV2State.expandMode() === "expand"}
                     reviewSidebarToggle={(disabled) => (
                       <SessionReviewV2SidebarToggle
                         opened={reviewV2State.sidebarOpened()}

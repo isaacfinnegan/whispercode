@@ -1,4 +1,5 @@
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
+import { OpenCode, type OpenCodeClient } from "@opencode-ai/client/promise"
 import type { ServerConnection } from "@/context/server"
 import { decode64 } from "@/utils/base64"
 
@@ -44,3 +45,16 @@ export function serverAuthHeaders(server: ServerConnection.HttpBase): Record<str
     Authorization: `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`,
   }
 }
+
+export function createApiForServer(input: {
+  server: ServerConnection.HttpBase
+  fetch?: typeof globalThis.fetch
+}): OpenCodeClient {
+  return OpenCode.make({
+    baseUrl: input.server.url,
+    fetch: input.fetch,
+    headers: Object.keys(serverAuthHeaders(input.server)).length > 0 ? serverAuthHeaders(input.server) : undefined,
+  })
+}
+
+export type ServerApi = OpenCodeClient
