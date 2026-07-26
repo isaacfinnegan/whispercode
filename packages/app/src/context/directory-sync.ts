@@ -123,7 +123,6 @@ export const createDirSyncContext = (
           setStore("session_status", reconcile(x.data ?? {}))
         })
       },
-      diff: serverSync.session.diff,
       todo: serverSync.session.todo,
       history: serverSync.session.history,
       evict(sessionID: string) {

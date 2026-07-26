@@ -550,8 +550,11 @@ function HomeProjectRow(
               <Show when={props.canRevealProject(props.server)}>
                 <MenuV2.Item onSelect={() => props.onRevealProject(props.server, props.project)}>
                   {props.language.t(
-                    fileManagerApp(platform.platform === "desktop" ? (platform.os ?? "unknown") : "unknown")
-                      .actionLabel,
+                    fileManagerApp(
+                      platform.os === "macos" || platform.os === "windows" || platform.os === "linux"
+                        ? platform.os
+                        : "unknown",
+                    ).actionLabel,
                   )}
                 </MenuV2.Item>
               </Show>

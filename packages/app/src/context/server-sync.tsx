@@ -618,7 +618,14 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     if (event.type === "permission.asked" || event.type === "question.asked") {
       const sessionID = (event.properties as { sessionID?: string })?.sessionID
       if (sessionID) {
-        void warmSessions({ ids: [sessionID], store, setStore, sdk: sdkFor(directory) }).catch((err) => {
+        void warmSessions({
+          ids: [sessionID],
+          store,
+          setStore,
+          api: serverSDK.api.session,
+          sdk: sdkFor(directory),
+          protocol: serverSDK.protocol,
+        }).catch((err) => {
           console.error("Failed to warm prompt session", err)
         })
       }
