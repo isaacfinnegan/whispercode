@@ -4,14 +4,9 @@ import { createResource, createSignal, onCleanup, onMount, Show } from "solid-js
 import {
   AppBaseProviders,
   AppInterface,
-  handleNotificationClick,
   PlatformProvider,
   ServerConnection,
   type Platform,
-  type PairInfo,
-  type PushState,
-  type PushPrefs,
-  type PushCred,
 } from "@opencode-ai/app"
 import { showToast } from "@opencode-ai/ui/toast"
 import { requestPermissions } from "@tauri-apps/api/core"
@@ -21,15 +16,6 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
-import {
-  initializeNativePush,
-  normalizePair,
-  normalizePush,
-  normalizeRegistration,
-  queuePushDeepLink,
-  revokeNativePushListeners,
-  routePushHref,
-} from "./push-native"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
 import { Onboarding } from "./onboarding"
@@ -122,26 +108,8 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 declare const __BUILD_NUMBER__: string
 
-const emptyPush: PushState = {
-  supported: false,
-  permission: "unsupported",
-  allowed: false,
-  registered: false,
-  paired: false,
-  generic: true,
-}
-
 const App = () => {
   const [voice, setVoice] = createSignal<VoiceStatus>({ state: "prewarming", ready: false })
-  const [push, setPush] = createSignal<PushState | undefined>()
-
-  const refreshPush = async () => {
-    const result = await bridge.sendAsync<PushState>("getPushState")
-    const next = normalizePush(result)
-    if (!next) return push() ?? emptyPush
-    setPush(next)
-    return next
-  }
 
   const emitTranscription = (text: string, isFinal?: boolean) => {
     if (!text) return
@@ -150,22 +118,6 @@ const App = () => {
 
   const emitResume = () => {
     window.dispatchEvent(new Event("opencode:resume"))
-  }
-
-  const handlePushTap = async (href: unknown, refresh = true) => {
-    if (typeof href === "string") {
-      routePushHref(href, handleNotificationClick, (url) => {
-        queuePushDeepLink(window, url, (href) => {
-          window.dispatchEvent(new CustomEvent("opencode:deep-link", { detail: { urls: [href] } }))
-        })
-      })
-    }
-    emitResume()
-    if (refresh) await refreshPush()
-  }
-
-  const initializePush = async (ready: Promise<unknown>) => {
-    await initializeNativePush(ready, bridge.sendAsync, setPush)
   }
 
   const showVoiceError = (message?: string) => {
@@ -271,55 +223,6 @@ const App = () => {
     voiceStatus: voice,
     startVoiceInput,
     stopVoiceInput,
-    pushState: push,
-    getPushState: async () => refreshPush(),
-    getPushRegistration: async () => {
-      const result = await bridge.sendAsync<unknown>("getPushRegistration")
-      const registration = normalizeRegistration(result)
-      if (!registration) throw new Error("Push registration unavailable")
-      return registration
-    },
-    requestPushPermission: async () => {
-      const result = await bridge.sendAsync<PushState>("requestPushPermission")
-      const next = normalizePush(result) ?? push() ?? emptyPush
-      setPush(next)
-      return next
-    },
-    openSystemSettings: async () => {
-      await bridge.sendAsync("openSystemSettings")
-    },
-    testPush: async (href?: string) => {
-      const result = await bridge.sendAsync<{ success: boolean }>("testPush", { href })
-      return result?.success ?? false
-    },
-    beginPushPairing: async () => {
-      const result = await bridge.sendAsync<PairInfo>("beginPushPairing", { version: pkg.version })
-      const next = normalizePair(result)
-      if (!next) throw new Error("Push pairing unavailable")
-      return next
-    },
-    getPushPairing: async (pairId?: string) => {
-      const result = await bridge.sendAsync<PairInfo>("getPushPairing", { pair_id: pairId })
-      return normalizePair(result) ?? undefined
-    },
-    setPushPreferences: async (prefs: PushPrefs) => {
-      await bridge.sendAsync("setPushPreferences", prefs)
-    },
-    setPushRelayURL: async (url?: string) => {
-      await bridge.sendAsync("setPushRelayURL", { url })
-    },
-    setPushCredentials: async (input: PushCred) => {
-      const result = await bridge.sendAsync<PushState>("setPushCredentials", input)
-      const next = normalizePush(result) ?? push() ?? emptyPush
-      setPush(next)
-      return next
-    },
-    clearPushPairing: async () => {
-      const result = await bridge.sendAsync<PushState>("clearPushPairing")
-      const next = normalizePush(result) ?? push() ?? emptyPush
-      setPush(next)
-      return next
-    },
     haptic: (style: "light" | "medium" | "heavy" | "success" | "warning" | "error") => {
       if (style === "success" || style === "warning" || style === "error") {
         void notificationFeedback(style).catch(() => undefined)
@@ -483,38 +386,15 @@ const App = () => {
       if (status.state === "error") showVoiceError(status.message)
     })
 
-    const stopPushState = bridge.on("pushStateChanged", (payload) => {
-      const next = normalizePush(payload)
-      if (next) setPush(next)
-    })
-
-    const stopPushReceived = bridge.on("pushReceived", () => {
-      emitResume()
-      void refreshPush().catch(() => undefined)
-    })
-
-    const stopPushOpened = bridge.on("pushOpened", (payload) => {
-      const href = payload && typeof payload === "object" ? (payload as { href?: unknown }).href : undefined
-      void handlePushTap(href).catch(() => undefined)
-    })
-
-    void initializePush(Promise.all([stopPushState.ready, stopPushReceived.ready, stopPushOpened.ready])).catch(
-      (error) => console.warn("[entry-android] push listener initialization failed", error),
-    )
-
     document.addEventListener("click", handleClick)
     window.addEventListener("focus", onFocus)
     document.addEventListener("visibilitychange", onVisible)
     onCleanup(() => {
-      void revokeNativePushListeners(bridge.sendAsync)
       document.removeEventListener("click", handleClick)
       window.removeEventListener("focus", onFocus)
       document.removeEventListener("visibilitychange", onVisible)
       stopListening()
       stopVoiceState()
-      stopPushState()
-      stopPushReceived()
-      stopPushOpened()
     })
   })
 

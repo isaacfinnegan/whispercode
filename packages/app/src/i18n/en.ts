@@ -1094,47 +1094,6 @@ export const dict = {
   "settings.general.notifications.push.action.checking": "Checking...",
   "settings.general.notifications.push.action.test": "Send test",
   "settings.general.notifications.push.action.sending": "Sending...",
-  "settings.general.notifications.push.backend.unavailable": "Backend unavailable",
-  "settings.general.notifications.push.backend.disabled": "Push delivery disabled",
-  "settings.general.notifications.push.backend.unregistered": "Unregistered",
-  "settings.general.notifications.push.backend.select": "Select a backend",
-  "settings.general.notifications.push.backend.registering": "Registering",
-  "settings.general.notifications.push.backend.active": "Active",
-  "settings.general.notifications.push.backend.retrying": "Retrying",
-  "settings.general.notifications.push.backend.missing": "Backend missing FCM credentials",
-  "settings.general.notifications.push.backend.failed": "Push delivery failed",
-  "settings.general.notifications.push.backend.unregistering": "Unregistering",
-  "settings.general.notifications.push.backend.token.title": "Native push token",
-  "settings.general.notifications.push.backend.token.ready": "Ready",
-  "settings.general.notifications.push.backend.token.pending": "Waiting for token",
-  "settings.general.notifications.push.backend.action.retry": "Retry",
-  "settings.general.notifications.push.backend.action.unregister": "Unregister",
-  "settings.general.notifications.push.backend.test.failed": "Backend push delivery is not configured",
-  "settings.general.notifications.push.host.title": "Host integration",
-  "settings.general.notifications.push.host.description.missing":
-    "Install the community plugin on the connected OpenCode host so generic push-worthy events can be forwarded.",
-  "settings.general.notifications.push.host.description.installed":
-    "The community plugin is listed in OpenCode global config for this host.",
-  "settings.general.notifications.push.host.description.updating":
-    "Updating OpenCode global config for the host plugin.",
-  "settings.general.notifications.push.host.action.install": "Add to Config",
-  "settings.general.notifications.push.host.action.installing": "Installing...",
-  "settings.general.notifications.push.host.action.copy": "Copy Command",
-  "settings.general.notifications.push.host.action.copying": "Copying...",
-  "settings.general.notifications.push.host.action.remove": "Remove",
-  "settings.general.notifications.push.host.action.removing": "Removing...",
-  "settings.general.notifications.push.host.toast.installed.title": "Host plugin added",
-  "settings.general.notifications.push.host.toast.installed.description":
-    "OpenCode global config now includes the WhisperCode push plugin.",
-  "settings.general.notifications.push.host.toast.removed.title": "Host plugin removed",
-  "settings.general.notifications.push.host.toast.removed.description":
-    "OpenCode global config no longer includes the WhisperCode push plugin.",
-  "settings.general.notifications.push.host.toast.copied.title": "Installer command copied",
-  "settings.general.notifications.push.host.toast.copied.description":
-    "Run the copied command on the machine hosting OpenCode.",
-  "settings.general.notifications.push.host.toast.copyFailed.title": "Could not copy installer command",
-  "settings.general.notifications.push.host.toast.copyFailed.description":
-    "Copy the command manually from WhisperCode and run it on the OpenCode host.",
   "settings.general.notifications.push.toast.sent.title": "Test notification scheduled",
   "settings.general.notifications.push.toast.sent.description":
     "Lock your device or leave the app open to verify the banner and tap flow.",

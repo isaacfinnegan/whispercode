@@ -43,14 +43,6 @@ export type PushPrefs = {
   question: boolean
   error: boolean
 }
-export type PushRegistration = {
-  version: 1
-  device: string
-  provider: "fcm"
-  token: string
-  token_generation: number
-  prefs: PushPrefs
-}
 export type PushDiag = {
   token?: boolean
   tokenPending?: boolean
@@ -152,9 +144,6 @@ type PlatformBase = {
 
   /** Read push notification state (optional native platforms) */
   getPushState?(): Promise<PushState>
-
-  /** Read the private native registration payload (optional native platforms) */
-  getPushRegistration?(): Promise<PushRegistration>
 
   /** Request push notification permission (optional native platforms) */
   requestPushPermission?(): Promise<PushState>

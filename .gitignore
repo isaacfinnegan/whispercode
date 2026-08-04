@@ -50,7 +50,6 @@ packages/android/src-tauri/gen/android/*
 !packages/android/src-tauri/gen/android/app/
 packages/android/src-tauri/gen/android/app/**/*
 !packages/android/src-tauri/gen/android/app/build.gradle.kts
-!packages/android/src-tauri/gen/android/app/google-services.json
 !packages/android/src-tauri/gen/android/app/src/
 !packages/android/src-tauri/gen/android/app/src/main/
 !packages/android/src-tauri/gen/android/app/src/main/AndroidManifest.xml
