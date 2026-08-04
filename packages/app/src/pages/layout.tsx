@@ -62,6 +62,7 @@ import { useDirectoryPicker } from "@/components/directory-picker"
 import { ServerConnection, useServer } from "@/context/server"
 import { useLanguage, type Locale } from "@/context/language"
 import { pathKey } from "@/utils/path-key"
+import { sessionHref } from "@/utils/session-route"
 import {
   displayName,
   effectiveWorkspaceOrder,
@@ -70,8 +71,10 @@ import {
   sortedRootSessions,
 } from "./layout/helpers"
 import {
+  acknowledgePendingDeepLinks,
   collectNewSessionDeepLinks,
   collectOpenProjectDeepLinks,
+  collectOpenSessionDeepLinks,
   deepLinkEvent,
   drainPendingDeepLinks,
 } from "./layout/deep-links"
@@ -1360,6 +1363,10 @@ export default function LegacyLayout(props: ParentProps) {
   }
 
   const handleDeepLinks = (urls: string[]) => {
+    for (const link of collectOpenSessionDeepLinks(urls)) {
+      navigateWithSidebarReset(sessionHref(ServerConnection.Key.make(link.server), link.session))
+    }
+
     if (!server.isLocal()) return
 
     for (const directory of collectOpenProjectDeepLinks(urls)) {
@@ -1384,6 +1391,7 @@ export default function LegacyLayout(props: ParentProps) {
       const detail = (event as CustomEvent<{ urls: string[] }>).detail
       const urls = detail?.urls ?? []
       if (urls.length === 0) return
+      acknowledgePendingDeepLinks(window, urls)
       handleDeepLinks(urls)
     }
 

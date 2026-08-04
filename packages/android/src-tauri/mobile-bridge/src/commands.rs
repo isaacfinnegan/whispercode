@@ -35,3 +35,13 @@ pub(crate) async fn share<R: Runtime>(
 ) -> Result<bool> {
     app.mobile_bridge().share(text, url)
 }
+
+#[command]
+pub(crate) async fn deep_link_listeners_ready<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.mobile_bridge().deep_link_listeners_ready()
+}
+
+#[command]
+pub(crate) async fn deep_link_listeners_not_ready<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.mobile_bridge().deep_link_listeners_not_ready()
+}

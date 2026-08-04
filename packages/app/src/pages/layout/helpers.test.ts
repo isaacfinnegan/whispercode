@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import {
+  acknowledgePendingDeepLinks,
   collectNewSessionDeepLinks,
   collectOpenProjectDeepLinks,
+  collectOpenSessionDeepLinks,
   drainPendingDeepLinks,
   parseDeepLink,
   parseNewSessionDeepLink,
+  parseOpenSessionDeepLink,
 } from "./deep-links"
 import { type Session } from "@opencode-ai/sdk/v2/client"
 import {
@@ -96,6 +99,63 @@ describe("layout deep links", () => {
       "opencode://new-session?directory=/c&prompt=ship%20it",
     ])
     expect(result).toEqual([{ directory: "/a" }, { directory: "/c", prompt: "ship it" }])
+  })
+
+  test("parses strict open-session deep links", () => {
+    expect(
+      parseOpenSessionDeepLink("opencode://open-session?server=https%3A%2F%2Fcode.example.com%2F&session=ses_abc123"),
+    ).toEqual({ server: "https://code.example.com", session: "ses_abc123" })
+    expect(
+      collectOpenSessionDeepLinks([
+        "opencode://open-session?server=http%3A%2F%2Fcode.example.com%2Fapi%2F&session=ses-one",
+        "opencode://open-project?directory=/b",
+      ]),
+    ).toEqual([{ server: "http://code.example.com/api", session: "ses-one" }])
+  })
+
+  test("rejects invalid open-session deep links", () => {
+    const validServer = "https%3A%2F%2Fcode.example.com"
+    const invalid = [
+      `https://open-session?server=${validServer}&session=ses_1`,
+      `opencode://other?server=${validServer}&session=ses_1`,
+      `opencode://user@open-session?server=${validServer}&session=ses_1`,
+      `opencode://open-session:123?server=${validServer}&session=ses_1`,
+      `opencode://open-session/path?server=${validServer}&session=ses_1`,
+      `opencode://open-session?server=${validServer}&session=ses_1#fragment`,
+      "opencode://open-session?session=ses_1",
+      `opencode://open-session?server=&session=ses_1`,
+      `opencode://open-session?server=${validServer}`,
+      `opencode://open-session?server=${validServer}&session=`,
+      `opencode://open-session?server=${validServer}&server=${validServer}&session=ses_1`,
+      `opencode://open-session?server=${validServer}&session=ses_1&session=ses_2`,
+      `opencode://open-session?server=${validServer}&session=ses_1&extra=value`,
+      `opencode://open-session?server=${validServer}&session=ses%2F1`,
+      "opencode://open-session?server=ftp%3A%2F%2Fcode.example.com&session=ses_1",
+      "opencode://open-session?server=https%3A%2F%2Fuser%3Apass%40code.example.com&session=ses_1",
+      "opencode://open-session?server=https%3A%2F%2Fcode.example.com%3Fquery%3Dyes&session=ses_1",
+      "opencode://open-session?server=https%3A%2F%2Fcode.example.com%23fragment&session=ses_1",
+      "opencode://open-session?server=%E0%A4%A&session=ses_1",
+      `opencode://open-session?server=${validServer}&session=${"a".repeat(257)}`,
+      `opencode://open-session?server=${encodeURIComponent(`https://${"a".repeat(1013)}.com`)}&session=ses_1`,
+      `opencode://open-session?server=${validServer}&session=ses_1&padding=${"a".repeat(2048)}`,
+    ]
+
+    for (const value of invalid) expect(parseOpenSessionDeepLink(value), value).toBeUndefined()
+  })
+
+  test("acknowledges only observed pending deep links", () => {
+    const delivered = "opencode://open-session?server=https%3A%2F%2Fa&session=one"
+    const other = "opencode://open-project?directory=/b"
+    const target = {
+      __OPENCODE__: { deepLinks: [delivered, other] },
+    } as unknown as Window & { __OPENCODE__?: { deepLinks?: string[] } }
+
+    acknowledgePendingDeepLinks(target, [delivered])
+    expect(target.__OPENCODE__?.deepLinks).toEqual([other])
+
+    target.__OPENCODE__!.deepLinks = [delivered, delivered]
+    acknowledgePendingDeepLinks(target, [delivered])
+    expect(target.__OPENCODE__?.deepLinks).toEqual([delivered])
   })
 
   test("drains global deep links once", () => {

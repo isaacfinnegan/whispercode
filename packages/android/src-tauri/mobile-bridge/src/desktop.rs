@@ -49,4 +49,15 @@ impl<R: Runtime> MobileBridge<R> {
         ))
     }
 
+    pub fn deep_link_listeners_ready(&self) -> crate::Result<()> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
+
+    pub fn deep_link_listeners_not_ready(&self) -> crate::Result<()> {
+        Err(Error::Message(
+            "Mobile bridge is unavailable on this platform".to_string(),
+        ))
+    }
 }

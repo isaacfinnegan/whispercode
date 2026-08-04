@@ -9,7 +9,16 @@ test("maps only the retained mobile bridge operations", async () => {
     return null as never
   })
 
-  for (const method of ["isWhisperReady", "startRecording", "stopRecording", "scanNetwork", "cancelScan", "share"])
+  for (const method of [
+    "isWhisperReady",
+    "startRecording",
+    "stopRecording",
+    "scanNetwork",
+    "cancelScan",
+    "share",
+    "deepLinkListenersReady",
+    "deepLinkListenersNotReady",
+  ])
     await bridge.sendAsync(method)
 
   expect(calls).toEqual([
@@ -19,6 +28,8 @@ test("maps only the retained mobile bridge operations", async () => {
     "plugin:mobile-bridge|scan_network",
     "plugin:mobile-bridge|cancel_scan",
     "plugin:mobile-bridge|share",
+    "plugin:mobile-bridge|deep_link_listeners_ready",
+    "plugin:mobile-bridge|deep_link_listeners_not_ready",
   ])
 })
 

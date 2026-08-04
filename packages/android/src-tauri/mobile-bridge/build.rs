@@ -9,6 +9,8 @@ const COMMANDS: &[&str] = &[
     "scan_network",
     "cancel_scan",
     "share",
+    "deep_link_listeners_ready",
+    "deep_link_listeners_not_ready",
 ];
 
 fn main() {

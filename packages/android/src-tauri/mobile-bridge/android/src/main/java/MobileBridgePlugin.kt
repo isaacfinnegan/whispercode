@@ -47,7 +47,7 @@ private data class WifiAddressInfo(val address: String, val prefixLength: Int)
         Permission(strings = [Manifest.permission.RECORD_AUDIO], alias = "microphone"),
     ]
 )
-class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), RecognitionListener {
+class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), RecognitionListener, DeepLinkOpenedPlugin {
     private val main = Handler(Looper.getMainLooper())
     private val scanExecutor = Executors.newSingleThreadExecutor()
 
@@ -59,6 +59,7 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     private var voiceState = "prewarming"
     private var voiceMessage: String? = null
+    private var deepLinkListenersReady = false
 
     @Volatile
     private var scanCancelled = false
@@ -71,10 +72,14 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
 
     override fun load(webView: WebView) {
         super.load(webView)
+        deepLinkListenersReady = false
+        DeepLinkHandler.setPluginInstance(this)
         setVoiceState("ready")
     }
 
     override fun onDestroy() {
+        DeepLinkHandler.clearPluginInstance(this)
+        deepLinkListenersReady = false
         super.onDestroy()
         scanCancelled = true
         scanTask?.cancel(true)
@@ -91,6 +96,25 @@ class MobileBridgePlugin(private val activity: Activity) : Plugin(activity), Rec
         } catch (_: Throwable) {
         }
         recognizer = null
+    }
+
+    override fun areDeepLinkListenersReady() = deepLinkListenersReady
+
+    override fun emitDeepLinkOpened(uri: String) {
+        trigger("deepLinkOpened", JSObject().apply { put("uri", uri) })
+    }
+
+    @Command
+    fun deepLinkListenersReady(invoke: Invoke) {
+        deepLinkListenersReady = true
+        DeepLinkHandler.flushPendingUri(this)
+        invoke.resolve()
+    }
+
+    @Command
+    fun deepLinkListenersNotReady(invoke: Invoke) {
+        deepLinkListenersReady = false
+        invoke.resolve()
     }
 
     @Command
