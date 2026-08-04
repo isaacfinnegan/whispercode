@@ -29,7 +29,7 @@
     },
     "packages/android": {
       "name": "@opencode-ai/android",
-      "version": "1.18.5-whispercode-368",
+      "version": "1.18.12-whispercode-371-20260804",
       "dependencies": {
         "@opencode-ai/app": "workspace:*",
         "@opencode-ai/ui": "workspace:*",
@@ -52,7 +52,7 @@
     },
     "packages/app": {
       "name": "@opencode-ai/app",
-      "version": "1.18.5",
+      "version": "1.18.12-whispercode-371-20260804",
       "dependencies": {
         "@corvu/drawer": "catalog:",
         "@dnd-kit/abstract": "0.5.0",
@@ -598,7 +598,7 @@
     },
     "packages/opencode": {
       "name": "opencode",
-      "version": "1.18.5",
+      "version": "1.18.12-whispercode-371-20260804",
       "bin": {
         "opencode": "./bin/opencode",
       },
