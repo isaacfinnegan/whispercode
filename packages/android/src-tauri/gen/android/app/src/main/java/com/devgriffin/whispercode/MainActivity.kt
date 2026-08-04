@@ -9,8 +9,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
-import android.content.Intent
-import ai.opencode.mobilebridge.NotificationTapHandler
 
 class MainActivity : TauriActivity() {
   private val handler = Handler(Looper.getMainLooper())
@@ -31,12 +29,6 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
-    NotificationTapHandler.handleIntent(intent)
-  }
-
-  override fun onNewIntent(intent: Intent) {
-    super.onNewIntent(intent)
-    NotificationTapHandler.handleIntent(intent)
   }
 
   override fun onWebViewCreate(webView: WebView) {

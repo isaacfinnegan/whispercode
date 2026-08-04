@@ -162,6 +162,7 @@ export default function LegacyLayout(props: ParentProps) {
   let prefsSig: string | undefined
 
   createEffect(() => {
+    if (platform.platform !== "ios") return
     const syncPrefs = platform.setPushPreferences
     const paired = platform.pushState?.()?.paired === true
     const value = pushPrefs()

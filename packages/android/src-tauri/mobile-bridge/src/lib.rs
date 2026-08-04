@@ -38,23 +38,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::stop_recording,
             commands::scan_network,
             commands::cancel_scan,
-            commands::share,
-            commands::get_push_state,
-            #[cfg(target_os = "android")]
-            commands::get_push_registration,
-            #[cfg(target_os = "android")]
-            commands::push_listeners_ready,
-            #[cfg(target_os = "android")]
-            commands::push_listeners_not_ready,
-            commands::request_push_permission,
-            commands::open_system_settings,
-            commands::test_push,
-            commands::begin_push_pairing,
-            commands::get_push_pairing,
-            commands::set_push_preferences,
-            commands::set_push_relay_url,
-            commands::set_push_credentials,
-            commands::clear_push_pairing
+            commands::share
         ])
         .setup(|app, api| {
             #[cfg(mobile)]
