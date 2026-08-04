@@ -13,4 +13,6 @@ permissions = [
   "allow-scan-network",
   "allow-cancel-scan",
   "allow-share",
+  "allow-deep-link-listeners-ready",
+  "allow-deep-link-listeners-not-ready",
 ]

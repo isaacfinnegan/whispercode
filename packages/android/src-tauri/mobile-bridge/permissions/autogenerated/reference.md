@@ -14,6 +14,8 @@ Default permissions for the mobile bridge plugin
 - `allow-scan-network`
 - `allow-cancel-scan`
 - `allow-share`
+- `allow-deep-link-listeners-ready`
+- `allow-deep-link-listeners-not-ready`
 
 ## Permission Table
 
@@ -22,6 +24,7 @@ Default permissions for the mobile bridge plugin
 <th>Identifier</th>
 <th>Description</th>
 </tr>
+
 
 <tr>
 <td>
@@ -71,6 +74,58 @@ Enables the check_permissions command without any pre-configured scope.
 <td>
 
 Denies the check_permissions command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`mobile-bridge:allow-deep-link-listeners-not-ready`
+
+</td>
+<td>
+
+Enables the deep_link_listeners_not_ready command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`mobile-bridge:deny-deep-link-listeners-not-ready`
+
+</td>
+<td>
+
+Denies the deep_link_listeners_not_ready command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`mobile-bridge:allow-deep-link-listeners-ready`
+
+</td>
+<td>
+
+Enables the deep_link_listeners_ready command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`mobile-bridge:deny-deep-link-listeners-ready`
+
+</td>
+<td>
+
+Denies the deep_link_listeners_ready command without any pre-configured scope.
 
 </td>
 </tr>

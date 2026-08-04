@@ -1,6 +1,8 @@
 package com.devgriffin.whispercode
 
+import android.content.Intent
 import android.os.Bundle
+import ai.opencode.mobilebridge.DeepLinkHandler
 import androidx.activity.enableEdgeToEdge
 import android.webkit.*
 import android.graphics.Bitmap
@@ -29,6 +31,12 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    DeepLinkHandler.handleIntent(intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    DeepLinkHandler.handleIntent(intent)
   }
 
   override fun onWebViewCreate(webView: WebView) {

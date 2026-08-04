@@ -55,6 +55,17 @@ impl<R: Runtime> MobileBridge<R> {
             .map_err(Into::into)
     }
 
+    pub fn deep_link_listeners_ready(&self) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin("deepLinkListenersReady", ())
+            .map_err(Into::into)
+    }
+
+    pub fn deep_link_listeners_not_ready(&self) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin("deepLinkListenersNotReady", ())
+            .map_err(Into::into)
+    }
 }
 
 #[derive(Serialize)]

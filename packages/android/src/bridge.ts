@@ -7,6 +7,8 @@ const commands = {
   scanNetwork: "scan_network",
   cancelScan: "cancel_scan",
   share: "share",
+  deepLinkListenersReady: "deep_link_listeners_ready",
+  deepLinkListenersNotReady: "deep_link_listeners_not_ready",
 } as const
 
 const resolve = (method: string) => {

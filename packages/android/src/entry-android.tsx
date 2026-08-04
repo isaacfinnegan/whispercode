@@ -1,13 +1,7 @@
 // @refresh reload
 import { render } from "solid-js/web"
 import { createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
-import {
-  AppBaseProviders,
-  AppInterface,
-  PlatformProvider,
-  ServerConnection,
-  type Platform,
-} from "@opencode-ai/app"
+import { AppBaseProviders, AppInterface, PlatformProvider, ServerConnection, type Platform } from "@opencode-ai/app"
 import { showToast } from "@opencode-ai/ui/toast"
 import { requestPermissions } from "@tauri-apps/api/core"
 import { impactFeedback, notificationFeedback } from "@tauri-apps/plugin-haptics"
@@ -16,6 +10,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
+import { initializeDeepLinks, queueDeepLink } from "./deep-link-native"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
 import { Onboarding } from "./onboarding"
@@ -386,6 +381,17 @@ const App = () => {
       if (status.state === "error") showVoiceError(status.message)
     })
 
+    const stopDeepLinkOpened = bridge.on("deepLinkOpened", (payload) => {
+      if (!payload || typeof payload !== "object") return
+      const uri = (payload as { uri?: unknown }).uri
+      if (typeof uri !== "string") return
+      queueDeepLink(window, uri, (url) => {
+        window.dispatchEvent(new CustomEvent("opencode:deep-link", { detail: { urls: [url] } }))
+        emitResume()
+      })
+    })
+    void initializeDeepLinks(stopDeepLinkOpened.ready, (method) => bridge.sendAsync(method)).catch(() => undefined)
+
     document.addEventListener("click", handleClick)
     window.addEventListener("focus", onFocus)
     document.addEventListener("visibilitychange", onVisible)
@@ -395,6 +401,8 @@ const App = () => {
       document.removeEventListener("visibilitychange", onVisible)
       stopListening()
       stopVoiceState()
+      bridge.send("deepLinkListenersNotReady")
+      stopDeepLinkOpened()
     })
   })
 

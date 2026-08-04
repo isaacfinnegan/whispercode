@@ -38,7 +38,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::stop_recording,
             commands::scan_network,
             commands::cancel_scan,
-            commands::share
+            commands::share,
+            commands::deep_link_listeners_ready,
+            commands::deep_link_listeners_not_ready
         ])
         .setup(|app, api| {
             #[cfg(mobile)]
