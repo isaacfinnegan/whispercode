@@ -62,7 +62,6 @@ import { useDirectoryPicker } from "@/components/directory-picker"
 import { ServerConnection, useServer } from "@/context/server"
 import { useLanguage, type Locale } from "@/context/language"
 import { pathKey } from "@/utils/path-key"
-import { sessionHref } from "@/utils/session-route"
 import {
   displayName,
   effectiveWorkspaceOrder,
@@ -77,6 +76,7 @@ import {
   collectOpenSessionDeepLinks,
   deepLinkEvent,
   drainPendingDeepLinks,
+  openSessionDeepLinkHref,
 } from "./layout/deep-links"
 import { createInlineEditorController } from "./layout/inline-editor"
 import {
@@ -1364,7 +1364,12 @@ export default function LegacyLayout(props: ParentProps) {
 
   const handleDeepLinks = (urls: string[]) => {
     for (const link of collectOpenSessionDeepLinks(urls)) {
-      navigateWithSidebarReset(sessionHref(ServerConnection.Key.make(link.server), link.session))
+      const href = openSessionDeepLinkHref(
+        link,
+        server.list.map((connection) => ({ key: ServerConnection.key(connection), url: connection.http.url })),
+      )
+      if (!href) continue
+      navigateWithSidebarReset(href)
     }
 
     if (!server.isLocal()) return

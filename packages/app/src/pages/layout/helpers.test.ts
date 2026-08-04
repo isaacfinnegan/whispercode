@@ -5,9 +5,11 @@ import {
   collectOpenProjectDeepLinks,
   collectOpenSessionDeepLinks,
   drainPendingDeepLinks,
+  openSessionDeepLinkHref,
   parseDeepLink,
   parseNewSessionDeepLink,
   parseOpenSessionDeepLink,
+  resolveOpenSessionServer,
 } from "./deep-links"
 import { type Session } from "@opencode-ai/sdk/v2/client"
 import {
@@ -25,6 +27,7 @@ import {
 } from "./helpers"
 import { pathKey } from "@/utils/path-key"
 import { ServerConnection } from "@/context/server"
+import { sessionHref } from "@/utils/session-route"
 
 const serverKey = ServerConnection.Key.make
 
@@ -141,6 +144,37 @@ describe("layout deep links", () => {
     ]
 
     for (const value of invalid) expect(parseOpenSessionDeepLink(value), value).toBeUndefined()
+  })
+
+  test("resolves open-session links through the configured server key", () => {
+    expect(
+      resolveOpenSessionServer("https://code.example.com", [
+        { key: serverKey("configured-server"), url: "HTTPS://Code.Example.com:443/" },
+      ]),
+    ).toBe(serverKey("configured-server"))
+  })
+
+  test("rejects open-session links for unconfigured servers", () => {
+    expect(
+      resolveOpenSessionServer("https://unknown.example.com", [
+        { key: serverKey("https://code.example.com"), url: "https://code.example.com" },
+      ]),
+    ).toBeUndefined()
+  })
+
+  test("builds open-session routes from the configured server key", () => {
+    const key = serverKey("configured-server")
+    expect(
+      openSessionDeepLinkHref({ server: "https://code.example.com", session: "ses_1" }, [
+        { key, url: "HTTPS://Code.Example.com:443/" },
+      ]),
+    ).toBe(sessionHref(key, "ses_1"))
+
+    expect(
+      openSessionDeepLinkHref({ server: "https://unknown.example.com", session: "ses_1" }, [
+        { key, url: "https://code.example.com" },
+      ]),
+    ).toBeUndefined()
   })
 
   test("acknowledges only observed pending deep links", () => {

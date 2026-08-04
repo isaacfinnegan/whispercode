@@ -1,3 +1,6 @@
+import { ServerConnection } from "@/context/server"
+import { sessionHref } from "@/utils/session-route"
+
 export const deepLinkEvent = "opencode:deep-link"
 
 const parseUrl = (input: string) => {
@@ -38,6 +41,18 @@ export const collectNewSessionDeepLinks = (urls: string[]) =>
 
 export type OpenSessionDeepLink = { server: string; session: string }
 
+const canonicalHttpServer = (input: string): string | undefined => {
+  try {
+    const server = new URL(input)
+    if (server.protocol !== "http:" && server.protocol !== "https:") return undefined
+    if (server.username || server.password || server.search || server.hash) return undefined
+    server.pathname = server.pathname.replace(/\/+$/, "")
+    return server.toString().replace(/\/$/, "")
+  } catch {
+    return undefined
+  }
+}
+
 export const parseOpenSessionDeepLink = (input: string): OpenSessionDeepLink | undefined => {
   if (input.length > 2048 || /%(?![0-9A-Fa-f]{2})/.test(input)) return
   const url = parseUrl(input)
@@ -56,19 +71,31 @@ export const parseOpenSessionDeepLink = (input: string): OpenSessionDeepLink | u
   const rawServer = servers[0]?.trim()
   if (!rawServer || rawServer.length > 1024) return
 
-  try {
-    const server = new URL(rawServer)
-    if (server.protocol !== "http:" && server.protocol !== "https:") return
-    if (server.username || server.password || server.search || server.hash) return
-    server.pathname = server.pathname.replace(/\/+$/, "")
-    return { server: server.toString().replace(/\/$/, ""), session }
-  } catch {
-    return
-  }
+  const server = canonicalHttpServer(rawServer)
+  if (!server) return
+  return { server, session }
 }
 
 export const collectOpenSessionDeepLinks = (urls: string[]) =>
   urls.map(parseOpenSessionDeepLink).filter((link): link is OpenSessionDeepLink => !!link)
+
+export const resolveOpenSessionServer = <T extends string>(
+  requested: string,
+  configured: ReadonlyArray<{ key: T; url: string }>,
+): T | undefined => {
+  const canonical = canonicalHttpServer(requested)
+  if (!canonical) return undefined
+  return configured.find((server) => canonicalHttpServer(server.url) === canonical)?.key
+}
+
+export const openSessionDeepLinkHref = (
+  link: OpenSessionDeepLink,
+  configured: ReadonlyArray<{ key: ServerConnection.Key; url: string }>,
+): string | undefined => {
+  const server = resolveOpenSessionServer(link.server, configured)
+  if (!server) return undefined
+  return sessionHref(server, link.session)
+}
 
 type OpenCodeWindow = Window & {
   __OPENCODE__?: {

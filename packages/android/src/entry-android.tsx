@@ -10,7 +10,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { Store } from "@tauri-apps/plugin-store"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { bridge } from "./bridge"
-import { initializeDeepLinks, queueDeepLink } from "./deep-link-native"
+import { createDeepLinkLifecycle, queueDeepLink } from "./deep-link-native"
 import { createTauriStorage } from "./storage"
 import { VoiceInputOverlay } from "./voice-input"
 import { Onboarding } from "./onboarding"
@@ -390,7 +390,12 @@ const App = () => {
         emitResume()
       })
     })
-    void initializeDeepLinks(stopDeepLinkOpened.ready, (method) => bridge.sendAsync(method)).catch(() => undefined)
+    const deepLinkLifecycle = createDeepLinkLifecycle({
+      ready: stopDeepLinkOpened.ready,
+      send: (method) => bridge.sendAsync(method),
+      stop: stopDeepLinkOpened,
+    })
+    void deepLinkLifecycle.ready.catch(() => undefined)
 
     document.addEventListener("click", handleClick)
     window.addEventListener("focus", onFocus)
@@ -401,8 +406,7 @@ const App = () => {
       document.removeEventListener("visibilitychange", onVisible)
       stopListening()
       stopVoiceState()
-      bridge.send("deepLinkListenersNotReady")
-      stopDeepLinkOpened()
+      void deepLinkLifecycle.dispose().catch(() => undefined)
     })
   })
 

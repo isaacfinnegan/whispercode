@@ -1,6 +1,6 @@
 // @ts-expect-error Bun test types are excluded from the production tsconfig.
 import { expect, test } from "bun:test"
-import { initializeDeepLinks, queueDeepLink } from "./deep-link-native"
+import { createDeepLinkLifecycle, initializeDeepLinks, queueDeepLink } from "./deep-link-native"
 
 test("queues a deep link before emitting it", () => {
   const target = {} as Window & { __OPENCODE__?: { deepLinks?: string[] } }
@@ -50,4 +50,60 @@ test("does not acknowledge when listener registration fails", async () => {
     }),
   ).rejects.toThrow("listener failed")
   expect(calls).toEqual([])
+})
+
+test("keeps the listener active until native readiness is cleared", async () => {
+  let releaseNotReady: (() => void) | undefined
+  const notReady = new Promise<void>((resolve) => {
+    releaseNotReady = resolve
+  })
+  const calls: string[] = []
+  let stopped = false
+  const lifecycle = createDeepLinkLifecycle({
+    ready: Promise.resolve(),
+    send: async (method) => {
+      calls.push(method)
+      if (method === "deepLinkListenersNotReady") await notReady
+      return null
+    },
+    stop: () => {
+      stopped = true
+    },
+  })
+
+  await lifecycle.ready
+  const disposing = lifecycle.dispose()
+  await Promise.resolve()
+
+  expect(calls).toEqual(["deepLinkListenersReady", "deepLinkListenersNotReady"])
+  expect(stopped).toBe(false)
+
+  releaseNotReady?.()
+  await disposing
+  expect(stopped).toBe(true)
+})
+
+test("serializes a remount behind the previous native teardown", async () => {
+  let releaseNotReady: (() => void) | undefined
+  const notReady = new Promise<void>((resolve) => {
+    releaseNotReady = resolve
+  })
+  const calls: string[] = []
+  const send = async (method: string) => {
+    calls.push(method)
+    if (method === "deepLinkListenersNotReady") await notReady
+    return null
+  }
+  const previous = createDeepLinkLifecycle({ ready: Promise.resolve(), send, stop: () => undefined })
+  await previous.ready
+
+  const disposing = previous.dispose()
+  const current = createDeepLinkLifecycle({ ready: Promise.resolve(), send, stop: () => undefined })
+  await Promise.resolve()
+  expect(calls).toEqual(["deepLinkListenersReady", "deepLinkListenersNotReady"])
+
+  releaseNotReady?.()
+  await disposing
+  await current.ready
+  expect(calls).toEqual(["deepLinkListenersReady", "deepLinkListenersNotReady", "deepLinkListenersReady"])
 })
