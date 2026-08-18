@@ -247,7 +247,7 @@ const App = () => {
     platform: "android",
     os: "android",
     version: `${pkg.version} (${__BUILD_NUMBER__})`,
-    openLink: (url: string) => {
+    openExternal: (url: string) => {
       void openUrl(url).catch(() => undefined)
     },
     notify: async (title: string, description?: string, href?: string, opts?: unknown) => {
@@ -460,7 +460,7 @@ const App = () => {
       const link = (event.target as HTMLElement | null)?.closest("a.external-link") as HTMLAnchorElement | null
       if (!link?.href) return
       event.preventDefault()
-      platform.openLink(link.href)
+      platform.openExternal(link.href)
     }
 
     const onFocus = () => emitResume()

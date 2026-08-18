@@ -2,21 +2,15 @@ import type { Platform } from "../../../../../app/src/context/platform"
 
 const value: Platform = {
   platform: "web",
-  openLink() {},
+  openExternal() {},
   restart: async () => {},
   back() {},
   forward() {},
-  notify: async (title, description, href, opts) => {
-    void title
-    void description
-    void href
-    void opts
-  },
+  notify: async () => {},
   setPushRelayURL: async (url) => {
     void url
   },
   fetch: globalThis.fetch.bind(globalThis),
-  parseMarkdown: async (markdown: string) => markdown,
 }
 
 export function usePlatform() {

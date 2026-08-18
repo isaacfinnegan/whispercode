@@ -5,7 +5,8 @@ import { Binary } from "@opencode-ai/core/util/binary"
 import { useServerSync } from "./server-sync"
 import { copyTodos, todoMode } from "./todo-store"
 import { useSDK } from "./sdk"
-import type { Message, Part, Todo, PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2/client"
+import type { Message, Part } from "@opencode-ai/sdk/v2/client"
+import { messageKey } from "@/utils/session-message"
 
 type OptimisticItem = {
   message: Message
@@ -70,7 +71,7 @@ export function mergeOptimisticPage(page: MessagePage, items: OptimisticItem[]) 
   const confirmed: string[] = []
 
   for (const item of items) {
-    const result = Binary.search(session, item.message.id, (message) => message.id)
+    const result = Binary.search(session, messageKey(item.message), messageKey)
     const found = result.found
     if (!found) session.splice(result.index, 0, item.message)
 
@@ -92,24 +93,10 @@ export function mergeOptimisticPage(page: MessagePage, items: OptimisticItem[]) 
   }
 }
 
-export function setOptimistic(directory: string, sessionID: string, input: { message: Message; parts: Part[] }) {
-  // noop
-}
-
-export function setOptimisticAdd(setStore: (...args: unknown[]) => void, input: OptimisticAddInput) {
-  setStore("message", input.sessionID, (messages: Message[] | undefined) => {
-    const next = messages ? [...messages] : []
-    const result = Binary.search(next, input.message.id, (m) => m.id)
-    next.splice(result.index, 0, input.message)
-    return next
-  })
-  setStore("part", input.message.id, sortParts(input.parts))
-}
-
 export function applyOptimisticAdd(draft: OptimisticStore, input: OptimisticAddInput) {
   const messages = draft.message[input.sessionID]
   if (messages) {
-    const result = Binary.search(messages, input.message.id, (m) => m.id)
+    const result = Binary.search(messages, messageKey(input.message), messageKey)
     messages.splice(result.index, 0, input.message)
   } else {
     draft.message[input.sessionID] = [input.message]
@@ -120,8 +107,8 @@ export function applyOptimisticAdd(draft: OptimisticStore, input: OptimisticAddI
 export function applyOptimisticRemove(draft: OptimisticStore, input: OptimisticRemoveInput) {
   const messages = draft.message[input.sessionID]
   if (messages) {
-    const result = Binary.search(messages, input.messageID, (m) => m.id)
-    if (result.found) messages.splice(result.index, 1)
+    const index = messages.findIndex((message) => message.id === input.messageID)
+    if (index >= 0) messages.splice(index, 1)
   }
   delete draft.part[input.messageID]
 }

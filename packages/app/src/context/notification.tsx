@@ -1,6 +1,6 @@
 import { createStore, reconcile } from "solid-js/store"
 import { type Accessor, batch, createEffect, createMemo, createRoot, getOwner, onCleanup } from "solid-js"
-import { useParams, useSearchParams } from "@solidjs/router"
+import { useNavigate, useParams, useSearchParams } from "@solidjs/router"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import type { ServerSDK } from "./server-sdk"
 import type { ServerSync } from "./server-sync"
@@ -121,6 +121,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
     const global = useGlobal()
     const server = useServer()
     const tabs = useTabs()
+    const navigate = useNavigate()
     const platform = usePlatform()
     const settings = useSettings()
     const language = useLanguage()
@@ -156,6 +157,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
             platform,
             settings,
             language,
+            navigate,
           }),
         }),
         owner ?? undefined,
@@ -220,6 +222,7 @@ function createServerNotificationState(input: {
   platform: ReturnType<typeof usePlatform>
   settings: ReturnType<typeof useSettings>
   language: ReturnType<typeof useLanguage>
+  navigate: (href: string) => void
 }) {
   const serverSDK = () => input.sdk
   const serverSync = () => input.sync

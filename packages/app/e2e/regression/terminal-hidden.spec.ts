@@ -95,7 +95,24 @@ test("unmounts the terminal panel while it is hidden", async ({ page }) => {
   await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
   await expectSessionTitle(page, title)
 
-  await page.keyboard.press("Control+Backquote")
+  const terminalToggle = page.getByRole("button", { name: "Toggle terminal", includeHidden: true })
+  await expect(terminalToggle).toBeVisible()
+
+  await openSettings(page)
+  const terminalSetting = page.locator('.settings-v2-dialog [data-action="settings-show-terminal"]')
+  const terminalSettingSwitch = terminalSetting.getByRole("switch")
+  await expect(terminalSettingSwitch).toBeChecked()
+  await terminalSetting.locator('[data-slot="switch-control"]').click()
+  await expect(terminalSettingSwitch).not.toBeChecked()
+  await expect(terminalToggle).not.toBeVisible()
+
+  await terminalSetting.locator('[data-slot="switch-control"]').click()
+  await expect(terminalSettingSwitch).toBeChecked()
+  await expect(terminalToggle).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page.locator(".settings-v2-dialog")).toHaveCount(0)
+
+  await terminalToggle.click()
   const panel = page.locator("#terminal-panel")
   await expect(panel).toHaveAttribute("aria-hidden", "false")
   await expect(page.locator('[data-component="terminal"]')).toBeVisible()
@@ -114,4 +131,9 @@ test("unmounts the terminal panel while it is hidden", async ({ page }) => {
 
 function base64Encode(value: string) {
   return Buffer.from(value, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
+}
+
+async function openSettings(page: import("@playwright/test").Page) {
+  const mac = await page.evaluate(() => /(Mac|iPod|iPhone|iPad)/.test(navigator.platform))
+  await page.keyboard.press(mac ? "Meta+," : "Control+,")
 }
