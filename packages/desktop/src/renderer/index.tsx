@@ -211,6 +211,8 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     openExternal(url: string) {
       window.api.openExternal(url)
     },
+    back() {},
+    forward() {},
     openLocalFile(url: string) {
       window.api.openLocalFile(url)
     },
@@ -251,7 +253,8 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       window.api.relaunch()
     },
 
-    notify: async (title, description, onClick) => {
+    notify: async (title, description, href, opts) => {
+      void opts
       const focused = await window.api.getWindowFocused().catch(() => document.hasFocus())
       if (focused) return
 
@@ -262,7 +265,7 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       notification.onclick = () => {
         void window.api.showWindow()
         void window.api.setWindowFocus()
-        onClick?.()
+        if (href) window.location.assign(href)
         notification.close()
       }
     },
