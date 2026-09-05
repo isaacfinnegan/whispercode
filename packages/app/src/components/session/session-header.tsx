@@ -333,7 +333,7 @@ export function SessionHeader() {
               <Show when={hotkey()} keyed>
                 {(keybind) => (
                   <Keybind class="hidden md:flex shrink-0 !border-0 !bg-transparent !shadow-none px-0">
-                    {keybind()}
+                    {keybind}
                   </Keybind>
                 )}
               </Show>

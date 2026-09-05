@@ -45,8 +45,6 @@ export type PromptInputV2Props = {
   voiceControl?: JSX.Element
   onVoiceSwipe?: () => void
   variantControlVisible?: boolean
-  voiceControl?: JSX.Element
-  onVoiceSwipe?: () => void
   attachKeybind?: string[]
   attachShortcut?: string
 }

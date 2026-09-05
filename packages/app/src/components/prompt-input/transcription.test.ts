@@ -8,10 +8,10 @@ describe("appendTranscription", () => {
     expect(appendTranscription(emptyPrompt, "hello")).toEqual([{ type: "text", content: "hello", start: 0, end: 5 }])
 
     const imagePrompt: Prompt = [
-      { type: "image", id: "1", filename: "image.png", mime: "image/png", dataUrl: "data:..." },
+      { type: "image", id: "1", filename: "image.png", mime: "image/png", blob: { id: "blob-1", url: "blob:test" } },
     ]
     expect(appendTranscription(imagePrompt, "hello")).toEqual([
-      { type: "image", id: "1", filename: "image.png", mime: "image/png", dataUrl: "data:..." },
+      { type: "image", id: "1", filename: "image.png", mime: "image/png", blob: { id: "blob-1", url: "blob:test" } },
       { type: "text", content: "hello", start: 0, end: 5 },
     ])
   })

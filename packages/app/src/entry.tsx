@@ -130,6 +130,8 @@ const platform: Platform = {
   openExternal,
   restart,
   notify,
+  back: () => {},
+  forward: () => {},
   getDefaultServer: async () => {
     const stored = readDefaultServerUrl()
     return stored ? ServerConnection.Key.make(stored) : null

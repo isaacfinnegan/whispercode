@@ -283,7 +283,7 @@ const App = () => {
     platform: "ios",
     os: "ios",
     version: pkg.version,
-    openLink: (url: string) => bridge.send("openLink", { url }),
+    openExternal: (url: string) => bridge.send("openLink", { url }),
     notify: async (title, description, href, opts) => {
       await bridge.sendAsync("notify", { title, description, href, opts })
     },
@@ -415,7 +415,7 @@ const App = () => {
       const link = (event.target as HTMLElement | null)?.closest("a.external-link") as HTMLAnchorElement | null
       if (!link?.href) return
       event.preventDefault()
-      platform.openLink(link.href)
+      platform.openExternal(link.href)
     }
 
     const stopListening = bridge.on("transcription", (payload) => {

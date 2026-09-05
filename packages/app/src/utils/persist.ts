@@ -602,7 +602,6 @@ export function persisted<T>(
   const legacyStorageNames = config.legacyStorageNames ?? []
 
   const storage = (() => {
-    if (!useAsync) {
     if (!useAsync && !draft) {
       const current = currentStorage as SyncStorage
       const legacyStore = legacyStorage as SyncStorage
