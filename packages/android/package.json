@@ -1,7 +1,7 @@
 {
   "name": "@opencode-ai/android",
   "private": true,
-  "version": "1.18.12-whispercode-371-20260804",
+  "version": "1.18.29-whispercode-511-20260904",
   "type": "module",
   "license": "MIT",
   "scripts": {

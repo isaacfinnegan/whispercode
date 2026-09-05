@@ -2,7 +2,7 @@ import type { Platform } from "../../../../../app/src/context/platform"
 
 const value: Platform = {
   platform: "web",
-  openLink() {},
+  openExternal() {},
   restart: async () => {},
   back() {},
   forward() {},
@@ -16,7 +16,6 @@ const value: Platform = {
     void url
   },
   fetch: globalThis.fetch.bind(globalThis),
-  parseMarkdown: async (markdown: string) => markdown,
 }
 
 export function usePlatform() {
