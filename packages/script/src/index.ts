@@ -47,10 +47,11 @@ const VERSION = await (async () => {
       console.warn("Could not determine commits ahead of upstream/dev, defaulting to 0:", e)
     }
 
-    return `${baseVersion}-whispercode-${commitsAhead}`
+    const buildDate = new Date().toISOString().slice(0, 10).replaceAll("-", "")
+    return `${baseVersion}-whispercode-${commitsAhead}-${buildDate}`
   } catch (e) {
     console.error("Failed to compute custom fork version:", e)
-    return "1.17.3-whispercode-0"
+    return "1.17.3-whispercode-0-19700101"
   }
 })()
 

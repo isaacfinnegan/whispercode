@@ -69,10 +69,13 @@ import {
   sortedRootSessions,
 } from "./layout/helpers"
 import {
+  acknowledgePendingDeepLinks,
   collectNewSessionDeepLinks,
   collectOpenProjectDeepLinks,
+  collectOpenSessionDeepLinks,
   deepLinkEvent,
   drainPendingDeepLinks,
+  openSessionDeepLinkHref,
 } from "./layout/deep-links"
 import { createInlineEditorController } from "./layout/inline-editor"
 import {
@@ -160,6 +163,7 @@ export default function LegacyLayout(props: ParentProps) {
   let prefsSig: string | undefined
 
   createEffect(() => {
+    if (platform.platform !== "ios") return
     const syncPrefs = platform.setPushPreferences
     const paired = platform.pushState?.()?.paired === true
     const value = pushPrefs()
@@ -1069,17 +1073,6 @@ export default function LegacyLayout(props: ParentProps) {
         onSelect: () => navigateSessionByUnseen(1),
       },
       {
-        id: "session.archive",
-        title: language.t("command.session.archive"),
-        category: language.t("command.category.session"),
-        keybind: "mod+shift+backspace",
-        disabled: !params.dir || !params.id,
-        onSelect: () => {
-          const session = currentSessions().find((s) => s.id === params.id)
-          if (session) void archiveSession(session)
-        },
-      },
-      {
         id: "workspace.new",
         title: language.t("workspace.new"),
         category: language.t("command.category.workspace"),
@@ -1357,6 +1350,15 @@ export default function LegacyLayout(props: ParentProps) {
   }
 
   const handleDeepLinks = (urls: string[]) => {
+    for (const link of collectOpenSessionDeepLinks(urls)) {
+      const href = openSessionDeepLinkHref(
+        link,
+        server.list.map((connection) => ({ key: ServerConnection.key(connection), url: connection.http.url })),
+      )
+      if (!href) continue
+      navigateWithSidebarReset(href)
+    }
+
     if (!server.isLocal()) return
 
     for (const directory of collectOpenProjectDeepLinks(urls)) {
@@ -1381,6 +1383,7 @@ export default function LegacyLayout(props: ParentProps) {
       const detail = (event as CustomEvent<{ urls: string[] }>).detail
       const urls = detail?.urls ?? []
       if (urls.length === 0) return
+      acknowledgePendingDeepLinks(window, urls)
       handleDeepLinks(urls)
     }
 

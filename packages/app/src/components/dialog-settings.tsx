@@ -7,7 +7,7 @@ import { usePlatform } from "@/context/platform"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { SettingsGeneral } from "./settings-general"
 import { SettingsKeybinds } from "./settings-keybinds"
-import { SettingsMobileNotifications } from "./settings-mobile-notifications"
+import { MobilePushSettingsGate, SettingsMobileNotifications } from "./settings-mobile-notifications"
 import { SettingsProviders } from "./settings-providers"
 import { SettingsModels } from "./settings-models"
 import { SettingsServers } from "./settings-servers"
@@ -19,7 +19,11 @@ export const DialogSettings: Component<{ defaultValue?: string }> = (props) => {
   const language = useLanguage()
   const platform = usePlatform()
   const dialog = useDialog()
-  const [tab, setTab] = createSignal(props.defaultValue ?? "general")
+  const [tab, setTab] = createSignal(
+    props.defaultValue === "mobile-notifications" && platform.platform !== "ios"
+      ? "general"
+      : (props.defaultValue ?? "general"),
+  )
 
   const showProviders = () => {
     void dialog.show(() => <DialogSettings defaultValue="providers" />)
@@ -70,17 +74,19 @@ export const DialogSettings: Component<{ defaultValue?: string }> = (props) => {
                   </div>
                 </div>
 
-                <div class="flex flex-col gap-1.5">
-                  {/* UPSTREAM-DIVERGENCE: This section anchors the fork's mobile notification setup UI
-                      inside the shared settings dialog rather than in a separate mobile-only route. */}
-                  <Tabs.SectionTitle>{language.t("settings.section.mobile")}</Tabs.SectionTitle>
-                  <div class="flex flex-col gap-1.5 w-full">
-                    <Tabs.Trigger value="mobile-notifications">
-                      <Icon name="settings-gear" />
-                      {language.t("settings.tab.phone")}
-                    </Tabs.Trigger>
+                <MobilePushSettingsGate>
+                  <div class="flex flex-col gap-1.5">
+                    {/* UPSTREAM-DIVERGENCE: This section anchors the fork's mobile notification setup UI
+                        inside the shared settings dialog rather than in a separate mobile-only route. */}
+                    <Tabs.SectionTitle>{language.t("settings.section.mobile")}</Tabs.SectionTitle>
+                    <div class="flex flex-col gap-1.5 w-full">
+                      <Tabs.Trigger value="mobile-notifications">
+                        <Icon name="settings-gear" />
+                        {language.t("settings.tab.phone")}
+                      </Tabs.Trigger>
+                    </div>
                   </div>
-                </div>
+                </MobilePushSettingsGate>
               </div>
             </div>
             <div class="flex flex-col gap-1 pl-1 py-1 text-12-medium text-text-weak">
@@ -106,9 +112,11 @@ export const DialogSettings: Component<{ defaultValue?: string }> = (props) => {
         </Tabs.Content>
         {/* UPSTREAM-DIVERGENCE: Keep the phone settings content mounted under the shared dialog tabs so
             iOS/Android builds do not need a forked settings shell when upstream changes tab layout. */}
-        <Tabs.Content value="mobile-notifications" class="no-scrollbar">
-          <SettingsMobileNotifications />
-        </Tabs.Content>
+        <MobilePushSettingsGate>
+          <Tabs.Content value="mobile-notifications" class="no-scrollbar">
+            <SettingsMobileNotifications />
+          </Tabs.Content>
+        </MobilePushSettingsGate>
       </Tabs>
     </Dialog>
   )

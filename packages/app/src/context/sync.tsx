@@ -6,7 +6,6 @@ import { useServerSync } from "./server-sync"
 import { copyTodos, todoMode } from "./todo-store"
 import { useSDK } from "./sdk"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
-import { messageKey } from "@/utils/session-message"
 
 type OptimisticItem = {
   message: Message
@@ -28,6 +27,7 @@ export interface OptimisticRemoveInput {
   sessionID: string
   messageID: string
 }
+import { messageKey } from "@/utils/session-message"
 
 const SKIP_PARTS = new Set(["patch", "step-start", "step-finish"])
 
@@ -91,6 +91,20 @@ export function mergeOptimisticPage(page: MessagePage, items: OptimisticItem[]) 
     part: [...part.entries()].sort((a, b) => cmp(a[0], b[0])).map(([id, part]) => ({ id, part })),
     confirmed,
   }
+}
+
+export function setOptimistic(directory: string, sessionID: string, input: { message: Message; parts: Part[] }) {
+  // noop
+}
+
+export function setOptimisticAdd(setStore: (...args: unknown[]) => void, input: OptimisticAddInput) {
+  setStore("message", input.sessionID, (messages: Message[] | undefined) => {
+    const next = messages ? [...messages] : []
+    const result = Binary.search(next, input.message.id, (m) => m.id)
+    next.splice(result.index, 0, input.message)
+    return next
+  })
+  setStore("part", input.message.id, sortParts(input.parts))
 }
 
 export function applyOptimisticAdd(draft: OptimisticStore, input: OptimisticAddInput) {

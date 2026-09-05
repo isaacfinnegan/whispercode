@@ -10,7 +10,7 @@ import { SettingsProvidersV2 } from "./providers"
 import { SettingsModelsV2 } from "./models"
 import "./settings-v2.css"
 import { SettingsServersV2 } from "./servers"
-import { SettingsMobileNotifications } from "../settings-mobile-notifications"
+import { MobilePushSettingsGate, SettingsMobileNotifications } from "../settings-mobile-notifications"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useLayout } from "@/context/layout"
 import { useTabs } from "@/context/tabs"
@@ -26,7 +26,11 @@ export const DialogSettings: Component<{
   const layout = useLayout()
   const tabs = useTabs()
   const serverSync = useServerSync()
-  const [tab, setTab] = createSignal(props.defaultValue ?? "general")
+  const [tab, setTab] = createSignal(
+    props.defaultValue === "mobile-notifications" && platform.platform !== "ios"
+      ? "general"
+      : (props.defaultValue ?? "general"),
+  )
   const directory = createMemo(() => {
     const route = layout.route()
     if (route.type === "dir-new-sesssion") return route.dir
@@ -87,15 +91,17 @@ export const DialogSettings: Component<{
                   </div>
                 </div>
 
-                <div class="flex flex-col gap-1.5">
-                  <TabsV2.SectionTitle>{language.t("settings.section.mobile")}</TabsV2.SectionTitle>
-                  <div class="flex flex-col gap-1.5 w-full">
-                    <TabsV2.Trigger value="mobile-notifications">
-                      <Icon name="settings-gear" />
-                      {language.t("settings.tab.phone")}
-                    </TabsV2.Trigger>
+                <MobilePushSettingsGate>
+                  <div class="flex flex-col gap-1.5">
+                    <TabsV2.SectionTitle>{language.t("settings.section.mobile")}</TabsV2.SectionTitle>
+                    <div class="flex flex-col gap-1.5 w-full">
+                      <TabsV2.Trigger value="mobile-notifications">
+                        <Icon name="settings-gear" />
+                        {language.t("settings.tab.phone")}
+                      </TabsV2.Trigger>
+                    </div>
                   </div>
-                </div>
+                </MobilePushSettingsGate>
               </div>
             </div>
             <div class="settings-v2-nav-footer">
@@ -119,9 +125,11 @@ export const DialogSettings: Component<{
         <TabsV2.Content value="models" class="settings-v2-panel">
           <SettingsModelsV2 />
         </TabsV2.Content>
-        <TabsV2.Content value="mobile-notifications" class="settings-v2-panel">
-          <SettingsMobileNotifications />
-        </TabsV2.Content>
+        <MobilePushSettingsGate>
+          <TabsV2.Content value="mobile-notifications" class="settings-v2-panel">
+            <SettingsMobileNotifications />
+          </TabsV2.Content>
+        </MobilePushSettingsGate>
       </TabsV2>
     </Dialog>
   )

@@ -257,8 +257,8 @@ export function SessionHeader() {
     reviewVisible: isDesktop(),
     reviewOpened: view().reviewPanel.opened(),
     onReviewToggle: () => view().reviewPanel.toggle(),
-    termVisible: term,
-    terminalOpened: () => view().terminal.opened(),
+    termVisible: term(),
+    terminalOpened: view().terminal.opened(),
     onTerminalToggle: toggleTerminal,
     onMcpToggle: () => command.trigger("mcp.toggle"),
   }))
@@ -332,7 +332,7 @@ export function SessionHeader() {
 
               <Show when={hotkey()} keyed>
                 {(keybind) => (
-                  <Keybind class="hidden md:flex shrink-0 !border-0 !bg-transparent !shadow-none px-0 text-text-weaker">
+                  <Keybind class="hidden md:flex shrink-0 !border-0 !bg-transparent !shadow-none px-0">
                     {keybind}
                   </Keybind>
                 )}
@@ -558,8 +558,8 @@ type SessionHeaderV2ActionsState = {
   reviewVisible: boolean
   reviewOpened: boolean
   onReviewToggle: () => void
-  termVisible: () => boolean
-  terminalOpened: () => boolean
+  termVisible: boolean
+  terminalOpened: boolean
   onTerminalToggle: () => void
   onMcpToggle: () => void
 }
@@ -574,22 +574,22 @@ function SessionHeaderV2Actions(props: { state: SessionHeaderV2ActionsState }) {
           <StatusPopoverV2 />
         </Tooltip>
       </Show>
-      <div classList={{ hidden: !props.state.termVisible() }}>
+      <Show when={props.state.termVisible}>
         <TooltipKeybind title={language.t("command.terminal.toggle")} keybind={command.keybind("terminal.toggle")}>
           <IconButtonV2
             type="button"
             variant="ghost-muted"
             size="large"
             class="!w-9 shrink-0"
-            state={props.state.terminalOpened() ? "pressed" : undefined}
+            state={props.state.terminalOpened ? "pressed" : undefined}
             onClick={props.state.onTerminalToggle}
             aria-label={language.t("command.terminal.toggle")}
-            aria-expanded={props.state.terminalOpened()}
+            aria-expanded={props.state.terminalOpened}
             aria-controls="terminal-panel"
             icon={<IconV2 name="terminal" />}
           />
         </TooltipKeybind>
-      </div>
+      </Show>
       <Show when={props.state.reviewVisible}>
         <TooltipV2
           class="shrink-0"

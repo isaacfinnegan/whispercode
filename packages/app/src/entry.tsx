@@ -9,7 +9,6 @@ import { createBrowserDraftStore } from "@/utils/draft-store"
 import { dict as en } from "@/i18n/en"
 import { dict as zh } from "@/i18n/zh"
 import { authFromToken } from "@/utils/server"
-import { handleNotificationClick } from "@/utils/notification-click"
 import pkg from "../package.json"
 import { ServerConnection } from "./context/server"
 
@@ -82,7 +81,8 @@ const notify: Platform["notify"] = async (title, description, href, opts) => {
   })
 
   notification.onclick = () => {
-    handleNotificationClick(href)
+    window.focus()
+    if (href) window.location.assign(href)
     notification.close()
   }
 }
@@ -128,10 +128,10 @@ const platform: Platform = {
   draftStore: createBrowserDraftStore(),
   version: pkg.version,
   openExternal,
-  back: () => window.history.back(),
-  forward: () => window.history.forward(),
   restart,
   notify,
+  back: () => {},
+  forward: () => {},
   getDefaultServer: async () => {
     const stored = readDefaultServerUrl()
     return stored ? ServerConnection.Key.make(stored) : null

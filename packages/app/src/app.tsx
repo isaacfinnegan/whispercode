@@ -51,7 +51,6 @@ import { ModelsProvider } from "@/context/models"
 import { NotificationProvider } from "@/context/notification"
 import { PermissionProvider } from "@/context/permission"
 import { PushPairProvider } from "@/context/push-pair"
-import { pushHostProviderStack, PushHostProvider } from "@/context/push-host"
 import { usePlatform } from "@/context/platform"
 import { PushRelayProvider } from "@/context/push-relay"
 import { PromptProvider } from "@/context/prompt"
@@ -327,17 +326,9 @@ function SharedProviders(props: ParentProps) {
 
 function PushProviders(props: ParentProps) {
   const platform = usePlatform()
-  const host = createMemo(() => {
-    const push = platform.pushState?.()
-    return pushHostProviderStack(platform.platform, push?.paired === true, push?.diag?.relay).includes("host")
-  })
   return (
-    <PushRelayProvider enabled={!host()}>
-      <PushPairProvider enabled={!host()}>
-        <Show when={host()} fallback={props.children}>
-          <PushHostProvider>{props.children}</PushHostProvider>
-        </Show>
-      </PushPairProvider>
+    <PushRelayProvider enabled={platform.platform === "ios"}>
+      <PushPairProvider enabled={platform.platform === "ios"}>{props.children}</PushPairProvider>
     </PushRelayProvider>
   )
 }

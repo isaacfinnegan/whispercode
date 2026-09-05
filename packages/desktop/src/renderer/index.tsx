@@ -4,7 +4,6 @@ import {
   ACCEPTED_FILE_EXTENSIONS,
   AppBaseProviders,
   AppInterface,
-  handleNotificationClick,
   loadLocaleDict,
   normalizeLocale,
   type Locale,
@@ -212,6 +211,8 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     openExternal(url: string) {
       window.api.openExternal(url)
     },
+    back() {},
+    forward() {},
     openLocalFile(url: string) {
       window.api.openLocalFile(url)
     },
@@ -224,14 +225,6 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     },
     async revealPath(path: string) {
       return window.api.revealPath(path)
-    },
-
-    back() {
-      window.history.back()
-    },
-
-    forward() {
-      window.history.forward()
     },
 
     storage,
@@ -260,7 +253,8 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       window.api.relaunch()
     },
 
-    notify: async (title, description, href) => {
+    notify: async (title, description, href, opts) => {
+      void opts
       const focused = await window.api.getWindowFocused().catch(() => document.hasFocus())
       if (focused) return
 
@@ -271,7 +265,7 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       notification.onclick = () => {
         void window.api.showWindow()
         void window.api.setWindowFocus()
-        handleNotificationClick(href)
+        if (href) window.location.assign(href)
         notification.close()
       }
     },

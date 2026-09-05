@@ -42,9 +42,9 @@ export type PromptInputV2Props = {
   borderUnderlay?: boolean
   class?: string
   modelControl?: JSX.Element
-  variantControlVisible?: boolean
   voiceControl?: JSX.Element
   onVoiceSwipe?: () => void
+  variantControlVisible?: boolean
   attachKeybind?: string[]
   attachShortcut?: string
 }

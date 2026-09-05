@@ -539,6 +539,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       { defer: true },
     ),
   )
+
   return controller as PromptInputV2ComposerController
 }
 
