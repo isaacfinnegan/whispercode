@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.18.30-whispercode-512-20260910",
+  "version": "1.18.30-whispercode-382-20260910",
   "name": "opencode",
   "type": "module",
   "license": "MIT",
