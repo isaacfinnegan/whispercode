@@ -6,8 +6,7 @@ import { Database } from "bun:sqlite"
 import { EventEmitter } from "node:events"
 import { constants, type ClientHttp2Session, type ClientHttp2Stream, type OutgoingHttpHeaders } from "node:http2"
 import { testkey } from "./apns"
-import { createAdapter as createFcmAdapter } from "./fcm"
-import { sign } from "./sign"
+import { hash, sign } from "./sign"
 import { createRelay, listen } from "./server"
 import { Store } from "./store"
 
@@ -148,22 +147,26 @@ describe("push relay", () => {
     }
   })
 
-  test("accepts FCM tokens and rejects unknown push providers", async () => {
-    const sent: string[] = []
-    const env = await setup({
-      fcmAdapter: {
-        async send(msg) {
-          sent.push(msg.token)
-          return { sent: false, mode: "live", code: "UNREGISTERED", invalid: true }
-        },
-        close() {},
-      },
-    })
+  test("rejects FCM and unknown push providers", async () => {
+    const env = await setup()
     try {
+      for (const body of [
+        { push_provider: "fcm", push_token: "fcm_token", device_name: "Pixel", app_version: "1" },
+        { push_provider: "fcm", apns_token: "tok", device_name: "Pixel", app_version: "1" },
+        { push_provider: "webpush", push_token: "x", device_name: "x", app_version: "1" },
+      ]) {
+        const res = await fetch(new URL("/v1/pair/start", env.root), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toBe("bad_push_provider")
+      }
+
       const start = await post<Start>(env.root, "/v1/pair/start", {
-        push_provider: "fcm",
-        push_token: "fcm_token",
-        device_name: "Pixel",
+        apns_token: "apns",
+        device_name: "iPhone",
         app_version: "1",
       })
       const claim = await post<Claim>(env.root, "/v1/pair/claim", {
@@ -176,48 +179,30 @@ describe("push relay", () => {
         sig: sign(claim.channel_secret, check(claim.channel_id)),
       })
       const active = await get(env.root, `/v1/pair/${start.pair_id}`)
-      await put(env.root, "/v1/device/token", {
-        channel_id: claim.channel_id,
-        device_id: String(active.device_id),
-        device_secret: String(active.device_secret),
-        push_provider: "fcm",
-        push_token: "fcm_token_2",
-      })
-      const devices = await post<{ devices: Array<Record<string, unknown>> }>(env.root, "/v1/channel/devices", {
-        channel_id: claim.channel_id,
-        channel_secret: claim.channel_secret,
-      })
-      expect(devices.devices[0]).toMatchObject({ push_provider: "fcm" })
-      expect(devices.devices[0]).not.toHaveProperty("push_token")
-
-      const tested = await post(env.root, "/v1/device/test", {
-        channel_id: claim.channel_id,
-        device_id: String(active.device_id),
-        device_secret: String(active.device_secret),
-      })
-      expect(tested).not.toHaveProperty("push_provider")
-      expect(sent).toEqual(["fcm_token_2"])
-      expect((await get(env.root, `/v1/pair/${start.pair_id}`)).status).toBe("failed")
-
-      const bad = await fetch(new URL("/v1/pair/start", env.root), {
-        method: "POST",
+      const res = await fetch(new URL("/v1/device/token", env.root), {
+        method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ push_provider: "webpush", push_token: "x", device_name: "x", app_version: "1" }),
+        body: JSON.stringify({
+          channel_id: claim.channel_id,
+          device_id: active.device_id,
+          device_secret: active.device_secret,
+          push_provider: "fcm",
+          push_token: "fcm",
+        }),
       })
-      expect(bad.status).toBe(400)
-      expect((await bad.json()).error).toBe("bad_push_provider")
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe("bad_push_provider")
     } finally {
       await env.stop()
     }
   })
 
-  test("rejects contradictory provider token shapes on pair start and token update", async () => {
+  test("rejects contradictory token shapes on pair start and token update", async () => {
     const env = await setup()
     try {
       for (const body of [
         { apns_token: "apns", push_token: "fcm", device_name: "iPhone", app_version: "1" },
         { push_provider: "apns", apns_token: "apns", push_token: "fcm", device_name: "iPhone", app_version: "1" },
-        { push_provider: "fcm", push_token: "fcm", apns_token: "apns", device_name: "Pixel", app_version: "1" },
       ]) {
         const res = await fetch(new URL("/v1/pair/start", env.root), {
           method: "POST",
@@ -246,7 +231,6 @@ describe("push relay", () => {
           channel_id: claim.channel_id,
           device_id: active.device_id,
           device_secret: active.device_secret,
-          push_provider: "fcm",
           push_token: "fcm",
           apns_token: "apns",
         }),
@@ -258,7 +242,7 @@ describe("push relay", () => {
     }
   })
 
-  test("migrates the legacy SQLite schema and scopes token uniqueness by provider", async () => {
+  test("migrates the legacy SQLite schema and keeps historical provider token uniqueness", async () => {
     const next = await tmp()
     const legacy = new Database(next.file, { create: true })
     legacy.exec(`
@@ -298,106 +282,90 @@ describe("push relay", () => {
     }
   })
 
-  test("fans out to APNs and FCM adapters once each", async () => {
-    let apns = 0
-    const fcm: string[] = []
-    const env = await setup({
+  test("never delivers historical FCM rows through APNs", async () => {
+    const next = await tmp()
+    const tokens: string[] = []
+    const relay = createRelay({
+      file: next.file,
       mode: "live",
       team: "TEAM123",
       kid: "KEY123",
       topic: "dev.whispercode.app",
       key: testkey(),
-      dial: stub(() => {
-        apns++
+      dial: stub(({ headers }) => {
+        tokens.push(String(headers[":path"]).split("/").pop() ?? "")
         return { status: 200 }
       }),
-      fcmAdapter: {
-        async send(msg) {
-          fcm.push(msg.token)
-          return { sent: true, mode: "live" }
-        },
-        close() {},
-      },
+      rateLimit: false,
+      cleanupIntervalMs: 0,
     })
+    const call = async (method: string, route: string, body: Record<string, unknown>) => {
+      const res = await relay.fetch(
+        new Request(new URL(route, "http://relay.test"), {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      )
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> }
+    }
     try {
-      const apple = await post<Start>(env.root, "/v1/pair/start", {
+      const start = await call("POST", "/v1/pair/start", {
         apns_token: "apns_token",
         device_name: "iPhone",
         app_version: "1",
       })
-      const channel = await post<Claim>(env.root, "/v1/pair/claim", {
-        pair_token: apple.pair_token,
+      const claim = await call("POST", "/v1/pair/claim", {
+        pair_token: start.body.pair_token,
         plugin_version: "1",
         server_label: "Mac",
       })
-      await post(env.root, "/v1/channel/checkin", {
-        ...check(channel.channel_id),
-        sig: sign(channel.channel_secret, check(channel.channel_id)),
-      })
-      const android = await post<Start>(env.root, "/v1/pair/start", {
-        push_provider: "fcm",
-        push_token: "fcm_token",
-        device_name: "Pixel",
-        app_version: "1",
-      })
-      await post(env.root, "/v1/pair/claim", {
-        pair_token: android.pair_token,
-        plugin_version: "1",
-        server_label: "Mac",
-        channel_id: channel.channel_id,
-        channel_secret: channel.channel_secret,
-      })
+      const channel = String(claim.body.channel_id)
+      const secret = String(claim.body.channel_secret)
+      const raw = new Database(next.file)
+      raw.exec(
+        `INSERT INTO device (id, channel_id, secret, apns_token, push_provider, push_token, prefs_json) VALUES ('dev_fcm', '${channel}', 'dsec_fcm', 'fcm_token', 'fcm', 'fcm_token', '{}')`,
+      )
+      raw.exec(
+        `INSERT INTO pair_request (id, token_hash, apns_token, push_provider, push_token, device_name, app_version, status, expires_at, created_at) VALUES ('pair_fcm', 'hash_fcm', 'fcm_pending', 'fcm', 'fcm_pending', 'Pixel', '1', 'pending', ${Date.now() + 60_000}, ${Date.now()})`,
+      )
+      raw.close()
 
-      const body = publish(channel.channel_id, "mixed_fanout")
-      const res = await post(env.root, "/v1/events/publish", {
-        ...body,
-        sig: sign(channel.channel_secret, body),
+      const body = publish(channel, "historical_fcm")
+      const sent = await call("POST", "/v1/events/publish", { ...body, sig: sign(secret, body) })
+      expect(sent.status).toBe(200)
+      expect(sent.body.device_count).toBe(1)
+      expect(tokens).toEqual(["apns_token"])
+
+      const tested = await call("POST", "/v1/device/test", {
+        channel_id: channel,
+        device_id: "dev_fcm",
+        device_secret: "dsec_fcm",
       })
-      expect(res.device_count).toBe(2)
-      expect(apns).toBe(1)
-      expect(fcm).toEqual(["fcm_token"])
+      expect(tested).toMatchObject({ status: 400, body: { error: "bad_push_provider" } })
+      expect(tokens).toEqual(["apns_token"])
+
+      const devices = await call("POST", "/v1/channel/devices", { channel_id: channel, channel_secret: secret })
+      const list = devices.body.devices as Array<Record<string, unknown>>
+      expect(list.find((d) => d.device_id === "dev_fcm")).toMatchObject({ push_provider: "fcm", active: false })
+
+      const raw2 = new Database(next.file)
+      raw2.exec(`UPDATE pair_request SET token_hash = '${hash("ptok_fcm")}' WHERE id = 'pair_fcm'`)
+      raw2.close()
+      const blocked = await call("POST", "/v1/pair/claim", {
+        pair_token: "ptok_fcm",
+        plugin_version: "1",
+        server_label: "Mac",
+      })
+      expect(blocked).toMatchObject({ status: 400, body: { error: "bad_push_provider" } })
+
+      const check = new Database(next.file, { readonly: true })
+      expect(check.prepare(`SELECT COUNT(*) AS n FROM device WHERE push_provider = 'fcm'`).get()).toEqual({ n: 1 })
+      expect(check.prepare(`SELECT status FROM delivery WHERE device_id = 'dev_fcm'`).all()).toEqual([])
+      check.close()
     } finally {
-      await env.stop()
-    }
-  })
-
-  test("returns a delivery failure when FCM transport rejects without deactivating the device", async () => {
-    const env = await setup({
-      fcmAdapter: createFcmAdapter({
-        mode: "live",
-        project: "project_1",
-        serviceAccount: JSON.stringify({ project_id: "project_1" }),
-        accessToken: async () => "access_1",
-        fetch: async () => Promise.reject(new Error("dns failure")),
-      }),
-    })
-    try {
-      const start = await post<Start>(env.root, "/v1/pair/start", {
-        push_provider: "fcm",
-        push_token: "fcm_token",
-        device_name: "Pixel",
-        app_version: "1",
-      })
-      const claim = await post<Claim>(env.root, "/v1/pair/claim", {
-        pair_token: start.pair_token,
-        plugin_version: "1",
-        server_label: "Mac",
-      })
-      await post(env.root, "/v1/channel/checkin", {
-        ...check(claim.channel_id),
-        sig: sign(claim.channel_secret, check(claim.channel_id)),
-      })
-      const active = await get(env.root, `/v1/pair/${start.pair_id}`)
-
-      const result = await post(env.root, "/v1/device/test", {
-        channel_id: claim.channel_id,
-        device_id: String(active.device_id),
-        device_secret: String(active.device_secret),
-      })
-      expect(result).toMatchObject({ sent: false, mode: "live", error: "fcm_transport_error" })
-      expect((await get(env.root, `/v1/pair/${start.pair_id}`)).status).toBe("active")
-    } finally {
-      await env.stop()
+      relay.stop()
+      await fs.rm(next.dir, { recursive: true, force: true })
     }
   })
 

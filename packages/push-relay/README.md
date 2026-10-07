@@ -1,20 +1,15 @@
 # Push Relay
 
-## Provider-neutral requests
+## Requests
 
-Relay routes do not change. Legacy APNs clients omit `push_provider` and use `apns_token`. FCM clients use `push_provider: "fcm"` and `push_token`.
+The relay delivers through APNs only. Clients send `apns_token` and may omit `push_provider` or set it to `"apns"`. Any other `push_provider` value, including `"fcm"`, is rejected with `bad_push_provider`.
 
-## FCM configuration
-
-Configure FCM with `WHISPEROPENCODE_PUSH_FCM_PROJECT_ID` and `WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON`. The service account needs only Firebase Cloud Messaging send permission for the Android Firebase project.
-
-Never log the service account JSON value or registration tokens. If FCM configuration is absent, only FCM delivery is disabled; APNs remains operational.
+Devices stored by earlier relay versions with `push_provider = 'fcm'` are kept in the database for compatibility but are never delivered, tested, or reported as active.
 
 ## Local mock
 
 ```sh
 WHISPEROPENCODE_PUSH_APNS_MODE=mock \
-WHISPEROPENCODE_PUSH_FCM_MODE=mock \
 rtk bun run --cwd packages/push-relay dev
 ```
 

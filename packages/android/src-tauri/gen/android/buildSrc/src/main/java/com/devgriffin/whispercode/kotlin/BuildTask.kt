@@ -5,8 +5,13 @@ import org.gradle.api.GradleException
 import org.gradle.api.logging.LogLevel
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
+import org.gradle.process.ExecOperations
+import javax.inject.Inject
 
-open class BuildTask : DefaultTask() {
+abstract class BuildTask : DefaultTask() {
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
     @Input
     var rootDirRel: String? = null
     @Input
@@ -48,15 +53,18 @@ open class BuildTask : DefaultTask() {
         val rootDirRel = rootDirRel ?: throw GradleException("rootDirRel cannot be null")
         val target = target ?: throw GradleException("target cannot be null")
         val release = release ?: throw GradleException("release cannot be null")
-        val args = listOf("tauri", "android", "android-studio-script");
+        val cli = listOf("tauri", "android", "android-studio-script")
+        val dir = File(project.projectDir, rootDirRel)
+        val debug = project.logger.isEnabled(LogLevel.DEBUG)
+        val info = project.logger.isEnabled(LogLevel.INFO)
 
-        project.exec {
-            workingDir(File(project.projectDir, rootDirRel))
+        execOperations.exec {
+            workingDir(dir)
             executable(executable)
-            args(args)
-            if (project.logger.isEnabled(LogLevel.DEBUG)) {
+            args(cli)
+            if (debug) {
                 args("-vv")
-            } else if (project.logger.isEnabled(LogLevel.INFO)) {
+            } else if (info) {
                 args("-v")
             }
             if (release) {

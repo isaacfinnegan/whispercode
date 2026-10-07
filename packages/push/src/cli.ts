@@ -1,14 +1,10 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "url"
-import { parse, run, type CLIIO, type CmdDependencies } from "./cmd.js"
+import { parse, run, type CLIIO } from "./cmd.js"
 
-export async function main(
-  args = process.argv.slice(2),
-  io: CLIIO = { stdin: process.stdin, stdout: process.stdout, stderr: process.stderr },
-  dependencies: Partial<CmdDependencies> = {},
-) {
+export async function main(args = process.argv.slice(2), io: CLIIO = { stdout: process.stdout, stderr: process.stderr }) {
   try {
-    const result = await run(args[0], parse(args), io, dependencies)
+    const result = await run(args[0], parse(args), io)
     return result && result.ok === false ? 1 : 0
   } catch {
     io.stderr.write('{"ok":false,"error":"command_failed"}\n')

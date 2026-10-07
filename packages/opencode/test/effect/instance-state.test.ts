@@ -38,6 +38,59 @@ it.live("InstanceState caches values per directory", () =>
   }),
 )
 
+it.live("InstanceState retries after an interrupted initialization", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    const started = yield* Deferred.make<void>()
+    let attempts = 0
+    let released = 0
+    const state = yield* InstanceState.make(() =>
+      Effect.gen(function* () {
+        attempts += 1
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            released += 1
+          }),
+        )
+        if (attempts === 1) {
+          yield* Deferred.succeed(started, undefined)
+          yield* Effect.never
+        }
+        return { attempts }
+      }),
+    )
+
+    const first = yield* access(state, dir).pipe(Effect.forkScoped)
+    yield* Deferred.await(started)
+    yield* Fiber.interrupt(first)
+    const retry = yield* Effect.exit(access(state, dir))
+
+    expect(Exit.isSuccess(retry)).toBe(true)
+    expect(attempts).toBe(2)
+    expect(released).toBe(1)
+    if (Exit.isSuccess(retry)) expect(yield* access(state, dir)).toBe(retry.value)
+  }),
+)
+
+it.live("InstanceState retries failed initialization and caches the recovered value", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    let attempts = 0
+    const state = yield* InstanceState.make(() =>
+      Effect.gen(function* () {
+        attempts += 1
+        if (attempts === 1) return yield* Effect.fail("temporarily unavailable")
+        return { attempts }
+      }),
+    )
+
+    expect(Exit.isFailure(yield* Effect.exit(access(state, dir)))).toBe(true)
+    const value = yield* access(state, dir)
+    expect(yield* access(state, dir)).toBe(value)
+    expect(attempts).toBe(2)
+  }),
+)
+
 it.live("InstanceState isolates directories", () =>
   Effect.gen(function* () {
     const one = yield* tmpdirScoped()

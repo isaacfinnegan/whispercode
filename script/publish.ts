@@ -48,7 +48,6 @@ console.log("\n=== ui ===\n")
 await $`bun ./packages/ui/script/publish.ts`
 
 console.log("\n=== push ===\n")
-await $`bun ./packages/push-provider/script/publish.ts`
 await $`bun ./packages/push/script/publish.ts`
 
 process.chdir(dir)

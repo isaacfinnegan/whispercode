@@ -45,7 +45,7 @@ async function main() {
 
       // Also run bun install to update lockfile.
       console.log("Running bun install to update lockfile...")
-      const env = { ...process.env, PATH: `${process.env.PATH}:/Users/isaac/.bun/bin` }
+      const env = { ...process.env, PATH: `${process.env.PATH}:/Users/worker/.bun/bin` }
       execSync("bun install --ignore-scripts", { stdio: "inherit", env })
 
       // Try to auto-commit the version sync.

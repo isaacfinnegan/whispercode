@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parsePluginSpecifier } from "../../src/plugin/shared"
+import { checkPluginCompatibility, parsePluginSpecifier } from "../../src/plugin/shared"
 
 describe("parsePluginSpecifier", () => {
   test("parses standard npm package without version", () => {
@@ -84,5 +84,23 @@ describe("parsePluginSpecifier", () => {
       pkg: "@opencode/acme",
       version: "latest",
     })
+  })
+})
+
+describe("checkPluginCompatibility", () => {
+  const pkg = {
+    dir: ".",
+    pkg: "package.json",
+    json: { engines: { opencode: ">=1.17.1" } },
+  }
+
+  test("accepts a WhisperCode release that satisfies the plugin's base-version requirement", async () => {
+    await expect(checkPluginCompatibility(".", "1.18.35-whispercode-385-20260911", pkg)).resolves.toBeUndefined()
+  })
+
+  test("rejects a WhisperCode release below the plugin's base-version requirement", async () => {
+    await expect(checkPluginCompatibility(".", "1.16.9-whispercode-385-20260911", pkg)).rejects.toThrow(
+      "Plugin requires opencode >=1.17.1",
+    )
   })
 })

@@ -199,7 +199,8 @@ export async function checkPluginCompatibility(target: string, opencodeVersion: 
   if (!isRecord(engines)) return
   const range = engines.opencode
   if (typeof range !== "string") return
-  if (!semver.satisfies(opencodeVersion, range)) {
+  const release = /^(\d+\.\d+\.\d+)-whispercode-\d+-\d{8}$/.exec(opencodeVersion)?.[1]
+  if (!semver.satisfies(opencodeVersion, range) && !(release && semver.satisfies(release, range))) {
     throw new Error(`Plugin requires opencode ${range} but running ${opencodeVersion}`)
   }
 }

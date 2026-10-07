@@ -1,10 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { createFcmAdapter } from "@whispercode/push-provider"
-import { createHash } from "crypto"
 import { checkin } from "./checkin.js"
-import { fcm } from "./config.js"
-import { loadDevices, recordError } from "./device.js"
-import { deliverDirect } from "./direct.js"
 import { record } from "./event.js"
 import { publish } from "./relay.js"
 import { load, save } from "./state.js"
@@ -24,7 +19,6 @@ const plugin: Plugin = async () => {
   let run = Promise.resolve()
   let stopped = false
   let disposal: Promise<void> | undefined
-  let cached: { key: string; adapter: ReturnType<typeof createFcmAdapter> } | undefined
 
   return {
     event({ event }) {
@@ -60,28 +54,6 @@ const plugin: Plugin = async () => {
                 }
                 // console.warn("whisperopencode-push: publish failed", data.relay.err)
               })
-          } else if (item && data.mode !== "relay") {
-            const devices = (await loadDevices()).devices.filter((device) => device.active)
-            if (devices.length > 0) {
-              const config = fcm()
-              if (config) {
-                const key = createHash("sha256")
-                  .update(config.projectID)
-                  .update("\0")
-                  .update(config.serviceAccountJSON)
-                  .digest("hex")
-                if (cached?.key !== key) cached = { key, adapter: createFcmAdapter(config) }
-                await deliverDirect(item, {
-                  devices: async () => devices,
-                  adapter: cached.adapter,
-                })
-              } else {
-                cached = undefined
-                await Promise.allSettled(
-                  devices.map((device) => recordError(device.id, "fcm_not_configured", device.tokenGeneration)),
-                )
-              }
-            }
           }
           await save(data)
         })
@@ -105,7 +77,6 @@ const plugin: Plugin = async () => {
           ])
         } finally {
           clearTimeout(timer)
-          cached = undefined
         }
       })()
       return disposal

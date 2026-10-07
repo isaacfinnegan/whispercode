@@ -9,9 +9,6 @@
     "typecheck": "tsgo --noEmit",
     "test": "bun test src"
   },
-  "dependencies": {
-    "@whispercode/push-provider": "workspace:*"
-  },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",

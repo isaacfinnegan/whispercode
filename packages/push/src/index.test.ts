@@ -1,40 +1,14 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
-import type { PushMessage, PushResult } from "@whispercode/push-provider"
-import { loadDevices, register } from "./device"
-import { save, type Data } from "./state"
+import plugin from "./index"
+import { load, save, type Data } from "./state"
 
 const dirs: string[] = []
-const sent: PushMessage[] = []
-const used: number[] = []
-let adapters = 0
-let delivery = async (): Promise<PushResult> => ({ ok: true, invalid: false, code: "ok" })
-
-mock.module("@whispercode/push-provider", () => ({
-  createFcmAdapter: () => {
-    const id = ++adapters
-    return {
-      send: async (_token: string, message: PushMessage) => {
-        sent.push(message)
-        used.push(id)
-        return delivery()
-      },
-    }
-  },
-}))
-
-const { default: plugin } = await import("./index")
 
 afterEach(async () => {
   delete process.env.OPENCODE_TEST_HOME
-  delete process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID
-  delete process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON
-  sent.splice(0)
-  used.splice(0)
-  adapters = 0
-  delivery = async () => ({ ok: true, invalid: false, code: "ok" })
   await Promise.all(dirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 
@@ -42,13 +16,6 @@ async function setup() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "push-plugin-"))
   dirs.push(dir)
   process.env.OPENCODE_TEST_HOME = dir
-  await register({
-    id: "device-1",
-    provider: "fcm",
-    token: "device-token".padEnd(32, "x"),
-    tokenGeneration: 1,
-    prefs: { complete: true, approval: true, question: true, error: true },
-  })
 }
 
 async function emit(hooks: Awaited<ReturnType<typeof plugin>>, session = "private-session") {
@@ -65,123 +32,19 @@ async function notify() {
   await emit(hooks)
 }
 
+function relayState(port: number | undefined): Data {
+  return {
+    v: 1,
+    mode: "relay",
+    root: {},
+    cool: {},
+    relay: { url: `http://127.0.0.1:${port}`, channel: "channel", secret: "secret" },
+  }
+}
+
 describe("push plugin delivery", () => {
-  test("reuses one FCM adapter while backend credentials are unchanged", async () => {
+  test("default local mode records events without delivering anywhere", async () => {
     await setup()
-    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
-    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
-      client_email: "push@example.com",
-      private_key: "private-key-1",
-    })
-    const hooks = await plugin({} as never)
-
-    await emit(hooks, "session-1")
-    await emit(hooks, "session-2")
-
-    expect(adapters).toBe(1)
-    expect(used).toEqual([1, 1])
-  })
-
-  test("creates a new FCM adapter when backend credentials rotate", async () => {
-    await setup()
-    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
-    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
-      client_email: "push@example.com",
-      private_key: "private-key-1",
-    })
-    const hooks = await plugin({} as never)
-    await emit(hooks, "session-1")
-
-    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
-      client_email: "push@example.com",
-      private_key: "private-key-2",
-    })
-    await emit(hooks, "session-2")
-
-    expect(adapters).toBe(2)
-    expect(used).toEqual([1, 2])
-  })
-
-  test("dispose drains an in-flight event before resolving", async () => {
-    await setup()
-    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
-    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
-      client_email: "push@example.com",
-      private_key: "private-key",
-    })
-    let release!: (result: PushResult) => void
-    let started!: () => void
-    const sending = new Promise<void>((resolve) => {
-      started = resolve
-    })
-    delivery = () =>
-      new Promise<PushResult>((resolve) => {
-        release = resolve
-        started()
-      })
-    const hooks = await plugin({} as never)
-    await hooks.event?.({
-      event: { type: "session.created", properties: { info: { id: "session-1" } } },
-    } as never)
-    const pending = hooks.event?.({
-      event: { type: "session.idle", properties: { sessionID: "session-1" } },
-    } as never)
-    await sending
-
-    let disposed = false
-    const disposing = hooks.dispose?.().then(() => {
-      disposed = true
-    })
-    await Promise.resolve()
-    expect(disposed).toBe(false)
-
-    release({ ok: true, invalid: false, code: "ok" })
-    await disposing
-    await pending
-    expect(disposed).toBe(true)
-  })
-
-  test(
-    "dispose returns within a bound when delivery does not settle",
-    async () => {
-      await setup()
-      process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
-      process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
-        client_email: "push@example.com",
-        private_key: "private-key",
-      })
-      let started!: () => void
-      const sending = new Promise<void>((resolve) => {
-        started = resolve
-      })
-      delivery = () =>
-        new Promise<PushResult>(() => {
-          started()
-        })
-      const hooks = await plugin({} as never)
-      await hooks.event?.({
-        event: { type: "session.created", properties: { info: { id: "session-1" } } },
-      } as never)
-      void hooks.event?.({
-        event: { type: "session.idle", properties: { sessionID: "session-1" } },
-      } as never)
-      await sending
-
-      expect(hooks.dispose).toBeFunction()
-      const before = Date.now()
-      await hooks.dispose?.()
-      expect(Date.now() - before).toBeLessThan(2_500)
-    },
-    { timeout: 3_000 },
-  )
-
-  test("default mode routes notification events through direct delivery and not relay", async () => {
-    await setup()
-    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
-    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
-      client_email: "push@example.com",
-      private_key: "not-a-real-private-key",
-    })
     const requests: string[] = []
     const relay = Bun.serve({
       port: 0,
@@ -191,36 +54,28 @@ describe("push plugin delivery", () => {
       },
     })
     try {
-      await save({
-        v: 1,
-        mode: "local",
-        root: {},
-        cool: {},
-        relay: { url: `http://127.0.0.1:${relay.port}`, channel: "channel", secret: "secret" },
-      })
+      await save({ ...relayState(relay.port), mode: "local" })
 
-      await notify()
+      await expect(notify()).resolves.toBeUndefined()
 
-      const device = (await loadDevices()).devices[0]
-      expect(device?.lastSuccessAt).toBeNumber()
-      expect(sent).toEqual([
-        {
-          deviceID: "device-1",
-          deliveryID: expect.any(String),
-          kind: "complete",
-          title: "Response ready",
-          body: "Tap to return to WhisperCode",
-        },
-      ])
-      expect(JSON.stringify(sent)).not.toContain("private-session")
-      expect(JSON.stringify(sent)).not.toContain("not-a-real-private-key")
       expect(requests).toEqual([])
+      expect((await load()).last?.kind).toBe("complete")
     } finally {
       relay.stop()
     }
   })
 
-  test("explicit relay mode publishes only through the relay", async () => {
+  test("fresh state defaults to local mode and does not deliver", async () => {
+    await setup()
+
+    await expect(notify()).resolves.toBeUndefined()
+
+    const data = await load()
+    expect(data.mode).toBe("local")
+    expect(data.relay).toBeUndefined()
+  })
+
+  test("explicit relay mode publishes through the relay", async () => {
     await setup()
     const requests: string[] = []
     const relay = Bun.serve({
@@ -234,73 +89,112 @@ describe("push plugin delivery", () => {
       },
     })
     try {
-      const data: Data = {
-        v: 1,
-        mode: "relay",
-        root: {},
-        cool: {},
-        relay: { url: `http://127.0.0.1:${relay.port}`, channel: "channel", secret: "secret" },
-      }
-      await save(data)
+      await save(relayState(relay.port))
 
       await notify()
 
       expect(requests.filter((route) => route === "/v1/events/publish")).toHaveLength(1)
-      expect((await loadDevices()).devices[0]?.lastError).toBeUndefined()
+      expect((await load()).relay?.result).toBe("accepted")
     } finally {
       relay.stop()
     }
   })
 
-  test("explicit relay mode without relay configuration never falls back to direct delivery", async () => {
+  test("explicit relay mode without relay configuration does not reject", async () => {
     await setup()
-    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
-    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
-      client_email: "push@example.com",
-      private_key: "private-key",
-    })
     await save({ v: 1, mode: "relay", root: {}, cool: {} })
 
     await expect(notify()).resolves.toBeUndefined()
 
-    expect(sent).toEqual([])
-    const device = (await loadDevices()).devices[0]
-    expect(device?.lastSuccessAt).toBeUndefined()
-    expect(device?.lastError).toBeUndefined()
+    expect((await load()).relay).toBeUndefined()
   })
 
-  test.each([undefined, "not-json"])(
-    "missing or malformed FCM configuration records a sanitized status without rejecting: %p",
-    async (credentials) => {
-      await setup()
-      process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = "project-1"
-      if (credentials) process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = credentials
-
-      await expect(notify()).resolves.toBeUndefined()
-
-      const error = (await loadDevices()).devices[0]?.lastError
-      expect(error?.code).toBe("fcm_not_configured")
-      expect(JSON.stringify(error)).not.toContain(credentials ?? "private-session")
-    },
-  )
-
-  test.each([
-    ["whitespace project ID", " ", "push@example.com", "private-key"],
-    ["whitespace client email", "project-1", "\t", "private-key"],
-    ["whitespace private key", "project-1", "push@example.com", "\n"],
-  ])("sanitizes structurally unusable FCM configuration: %s", async (_name, project, email, key) => {
+  test("dispose drains an in-flight relay publish before resolving", async () => {
     await setup()
-    process.env.WHISPEROPENCODE_PUSH_FCM_PROJECT_ID = project
-    process.env.WHISPEROPENCODE_PUSH_FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
-      client_email: email,
-      private_key: key,
+    let release!: () => void
+    let started!: () => void
+    const sending = new Promise<void>((resolve) => {
+      started = resolve
     })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const relay = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const route = new URL(req.url).pathname
+        if (route === "/v1/events/publish") {
+          started()
+          await gate
+          return Response.json({ accepted: true })
+        }
+        return Response.json({ ok: true })
+      },
+    })
+    try {
+      await save(relayState(relay.port))
+      const hooks = await plugin({} as never)
+      await hooks.event?.({
+        event: { type: "session.created", properties: { info: { id: "session-1" } } },
+      } as never)
+      const pending = hooks.event?.({
+        event: { type: "session.idle", properties: { sessionID: "session-1" } },
+      } as never)
+      await sending
 
-    await expect(notify()).resolves.toBeUndefined()
+      let disposed = false
+      const disposing = hooks.dispose?.().then(() => {
+        disposed = true
+      })
+      await Promise.resolve()
+      expect(disposed).toBe(false)
 
-    expect(sent).toEqual([])
-    const error = (await loadDevices()).devices[0]?.lastError
-    expect(error?.code).toBe("fcm_not_configured")
-    expect(Object.keys(error ?? {}).sort()).toEqual(["at", "code"])
+      release()
+      await disposing
+      await pending
+      expect(disposed).toBe(true)
+    } finally {
+      relay.stop(true)
+    }
   })
+
+  test(
+    "dispose returns within a bound when relay publish does not settle",
+    async () => {
+      await setup()
+      let started!: () => void
+      const sending = new Promise<void>((resolve) => {
+        started = resolve
+      })
+      const relay = Bun.serve({
+        port: 0,
+        fetch(req) {
+          if (new URL(req.url).pathname === "/v1/events/publish") {
+            started()
+            return new Promise<Response>(() => {})
+          }
+          return Response.json({ ok: true })
+        },
+      })
+      try {
+        await save(relayState(relay.port))
+        const hooks = await plugin({} as never)
+        await hooks.event?.({
+          event: { type: "session.created", properties: { info: { id: "session-1" } } },
+        } as never)
+        void hooks.event?.({
+          event: { type: "session.idle", properties: { sessionID: "session-1" } },
+        } as never)
+        await sending
+
+        expect(hooks.dispose).toBeFunction()
+        const before = Date.now()
+        await hooks.dispose?.()
+        expect(Date.now() - before).toBeLessThan(2_500)
+      } finally {
+        relay.stop(true)
+      }
+    },
+    { timeout: 3_000 },
+  )
 })

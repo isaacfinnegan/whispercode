@@ -11,19 +11,23 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Environment setup
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export ANDROID_HOME="$HOME/Library/Android/sdk"
-export NDK_HOME="$ANDROID_HOME/ndk/30.0.14904198"
-export PATH="/Users/isaac/.bun/bin:/Users/isaac/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:/opt/homebrew/bin:$PATH"
+export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 21 2>/dev/null || echo "/Applications/Android Studio.app/Contents/jbr/Contents/Home")}"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+export NDK_HOME="${NDK_HOME:-$ANDROID_HOME/ndk/30.0.14904198}"
+export PATH="/Users/worker/.local/bin:/Users/worker/.bun/bin:/Users/worker/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:/opt/homebrew/bin:$PATH"
 
 # Verify prerequisites
 if [ ! -d "$JAVA_HOME" ]; then
   echo "ERROR: JDK not found at $JAVA_HOME"
   exit 1
 fi
+if [ ! -d "$NDK_HOME" ]; then
+  echo "ERROR: Android NDK not found at $NDK_HOME"
+  exit 1
+fi
 
 echo "==> Building CLI..."
-bun run --cwd "$SCRIPT_DIR/../../packages/opencode" build --single
+OPENCODE_CHANNEL=latest bun run --cwd "$SCRIPT_DIR/../../packages/opencode" build --single
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
@@ -44,6 +48,12 @@ if ! CLI_VERSION="$("$CLI_BIN" --version)"; then
 fi
 echo "==> Built CLI: $CLI_VERSION"
 
+CANONICAL_DB="$HOME/.local/share/opencode/opencode.db"
+if [ "$("$CLI_BIN" db path)" != "$CANONICAL_DB" ]; then
+  echo "ERROR: Built CLI does not use the canonical database: $CANONICAL_DB"
+  exit 1
+fi
+
 echo "==> Syncing Android version to match CLI version..."
 (cd "$SCRIPT_DIR/../.." && bun run script/sync-android-version.ts)
 
@@ -63,6 +73,7 @@ echo "==> Pushing to pixel-10-pro-fold via Tailscale..."
 /usr/local/bin/tailscale file cp "$APK" "pixel-10-pro-fold:"
 echo "==> Pushed to pixel-10-pro-fold via Tailscale."
 
-echo "==> Installing validated CLI to ~/.opencode/bin/..."
-bash "$SCRIPT_DIR/script/install-cli.sh" "$CLI_BIN" "$HOME/.opencode/bin/opencode"
+echo "==> Installing validated CLI to ~/.local/bin/..."
+bash "$SCRIPT_DIR/script/install-cli.sh" "$CLI_BIN" "$HOME/.local/bin/opencode"
+codesign --force --sign - --timestamp=none "$HOME/.local/bin/opencode"
 echo "==> Done!"

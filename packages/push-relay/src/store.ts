@@ -4,13 +4,10 @@ import { Database } from "bun:sqlite"
 import { randomUUID } from "crypto"
 import { file as dbFile } from "./path"
 import { equal, hash, verify } from "./sign"
-import type { PushProvider } from "./push"
 
 export type PairState = "pending" | "claimed" | "active" | "expired" | "failed"
 
-export type PushTokenInput =
-  | { push_provider?: "apns"; apns_token: string; push_token?: string }
-  | { push_provider: "fcm"; push_token: string; apns_token?: string }
+export type PushTokenInput = { push_provider?: "apns"; apns_token: string }
 
 type PairStart = PushTokenInput & {
   device_name: string
@@ -82,7 +79,6 @@ export type Send = {
   kind?: string
   collapse_id?: string
   apns_env?: string
-  push_provider?: PushProvider
 }
 
 type PublishResult = {
@@ -252,9 +248,9 @@ export class Store {
       .run(
         pair,
         hash(pairToken),
-        token(input),
-        provider(input),
-        token(input),
+        input.apns_token,
+        "apns",
+        input.apns_token,
         input.device_name,
         input.app_version,
         input.apns_env ?? null,
@@ -314,6 +310,7 @@ export class Store {
     this.expire(row)
     if (row.status === "expired") throw new RelayErr(410, "pair_expired")
     if (row.status === "failed") throw new RelayErr(409, "pair_failed")
+    if (source(row) !== "apns") throw new RelayErr(400, "bad_push_provider")
 
     if (row.channel_id) {
       const prev = this.row(`SELECT * FROM channel WHERE id = ?`, row.channel_id)
@@ -448,12 +445,12 @@ export class Store {
     const dev = this.deviceIncludingRevoked(input)
     const now = Date.now()
     this.db.transaction(() => {
-      this.prune(input.channel_id, provider(input), token(input), input.device_id)
+      this.prune(input.channel_id, "apns", input.apns_token, input.device_id)
       this.db
         .prepare(
           `UPDATE device SET apns_token = ?, push_provider = ?, push_token = ?, apns_env = COALESCE(?, apns_env), error_code = NULL, revoked_at = NULL, last_seen_at = ? WHERE id = ?`,
         )
-        .run(token(input), provider(input), token(input), input.apns_env ?? null, now, input.device_id)
+        .run(input.apns_token, "apns", input.apns_token, input.apns_env ?? null, now, input.device_id)
       if (dev.revoked_at) {
         this.db
           .prepare(`UPDATE pair_request SET status = 'claimed' WHERE device_id = ? AND status = 'failed'`)
@@ -483,6 +480,7 @@ export class Store {
 
   test(input: DeviceTest) {
     const dev = this.device(input)
+    if (source(dev) !== "apns") throw new RelayErr(400, "bad_push_provider")
     const idd = id("dlv")
     this.db
       .prepare(
@@ -495,7 +493,6 @@ export class Store {
       delivery_id: idd,
       device_id: String(dev.id),
       token: value(dev),
-      push_provider: source(dev),
       channel_id: input.channel_id,
       session_id: null,
       kind: "test",
@@ -536,7 +533,7 @@ export class Store {
     const devices = this.db
       .prepare(
         `SELECT * FROM device
-         WHERE channel_id = ? AND revoked_at IS NULL
+         WHERE channel_id = ? AND revoked_at IS NULL AND push_provider = 'apns'
          ORDER BY COALESCE(last_seen_at, created_at, 0) DESC, created_at DESC, id DESC`,
       )
       .all(input.channel_id) as Row[]
@@ -569,8 +566,7 @@ export class Store {
     for (const dev of devices) {
       const did = String(dev.id)
       const tok = value(dev)
-      const push = source(dev)
-      if (seen.has(`${push}:${tok}`)) {
+      if (seen.has(tok)) {
         const idd = id("dlv")
         this.db
           .prepare(
@@ -591,7 +587,7 @@ export class Store {
           )
         continue
       }
-      seen.add(`${push}:${tok}`)
+      seen.add(tok)
       const pref = loadPrefs(dev.prefs_json ?? null)
       if (!enabled(pref, input.kind)) {
         const idd = id("dlv")
@@ -626,7 +622,6 @@ export class Store {
         delivery_id: idd,
         device_id: did,
         token: tok,
-        push_provider: push,
         channel_id: input.channel_id,
         session_id: input.session_id,
         kind: input.kind,
@@ -666,7 +661,7 @@ export class Store {
       push_provider: source(d),
       prefs: loadPrefs(d.prefs_json ?? null),
       error_code: d.error_code != null ? String(d.error_code) : null,
-      active: d.revoked_at == null,
+      active: d.revoked_at == null && source(d) === "apns",
       created_at: d.created_at != null ? Number(d.created_at) : null,
     }))
   }
@@ -761,7 +756,7 @@ export class Store {
     return (this.db.prepare(sql).get(...args) as Row | null) ?? null
   }
 
-  private same(channel: string, push: PushProvider, token: string) {
+  private same(channel: string, push: string, token: string) {
     return this.db
       .prepare(`SELECT * FROM device WHERE channel_id = ? AND push_provider = ? AND push_token = ?`)
       .all(channel, push, token) as Row[]
@@ -777,7 +772,7 @@ export class Store {
       .sort((a, b) => live(b) - live(a) || stamp(b) - stamp(a) || String(b.id).localeCompare(String(a.id)))[0]
   }
 
-  private prune(channel: string, push: PushProvider, token: string, keep: string) {
+  private prune(channel: string, push: string, token: string, keep: string) {
     const now = Date.now()
     this.db
       .prepare(
@@ -881,16 +876,8 @@ function enabled(pref: Prefs, kind: string) {
   }
 }
 
-function provider(input: PushTokenInput): PushProvider {
-  return input.push_provider === "fcm" ? "fcm" : "apns"
-}
-
-function token(input: PushTokenInput) {
-  return input.push_provider === "fcm" ? input.push_token : (input.push_token ?? input.apns_token)
-}
-
-function source(row: Row): PushProvider {
-  return row.push_provider === "fcm" ? "fcm" : "apns"
+function source(row: Row) {
+  return typeof row.push_provider === "string" ? row.push_provider : "apns"
 }
 
 function value(row: Row) {

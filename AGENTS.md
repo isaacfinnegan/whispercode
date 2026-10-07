@@ -11,7 +11,7 @@ Scope: applies to the whole repo unless a deeper `AGENTS.md` exists.
 
 ## Quick Rules
 
-- Use Bun `1.3.10` (`packageManager` is `bun@1.3.10`)
+- Use Bun `1.3.14` (`packageManager` is `bun@1.3.14`)
 - Default branch is `dev`; local `main` may not exist
 - Prefer `bun run --cwd <package> ...` from repo root
 - Use parallel tool calls when tasks do not depend on each other
