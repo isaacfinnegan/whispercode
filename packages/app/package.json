@@ -1,6 +1,6 @@
 {
   "name": "@opencode-ai/app",
-  "version": "1.18.30-whispercode-382-20260910",
+  "version": "1.18.35",
   "description": "",
   "type": "module",
   "exports": {
@@ -83,7 +83,7 @@
     "diff": "catalog:",
     "effect": "catalog:",
     "fuzzysort": "catalog:",
-    "ghostty-web": "github:anomalyco/ghostty-web#20bd361",
+    "ghostty-web": "github:anomalyco/ghostty-web#83c0a07b8628b748aed073b232cb4b52a6ca11c1",
     "luxon": "catalog:",
     "marked": "catalog:",
     "marked-shiki": "catalog:",

@@ -67,3 +67,4 @@ todo.md
 script/deploy-relay
 /google-services.json
 /*-firebase-adminsdk-*.json
+/artifacts/
